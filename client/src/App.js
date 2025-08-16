@@ -17,7 +17,7 @@ function App() {
           element={
             <div className="p-5 text-center space-y-4">
               <h1 className="text-2xl font-bold">ยินดีต้อนรับสู่ SCI-DigiKnowledge</h1>
-              <p className="text-gray-600">เลือกเมนูด้านบนเพื่อเริ่มต้นใช้งาน</p>
+              <p className="text-gray-600">เลือกเมนูด้านบนเพื่อเริ่มต้น</p>
               <div className="flex justify-center gap-4">
                 <Link
                   to="/upload"
