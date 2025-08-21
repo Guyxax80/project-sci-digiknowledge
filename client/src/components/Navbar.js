@@ -15,9 +15,13 @@ const Navbar = () => {
           <Link to="/upload" className="hover:underline">
             อัปโหลดไฟล์
           </Link>
+          <Link to="/documents" className="hover:underline">
+            เอกสารทั้งหมด
+          </Link>          
           <Link to="/login" className="hover:underline">
             Login
           </Link>
+
         </div>
       </div>
     </nav>
