@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Mail, Lock, LogIn, AlertCircle, CheckCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; // เพิ่มบรรทัดนี้
+import { Eye, EyeOff, Lock, LogIn, AlertCircle, CheckCircle } from 'lucide-react';
 
 export default function LoginForm({ onLogin }) {
+  const navigate = useNavigate(); // เพิ่มบรรทัดนี้
   const [formData, setFormData] = useState({
-    email: '',
+    username: '',
     password: '',
     rememberMe: false,
   });
@@ -12,24 +14,17 @@ export default function LoginForm({ onLogin }) {
   const [isLoading, setIsLoading] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
 
-  const validateEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
   const validateForm = () => {
     const newErrors = {};
 
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!validateEmail(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
+    if (!formData.username.trim()) {
+      newErrors.username = 'กรุณากรอกชื่อผู้ใช้';
     }
 
     if (!formData.password) {
-      newErrors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+      newErrors.password = 'กรุณากรอกรหัสผ่าน';
+    } else if (formData.password.length < 4) {
+      newErrors.password = 'รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร';
     }
 
     setErrors(newErrors);
@@ -43,21 +38,32 @@ export default function LoginForm({ onLogin }) {
 
     setIsLoading(true);
 
-    // Simulate API call
+    // จำลองการ login และ role (ควรเปลี่ยนเป็นดึงจาก API จริง)
     setTimeout(() => {
       setIsLoading(false);
       setLoginSuccess(true);
-      onLogin?.(formData.email, formData.password, formData.rememberMe);
 
-      // Reset success state after 2 seconds
-      setTimeout(() => setLoginSuccess(false), 2000);
-    }, 1500);
+      // สมมติ login สำเร็จและได้ role จาก backend
+      const userRole = formData.username === "admin" ? "admin" : "student"; // ตัวอย่างเท่านั้น
+
+      setTimeout(() => {
+        setLoginSuccess(false);
+        if (userRole === "admin") {
+          navigate('/admin');
+        } else if (userRole === "student") {
+          navigate('/student');
+        } else if (userRole === "teacher") {
+          navigate('/teacher');
+        } else {
+          navigate('/');
+        }
+      }, 1200);
+    }, 1000);
   };
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
 
-    // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
@@ -72,50 +78,47 @@ export default function LoginForm({ onLogin }) {
             <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full mb-4">
               <LogIn className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2"></h2>
-            <p className="text-gray-600">Sign in to your account to continue</p>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">เข้าสู่ระบบ</h2>
+            <p className="text-gray-600">กรอกชื่อผู้ใช้และรหัสผ่านเพื่อเข้าสู่ระบบ</p>
           </div>
 
           {/* Success Message */}
           {loginSuccess && (
             <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center space-x-3 animate-in slide-in-from-top-2 duration-300">
               <CheckCircle className="w-5 h-5 text-green-600" />
-              <span className="text-green-800 font-medium">Login successful!</span>
+              <span className="text-green-800 font-medium">เข้าสู่ระบบสำเร็จ!</span>
             </div>
           )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6 bg-yellow-50/80 p-6 rounded-xl shadow-inner border-2 border-yellow-300">
-            {/* Email Field */}
+            {/* Username Field */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email address
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
+                Username
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="w-5 h-5 text-gray-400" />
-                </div>
                 <input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
-                  className={`block w-full pl-10 pr-3 py-3 border rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 ${
-                    errors.email
+                  id="username"
+                  type="text"
+                  value={formData.username}
+                  onChange={(e) => handleInputChange('username', e.target.value)}
+                  className={`block w-full pl-3 pr-3 py-3 border rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 ${
+                    errors.username
                       ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                       : 'border-gray-300'
                   }`}
-                  placeholder="Enter your email"
+                  placeholder="กรอกชื่อผู้ใช้"
                 />
-                {errors.email && (
+                {errors.username && (
                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                     <AlertCircle className="w-5 h-5 text-red-500" />
                   </div>
                 )}
               </div>
-              {errors.email && (
+              {errors.username && (
                 <p className="mt-2 text-sm text-red-600 flex items-center space-x-1">
-                  <span>{errors.email}</span>
+                  <span>{errors.username}</span>
                 </p>
               )}
             </div>
@@ -139,7 +142,7 @@ export default function LoginForm({ onLogin }) {
                       ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                       : 'border-gray-300'
                   }`}
-                  placeholder="Enter your password"
+                  placeholder="กรอกรหัสผ่าน"
                 />
                 <button
                   type="button"
