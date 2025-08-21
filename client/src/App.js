@@ -4,6 +4,7 @@ import Upload from "./pages/Upload";
 import DocumentList from "./pages/DocumentList";
 import Navbar from "./components/Navbar";
 import Login from "./pages/Login";
+import AdminDashboard from "./pages/AdminDashboard";
 import './input.css'
 import './output.css'
 
@@ -44,6 +45,7 @@ function App() {
         <Route path="/upload" element={<Upload />} />
         <Route path="/documents" element={<DocumentList />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/admin" element={<AdminDashboard />} />
       </Routes>
     </Router>
   );
