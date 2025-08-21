@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // เพิ่มบรรทัดนี้
+import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, LogIn, AlertCircle, CheckCircle } from 'lucide-react';
 
 export default function LoginForm({ onLogin }) {
-  const navigate = useNavigate(); // เพิ่มบรรทัดนี้
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -44,16 +44,25 @@ export default function LoginForm({ onLogin }) {
       setLoginSuccess(true);
 
       // สมมติ login สำเร็จและได้ role จาก backend
-      const userRole = formData.username === "admin" ? "admin" : "student"; // ตัวอย่างเท่านั้น
+      let userRole = "student";
+      if (formData.username === "admin") userRole = "admin";
+      else if (formData.username === "teacher") userRole = "teacher";
+
+          // บันทึก role ลง localStorage เพื่อใช้ควบคุม Navbar และหน้าอื่น ๆ
+      try {
+        localStorage.setItem('role', userRole);
+      } catch (e) {
+        // noop
+      }
 
       setTimeout(() => {
         setLoginSuccess(false);
         if (userRole === "admin") {
           navigate('/admin');
         } else if (userRole === "student") {
-          navigate('/student');
+          navigate('/home');
         } else if (userRole === "teacher") {
-          navigate('/teacher');
+          navigate('/home');
         } else {
           navigate('/');
         }
