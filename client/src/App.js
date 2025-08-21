@@ -5,7 +5,9 @@ import DocumentList from "./pages/DocumentList";
 import Navbar from "./components/Navbar";
 import Login from "./pages/Login";
 import AdminDashboard from "./pages/AdminDashboard";
-import './input.css'
+import StudentDashboard from "./pages/studentDashboard";
+import TeacherDashboard from "./pages/TeacherDashboard"; // หากมีหน้า teacher
+import Home from "./pages/Home";
 import './output.css'
 
 function App() {
@@ -13,19 +15,15 @@ function App() {
     <Router>
       <Navbar />
       <Routes>
-        <Route
-          path="/"
-          element={
-            <div className="p-5 text-center space-y-4">
-              <h1 className="text-2xl font-bold">ยินดีต้อนรับสู่ SCI-DigiKnowledge</h1>
-              <p className="text-gray-600">เลือกเมนูด้านบนเพื่อเริ่มต้น</p>
-            </div>
-          }
-        />
+
         <Route path="/upload" element={<Upload />} />
         <Route path="/documents" element={<DocumentList />} />
+        <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
         <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/student" element={<StudentDashboard />} />
+        <Route path="/teacher" element={<TeacherDashboard />} />
+        <Route path="/home" element={<Home />} />
       </Routes>
     </Router>
   );
