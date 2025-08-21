@@ -1,7 +1,8 @@
 import React from "react";
 import { Link } from "react-router-dom";
 
-const Navbar = () => {
+const Navbar = ({ role }) => {
+  const effectiveRole = (role || localStorage.getItem("role") || "").trim().toLowerCase();
   return (
     <nav className="bg-blue-700 text-white px-6 py-4 shadow fixed top-0 left-0 w-full z-50">
       <div className="container mx-auto flex flex-row items-center justify-between">
@@ -9,19 +10,21 @@ const Navbar = () => {
           SCI-DigiKnowledge
         </Link>
         <div className="flex flex-row space-x-8">
-          <Link to="/" className="hover:underline">
+          <Link to="/home" className="hover:underline">
             หน้าแรก
           </Link>
-          <Link to="/upload" className="hover:underline">
-            อัปโหลดไฟล์
-          </Link>
+          {/* เฉพาะ student เท่านั้นที่เห็นเมนูอัปโหลด */}
+          {effectiveRole === "student" && (
+            <Link to="/upload" className="hover:underline">
+              อัปโหลดไฟล์
+            </Link>
+          )}
           <Link to="/documents" className="hover:underline">
             เอกสารทั้งหมด
-          </Link>          
+          </Link>
           <Link to="/login" className="hover:underline">
             Login
           </Link>
-
         </div>
       </div>
     </nav>
