@@ -3,11 +3,13 @@ const cors = require('cors');
 const path = require('path');
 const uploadRoute = require('./routes/upload');
 const documentRoute = require('./routes/documents'); // เพิ่มตรงนี้
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/admin', adminRoutes);
 
 // Route สำหรับอัปโหลดไฟล์
 app.use('/api/upload', uploadRoute);
