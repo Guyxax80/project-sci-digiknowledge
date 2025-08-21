@@ -1,0 +1,194 @@
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+import { Button, Card, CardContent, Typography, Table, TableBody, TableCell, TableHead, TableRow } from "@mui/material";
+
+export default function AdminDashboard() {
+  const [users, setUsers] = useState([]);
+  const [stats, setStats] = useState({ documents: 0, downloads: 0 });
+  const [form, setForm] = useState({ username: "", password: "", role: "" });
+  const [editingUser, setEditingUser] = useState(null);
+
+  useEffect(() => {
+    fetchUsers();
+    fetchStats();
+  }, []);
+
+  // ดึงข้อมูลผู้ใช้งาน
+  const fetchUsers = async () => {
+    try {
+      const res = await axios.get("http://localhost:3000/admin/users");
+      setUsers(res.data);
+    } catch (err) {
+      console.error("โหลดข้อมูลผู้ใช้ล้มเหลว", err);
+    }
+  };
+
+  // ดึงสถิติ
+  const fetchStats = async () => {
+    try {
+      const res = await axios.get("http://localhost:3000/admin/stats");
+      setStats(res.data);
+    } catch (err) {
+      console.error("โหลดสถิติล้มเหลว", err);
+    }
+  };
+
+  // ลบผู้ใช้
+  const deleteUser = async (id) => {
+    if (!window.confirm("ยืนยันการลบผู้ใช้นี้?")) return;
+    try {
+      await axios.delete(`http://localhost:3000/admin/users/${id}`);
+      fetchUsers();
+    } catch (err) {
+      console.error("ลบผู้ใช้ล้มเหลว", err);
+    }
+  };
+
+  // สำรองฐานข้อมูล
+  const backupDatabase = async () => {
+    try {
+      const res = await axios.get("http://localhost:3000/admin/backup", { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "backup.sql");
+      document.body.appendChild(link);
+      link.click();
+    } catch (err) {
+      console.error("สำรองฐานข้อมูลล้มเหลว", err);
+    }
+  };
+
+  // เพิ่ม/แก้ไขผู้ใช้
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingUser) {
+        await axios.put(`http://localhost:3000/admin/users/${editingUser.id}`, {
+          username: form.username,
+          role: form.role,
+        });
+      } else {
+        await axios.post("http://localhost:3000/admin/users", form);
+      }
+      setForm({ username: "", password: "", role: "" });
+      setEditingUser(null);
+      fetchUsers();
+    } catch (err) {
+      console.error("บันทึกล้มเหลว:", err);
+    }
+  };
+
+  const handleEdit = (user) => {
+    setEditingUser(user);
+    setForm({ username: user.username, password: "", role: user.role });
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <Typography variant="h4" className="font-bold mb-4">Admin Dashboard</Typography>
+
+      {/* ฟอร์ม เพิ่ม/แก้ไขผู้ใช้ */}
+      <form className="mb-6 space-y-4 bg-yellow-50 p-4 rounded-xl shadow" onSubmit={handleSubmit}>
+        <div className="flex flex-col gap-2">
+          <input
+            type="text"
+            placeholder="Username"
+            className="border p-2 rounded"
+            value={form.username}
+            onChange={(e) => setForm({ ...form, username: e.target.value })}
+            required
+          />
+          {!editingUser && (
+            <input
+              type="password"
+              placeholder="Password"
+              className="border p-2 rounded"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              required
+            />
+          )}
+          <select
+            className="border p-2 w-full"
+            value={form.role}
+            onChange={(e) => setForm({ ...form, role: e.target.value })}
+            required   // บังคับเลือก
+          >
+            <option value="">-- เลือกบทบาทผู้ใช้ --</option>
+            <option value="student">นักศึกษา</option>
+            <option value="teacher">อาจารย์</option>
+            <option value="admin">แอดมิน</option>
+          </select>
+        </div>
+        <div className="flex gap-2 mt-2">
+          <Button type="submit" variant="contained" color="primary">
+            {editingUser ? "อัปเดตผู้ใช้" : "เพิ่มผู้ใช้"}
+          </Button>
+          {editingUser && (
+            <Button
+              type="button"
+              variant="contained"
+              color="secondary"
+              onClick={() => {
+                setEditingUser(null);
+                setForm({ username: "", password: "", role: "" });
+              }}
+            >
+              ยกเลิก
+            </Button>
+          )}
+        </div>
+      </form>
+
+      {/* แสดงสถิติ */}
+      <div className="grid grid-cols-2 gap-4">
+        <Card className="shadow-md">
+          <CardContent>
+            <Typography variant="h6">จำนวนผลงาน</Typography>
+            <Typography variant="h4">{stats.documents}</Typography>
+          </CardContent>
+        </Card>
+        <Card className="shadow-md">
+          <CardContent>
+            <Typography variant="h6">ยอดดาวน์โหลด</Typography>
+            <Typography variant="h4">{stats.downloads}</Typography>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ปุ่มสำรองฐานข้อมูล */}
+      <Button variant="contained" color="primary" onClick={backupDatabase}>
+        สำรองฐานข้อมูล
+      </Button>
+
+      {/* ตารางผู้ใช้ */}
+      <Card className="shadow-md mt-6">
+        <CardContent>
+          <Typography variant="h6" gutterBottom>จัดการผู้ใช้</Typography>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>ชื่อผู้ใช้</TableCell>
+                <TableCell>บทบาท</TableCell>
+                <TableCell>จัดการ</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {users.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell>{u.username || u.name}</TableCell>
+                  <TableCell>{u.role}</TableCell>
+                  <TableCell>
+                    <Button color="warning" onClick={() => handleEdit(u)}>แก้ไข</Button>
+                    <Button color="error" onClick={() => deleteUser(u.id)}>ลบ</Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
