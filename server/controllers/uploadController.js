@@ -1,27 +1,65 @@
 const path = require('path');
+const fs = require('fs');
 const db = require('../db');
 
-// controllers/uploadController.js
 exports.uploadFile = (req, res) => {
-  console.log('Uploaded file info:', req.file);  
-  if (!req.file) return res.status(400).send('No file uploaded');
+  try {
+    const { title, category, keywords, academic_year, is_draft } = req.body;
+    const user_id = req.user?.id || 1; // หรือดึงจาก session/auth
 
-  const { title, category, keywords, academic_year } = req.body;
-  const user_id = req.user?.id || 1; // หรือดึงจาก session/auth
-  const file_path = req.file.path.replace(/\\/g, '/'); // path ในรูปแบบ URL
-  const file_type = req.file.mimetype.split('/')[1];
-  const original_name = req.file.originalname;  // ชื่อไฟล์ต้นฉบับ
+    if (!title) return res.status(400).send('กรุณากรอกชื่อเอกสาร');
 
-  const sql = `
-    INSERT INTO documents (user_id, title, category, keywords, academic_year, file_path, file_type, original_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `;
+    // สร้างโฟลเดอร์ user ถ้าไม่มี
+    const userFolder = path.join(__dirname, '../uploads/user_' + user_id);
+    if (!fs.existsSync(userFolder)) fs.mkdirSync(userFolder, { recursive: true });
 
-  db.query(sql, [user_id, title, category, keywords, academic_year, file_path, file_type, original_name], (err, result) => {
-    if (err) {
-      console.error('Error saving to database:', err);
-      return res.status(500).send('Error saving file info');
+    const filesData = {};
+
+    // req.files จะเป็น object: { 'files[ปก]': [file], 'files[บทคัดย่อ]': [file], ... }
+    if (req.files) {
+      for (const [field, fileArr] of Object.entries(req.files)) {
+        if (fileArr.length > 0) {
+          const file = fileArr[0];
+          const section = field.match(/files\[(.+)\]/)[1]; // ดึงชื่อ section
+          const fileName = `${section}${path.extname(file.originalname)}`;
+          const filePath = path.join(userFolder, fileName);
+
+          // ย้ายไฟล์ไป folder user
+          fs.renameSync(file.path, filePath);
+
+          filesData[section] = {
+            file_path: filePath.replace(/\\/g, '/'), // path ในรูปแบบ URL
+            original_name: file.originalname,
+            file_type: file.mimetype
+          };
+        }
+      }
     }
-    res.json({ message: 'Upload successful', id: result.insertId });
-  });
+
+    // บันทึกลงฐานข้อมูล
+    const sql = `
+      INSERT INTO documents 
+      (user_id, title, category, keywords, academic_year, files, is_draft, uploaded_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+    `;
+    db.query(sql, [
+      user_id,
+      title,
+      category,
+      keywords,
+      academic_year,
+      JSON.stringify(filesData), // เก็บไฟล์แต่ละ section เป็น JSON
+      is_draft ? 1 : 0
+    ], (err, result) => {
+      if (err) {
+        console.error('Error saving to database:', err);
+        return res.status(500).send('Error saving file info');
+      }
+      res.json({ message: 'Upload successful', id: result.insertId });
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server error');
+  }
 };
