@@ -26,6 +26,9 @@ const Navbar = ({ role }) => {
           <Link to="/document/:id" className="hover:underline">
             เอกสารทั้งหมด
           </Link>
+          <Link to="/profile" className="hover:underline">
+            Profile
+          </Link>
           <Link to="/login" className="hover:underline">
             Login
           </Link>

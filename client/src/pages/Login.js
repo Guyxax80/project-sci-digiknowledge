@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, LogIn, AlertCircle, CheckCircle } from 'lucide-react';
 
-export default function LoginForm({ onLogin }) {
+export default function LoginForm() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     username: '',
@@ -35,39 +35,47 @@ export default function LoginForm({ onLogin }) {
     e.preventDefault();
 
     if (!validateForm()) return;
-
     setIsLoading(true);
 
-    // จำลองการ login และ role (ควรเปลี่ยนเป็นดึงจาก API จริง)
-    setTimeout(() => {
+    try {
+      const res = await fetch("http://localhost:3000/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: formData.username,
+          password: formData.password,
+        }),
+      });
+
+      const data = await res.json();
       setIsLoading(false);
-      setLoginSuccess(true);
 
-      // สมมติ login สำเร็จและได้ role จาก backend
-      let userRole = "student";
-      if (formData.username === "admin") userRole = "admin";
-      else if (formData.username === "teacher") userRole = "teacher";
+      if (data.success) {
+  setLoginSuccess(true);
 
-          // บันทึก role ลง localStorage เพื่อใช้ควบคุม Navbar และหน้าอื่น ๆ
-      try {
-        localStorage.setItem('role', userRole);
-      } catch (e) {
-        // noop
+  // บันทึก role + token
+  localStorage.setItem("role", data.role);
+  if (data.token) localStorage.setItem("token", data.token);
+
+  // ✅ เก็บ userId ด้วย
+  if (data.userId) localStorage.setItem("userId", data.userId);
+
+  // Redirect ตาม role
+  setTimeout(() => {
+    setLoginSuccess(false);
+    if (data.role === "admin") navigate("/admin");
+    else if (data.role === "student") navigate("/home");
+    else if (data.role === "teacher") navigate("/home");
+    else navigate("/");
+  }, 1200);
+} else {
+        setErrors({ password: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
       }
-
-      setTimeout(() => {
-        setLoginSuccess(false);
-        if (userRole === "admin") {
-          navigate('/admin');
-        } else if (userRole === "student") {
-          navigate('/home');
-        } else if (userRole === "teacher") {
-          navigate('/home');
-        } else {
-          navigate('/');
-        }
-      }, 1200);
-    }, 1000);
+    } catch (err) {
+      console.error("Login error:", err);
+      setIsLoading(false);
+      setErrors({ password: "เกิดข้อผิดพลาด กรุณาลองใหม่" });
+    }
   };
 
   const handleInputChange = (field, value) => {
@@ -79,7 +87,7 @@ export default function LoginForm({ onLogin }) {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-yellow-200 to-yellow-400">
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-yellow-200 to-yellow-400 mt-10">
       <div className="bg-yellow-200 p-6 rounded-3xl shadow-2xl w-full max-w-md flex flex-col items-center justify-center border-4 border-yellow-400">
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100 w-full">
           {/* Header */}
@@ -218,9 +226,12 @@ export default function LoginForm({ onLogin }) {
           <div className="mt-8 text-center">
             <p className="text-sm text-gray-600">
               Don't have an account?{' '}
-              <button className="text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200">
+              <button
+                onClick={() => navigate("/signup")}
+                className="text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200">
                 Sign up for free
               </button>
+
             </p>
           </div>
         </div>

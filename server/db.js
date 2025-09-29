@@ -3,8 +3,9 @@ const mysql = require('mysql');
 const connection = mysql.createConnection({
   host: 'localhost',
   user: 'root',
-  password: '',      // ใส่รหัสผ่าน MySQL ของคุณ
-  database: 'sci_digiknowledge'
+  password: '',
+  database: 'sci_digiknowledge',
+  charset: 'utf8mb4'
 });
 
 connection.connect((err) => {

@@ -1,60 +1,71 @@
-const db = require("../db");
-const { exec } = require("child_process");
-const path = require("path");
+const path = require('path');
+const fs = require('fs');
+const db = require('../db');
 
-// ดึงรายชื่อผู้ใช้
-exports.getUsers = (req, res) => {
-  const sql = "SELECT id, name, email, role FROM users";
-  db.query(sql, (err, results) => {
-    if (err) {
-      console.error("Error fetching users:", err);
-      return res.status(500).json({ error: "ดึงข้อมูลผู้ใช้ล้มเหลว" });
-    }
-    res.json(results);
-  });
-};
+exports.uploadFile = async (req, res) => {
+  try {
+    const { title, categorie_id, keywords, academic_year, status, user_id } = req.body;
+    const uploaderId = user_id || req.user?.id; // ดึงจาก token หรือ localStorage
 
-// ลบผู้ใช้
-exports.deleteUser = (req, res) => {
-  const userId = req.params.id;
-  db.query("DELETE FROM users WHERE id = ?", [userId], (err) => {
-    if (err) {
-      console.error("Error deleting user:", err);
-      return res.status(500).json({ error: "ลบผู้ใช้ล้มเหลว" });
-    }
-    res.json({ message: "ลบผู้ใช้สำเร็จ" });
-  });
-};
+    if (!title) return res.status(400).send('กรุณากรอกชื่อเอกสาร');
+    if (!uploaderId) return res.status(401).send('กรุณา login ก่อนอัปโหลด');
 
-// ดึงสถิติ
-exports.getStats = (req, res) => {
-  const stats = {};
-  db.query("SELECT COUNT(*) AS totalDocs FROM documents", (err, docResult) => {
-    if (err) {
-      return res.status(500).json({ error: "โหลดสถิติล้มเหลว" });
-    }
-    stats.documents = docResult[0].totalDocs;
+    // สร้างโฟลเดอร์ user ถ้าไม่มี
+    const userFolder = path.join(__dirname, '../uploads/user_' + uploaderId);
+    if (!fs.existsSync(userFolder)) fs.mkdirSync(userFolder, { recursive: true });
 
-    db.query("SELECT SUM(download_count) AS totalDownloads FROM documents", (err, dlResult) => {
-      if (err) {
-        return res.status(500).json({ error: "โหลดสถิติล้มเหลว" });
-      }
-      stats.downloads = dlResult[0].totalDownloads || 0;
-      res.json(stats);
+    // 1️⃣ บันทึกเอกสารหลักใน documents
+    const docSql = `
+      INSERT INTO documents
+      (user_id, title, keywords, academic_year, status, uploaded_at, download_count)
+      VALUES (?, ?, ?, ?, ?, NOW(), 0)
+    `;
+    const [docResult] = await new Promise((resolve, reject) => {
+      db.query(docSql, [uploaderId, title, keywords, academic_year, status || 0], (err, result) => {
+        if (err) reject(err);
+        else resolve([result]);
+      });
     });
-  });
-};
 
-// สำรองฐานข้อมูล
-exports.backupDatabase = (req, res) => {
-  const backupPath = path.join(__dirname, "../uploads", "backup.sql");
-  const command = `mysqldump -u root sci_digiknowledge > "${backupPath}"`; // ปรับ user/password ตามเครื่อง
+    const documentId = docResult.insertId;
 
-  exec(command, (err) => {
-    if (err) {
-      console.error("Backup error:", err);
-      return res.status(500).json({ error: "สำรองฐานข้อมูลล้มเหลว" });
+    // 2️⃣ บันทึกหมวดหมู่
+    if (categorie_id) {
+      const catSql = `INSERT INTO document_categories (document_id, categorie_id) VALUES (?, ?)`;
+      db.query(catSql, [documentId, categorie_id], (err) => {
+        if (err) console.error('Error saving category:', err);
+      });
     }
-    res.download(backupPath, "backup.sql");
-  });
+
+    // 3️⃣ บันทึกไฟล์แต่ละ section
+    if (req.files) {
+      for (const [field, fileArr] of Object.entries(req.files)) {
+        if (fileArr.length > 0) {
+          const file = fileArr[0];
+          const section = field.match(/files\[(.+)\]/)[1];
+          const fileName = `${Date.now()}_${section}${path.extname(file.originalname)}`;
+          const filePath = path.join(userFolder, fileName);
+
+          // ย้ายไฟล์ไป folder user
+          fs.renameSync(file.path, filePath);
+
+          // บันทึกลง document_files
+          const fileSql = `
+            INSERT INTO document_files
+            (document_id, file_path, original_name, file_type, section, uploaded_at)
+            VALUES (?, ?, ?, ?, ?, NOW())
+          `;
+          db.query(fileSql, [documentId, filePath.replace(/\\/g, '/'), file.originalname, file.mimetype, section], (err) => {
+            if (err) console.error('Error saving file info:', err);
+          });
+        }
+      }
+    }
+
+    res.json({ success: true, message: 'Upload successful', documentId });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server error');
+  }
 };

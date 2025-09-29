@@ -6,21 +6,24 @@ const path = require("path");
 
 // 📌 ดึงผู้ใช้ทั้งหมด
 router.get("/users", (req, res) => {
-  db.query("SELECT id, username, role, created_at FROM users", (err, result) => {
-    if (err) return res.status(500).json({ error: "DB error" });
-    res.json(result);
-  });
+  db.query(
+    "SELECT user_id, username, role, created_at FROM users",
+    (err, result) => {
+      if (err) return res.status(500).json({ error: "DB error" });
+      res.json(result);
+    }
+  );
 });
 
 // 📌 เพิ่มผู้ใช้
 router.post("/users", (req, res) => {
-  const { username, password, role } = req.body;
+  const { username, password, role, student_id } = req.body;
   if (!username || !password || !role)
     return res.status(400).json({ error: "กรอกข้อมูลไม่ครบ" });
 
   db.query(
-    "INSERT INTO users (username, password, role, created_at) VALUES (?, ?, ?, NOW())",
-    [username, password, role],
+    "INSERT INTO users (username, student_id, password, role) VALUES (?, ?, ?, ?)",
+    [username, student_id || null, password, role],
     (err, result) => {
       if (err) return res.status(500).json({ error: "DB insert error" });
       res.json({ message: "เพิ่มผู้ใช้สำเร็จ" });
@@ -29,13 +32,13 @@ router.post("/users", (req, res) => {
 });
 
 // 📌 แก้ไขผู้ใช้
-router.put("/users/:id", (req, res) => {
-  const { id } = req.params;
+router.put("/users/:user_id", (req, res) => {
+  const { user_id } = req.params;
   const { username, role } = req.body;
 
   db.query(
-    "UPDATE users SET username=?, role=? WHERE id=?",
-    [username, role, id],
+    "UPDATE users SET username=?, role=? WHERE user_id=?",
+    [username, role, user_id],
     (err, result) => {
       if (err) return res.status(500).json({ error: "DB update error" });
       res.json({ message: "อัปเดตผู้ใช้สำเร็จ" });
@@ -44,10 +47,10 @@ router.put("/users/:id", (req, res) => {
 });
 
 // 📌 ลบผู้ใช้
-router.delete("/users/:id", (req, res) => {
-  const { id } = req.params;
+router.delete("/users/:user_id", (req, res) => {
+  const { user_id } = req.params;
 
-  db.query("DELETE FROM users WHERE id=?", [id], (err, result) => {
+  db.query("DELETE FROM users WHERE user_id=?", [user_id], (err, result) => {
     if (err) return res.status(500).json({ error: "DB delete error" });
     res.json({ message: "ลบผู้ใช้สำเร็จ" });
   });
@@ -61,27 +64,24 @@ router.get("/stats", (req, res) => {
     if (err) return res.status(500).json({ error: "DB error" });
     stats.documents = result[0].total;
 
-    db.query(
-      "SELECT SUM(download_count) AS total FROM documents",
-      (err2, result2) => {
-        if (err2) return res.status(500).json({ error: "DB error" });
-        stats.downloads = result2[0].total || 0;
+    db.query("SELECT COUNT(*) AS total FROM downloads", (err2, result2) => {
+      if (err2) return res.status(500).json({ error: "DB error" });
+      stats.downloads = result2[0].total;
 
-        db.query("SELECT COUNT(*) AS total FROM users", (err3, result3) => {
-          if (err3) return res.status(500).json({ error: "DB error" });
-          stats.users = result3[0].total;
+      db.query("SELECT COUNT(*) AS total FROM users", (err3, result3) => {
+        if (err3) return res.status(500).json({ error: "DB error" });
+        stats.users = result3[0].total;
 
-          res.json(stats);
-        });
-      }
-    );
+        res.json(stats);
+      });
+    });
   });
 });
 
 // 📌 สำรองฐานข้อมูล (mysqldump)
 router.get("/backup", (req, res) => {
   const backupPath = path.join(__dirname, "../backup.sql");
-  const command = `mysqldump -u root -p1234 your_database_name > ${backupPath}`;
+  const command = `mysqldump -u root -p1234 sci_digiknowledge > ${backupPath}`;
 
   exec(command, (err) => {
     if (err) {

@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Upload from "./pages/Upload";
 import Navbar from "./components/Navbar";
 import Login from "./pages/Login";
@@ -9,7 +9,10 @@ import TeacherDashboard from "./pages/TeacherDashboard"; // หากมีห�
 import Home from "./pages/Home";
 import DocumentPage from "./pages/DocumentPage";
 import './output.css'
-
+import Signup from "./pages/Signup";
+import Profile from "./pages/Profile";
+import UploadDocument from "./pages/UploadDocument";
+import DocumentDetailTailwind from "./pages/DocumentDetailTailwind";
 function App() {
   return (
     <Router>
@@ -24,6 +27,10 @@ function App() {
         <Route path="/teacher" element={<TeacherDashboard />} />
         <Route path="/home" element={<Home />} />
         <Route path="/document/:id" element={<DocumentPage />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/upload-document" element={<UploadDocument />} />
+        <Route path="/document-detail/:id" element={<DocumentDetailTailwind />} />
       </Routes>
     </Router>
   );

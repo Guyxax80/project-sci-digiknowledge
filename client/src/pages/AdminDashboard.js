@@ -1,6 +1,16 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { Button, Card, CardContent, Typography, Table, TableBody, TableCell, TableHead, TableRow } from "@mui/material";
+import {
+  Button,
+  Card,
+  CardContent,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+} from "@mui/material";
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
@@ -34,10 +44,10 @@ export default function AdminDashboard() {
   };
 
   // ลบผู้ใช้
-  const deleteUser = async (id) => {
+  const deleteUser = async (user_id) => {
     if (!window.confirm("ยืนยันการลบผู้ใช้นี้?")) return;
     try {
-      await axios.delete(`http://localhost:3000/admin/users/${id}`);
+      await axios.delete(`http://localhost:3000/admin/users/${user_id}`);
       fetchUsers();
     } catch (err) {
       console.error("ลบผู้ใช้ล้มเหลว", err);
@@ -47,7 +57,9 @@ export default function AdminDashboard() {
   // สำรองฐานข้อมูล
   const backupDatabase = async () => {
     try {
-      const res = await axios.get("http://localhost:3000/admin/backup", { responseType: "blob" });
+      const res = await axios.get("http://localhost:3000/admin/backup", {
+        responseType: "blob",
+      });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
       link.href = url;
@@ -64,10 +76,13 @@ export default function AdminDashboard() {
     e.preventDefault();
     try {
       if (editingUser) {
-        await axios.put(`http://localhost:3000/admin/users/${editingUser.id}`, {
-          username: form.username,
-          role: form.role,
-        });
+        await axios.put(
+          `http://localhost:3000/admin/users/${editingUser.user_id}`,
+          {
+            username: form.username,
+            role: form.role,
+          }
+        );
       } else {
         await axios.post("http://localhost:3000/admin/users", form);
       }
@@ -86,10 +101,15 @@ export default function AdminDashboard() {
 
   return (
     <div className="p-6 space-y-6">
-      <Typography variant="h4" className="font-bold mb-4">Admin Dashboard</Typography>
+      <Typography variant="h4" className="font-bold mb-4">
+        Admin Dashboard
+      </Typography>
 
       {/* ฟอร์ม เพิ่ม/แก้ไขผู้ใช้ */}
-      <form className="mb-6 space-y-4 bg-yellow-50 p-4 rounded-xl shadow" onSubmit={handleSubmit}>
+      <form
+        className="mb-6 space-y-4 bg-yellow-50 p-4 rounded-xl shadow"
+        onSubmit={handleSubmit}
+      >
         <div className="flex flex-col gap-2">
           <input
             type="text"
@@ -113,7 +133,7 @@ export default function AdminDashboard() {
             className="border p-2 w-full"
             value={form.role}
             onChange={(e) => setForm({ ...form, role: e.target.value })}
-            required   // บังคับเลือก
+            required
           >
             <option value="">-- เลือกบทบาทผู้ใช้ --</option>
             <option value="student">นักศึกษา</option>
@@ -165,7 +185,9 @@ export default function AdminDashboard() {
       {/* ตารางผู้ใช้ */}
       <Card className="shadow-md mt-6">
         <CardContent>
-          <Typography variant="h6" gutterBottom>จัดการผู้ใช้</Typography>
+          <Typography variant="h6" gutterBottom>
+            จัดการผู้ใช้
+          </Typography>
           <Table>
             <TableHead>
               <TableRow>
@@ -176,12 +198,16 @@ export default function AdminDashboard() {
             </TableHead>
             <TableBody>
               {users.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell>{u.username || u.name}</TableCell>
+                <TableRow key={u.user_id}>
+                  <TableCell>{u.username}</TableCell>
                   <TableCell>{u.role}</TableCell>
                   <TableCell>
-                    <Button color="warning" onClick={() => handleEdit(u)}>แก้ไข</Button>
-                    <Button color="error" onClick={() => deleteUser(u.id)}>ลบ</Button>
+                    <Button color="warning" onClick={() => handleEdit(u)}>
+                      แก้ไข
+                    </Button>
+                    <Button color="error" onClick={() => deleteUser(u.user_id)}>
+                      ลบ
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
