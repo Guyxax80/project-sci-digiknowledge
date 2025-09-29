@@ -1,0 +1,87 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" version="28.1.2" pages="2">
+  <diagram id="6H7zGcIpptxil-Zo0pF6" name="Page-1">
+    <mxGraphModel dx="1281" dy="574" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.25;exitDx=0;exitDy=0;entryX=0.25;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="Ss93WvPCmIkAslfwRLtk-1" target="Ss93WvPCmIkAslfwRLtk-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-1" value="0" style="swimlane;childLayout=stackLayout;horizontal=1;startSize=50;horizontalStack=0;rounded=1;fontSize=14;fontStyle=0;strokeWidth=2;resizeParent=0;resizeLast=1;shadow=0;dashed=0;align=center;arcSize=4;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="330" y="240" width="160" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-2" value="ระบบห้องสมุด&lt;br&gt;(Library System)" style="align=center;strokeColor=none;fillColor=none;spacingLeft=4;spacingRight=4;fontSize=12;verticalAlign=top;resizable=0;rotatable=0;part=1;html=1;whiteSpace=wrap;" vertex="1" parent="Ss93WvPCmIkAslfwRLtk-1">
+          <mxGeometry y="50" width="160" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="Ss93WvPCmIkAslfwRLtk-3" target="Ss93WvPCmIkAslfwRLtk-1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-3" value="Students" style="html=1;dashed=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="50" y="40" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-7" value="รายละเอียดหนังสือ&lt;div&gt;ความพร้อมในการยืม&lt;/div&gt;&lt;div&gt;ลงทะเบียนยืมคืน&lt;/div&gt;" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="170" y="70" width="190" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-8" value="ข้อมูลทั่วไป&lt;div&gt;ความพร้อมในการยืม&lt;/div&gt;&lt;div&gt;ประวัติการยืม&lt;/div&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="80" y="210" width="190" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="Ss93WvPCmIkAslfwRLtk-9" target="Ss93WvPCmIkAslfwRLtk-1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-9" value="Staff" style="html=1;dashed=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="50" y="490" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="Ss93WvPCmIkAslfwRLtk-2" target="Ss93WvPCmIkAslfwRLtk-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-13" value="จัดการระบบห้องสมุด&lt;div&gt;ดูแลการยืม-คืน&lt;/div&gt;&lt;div&gt;อัปเดตข้อมูล&lt;br&gt;&lt;br&gt;&lt;/div&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="80" y="310" width="190" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-14" value="เจ้าหน้าที่สามารถจัดการระบบห้อวสมุด&lt;div&gt;สต๊อกหนังสือ&lt;/div&gt;&lt;div&gt;ฐานข้อมูลนักศึกษา&lt;/div&gt;" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="170" y="470" width="190" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="Ss93WvPCmIkAslfwRLtk-15" target="Ss93WvPCmIkAslfwRLtk-1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-15" value="Supplier" style="whiteSpace=wrap;html=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="690" y="40" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="Ss93WvPCmIkAslfwRLtk-2" target="Ss93WvPCmIkAslfwRLtk-15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-18" value="จัดส่งหนังสือใหม่เข้ามาในคลัง" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="460" y="70" width="190" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="Ss93WvPCmIkAslfwRLtk-19" value="ข้อมูลหนังสือที่จัดส่ง" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="540" y="250" width="190" height="50" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="ngoKbUDZDWCMvdRsTwaZ" name="Page-2">
+    <mxGraphModel dx="2131" dy="574" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="04VsyaXlFOrQRsjtcHnw-6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="04VsyaXlFOrQRsjtcHnw-1" target="04VsyaXlFOrQRsjtcHnw-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="04VsyaXlFOrQRsjtcHnw-1" value="Requesting Information" style="shape=ellipse;html=1;dashed=0;whiteSpace=wrap;perimeter=ellipsePerimeter;" vertex="1" parent="1">
+          <mxGeometry x="355" y="80" width="140" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="04VsyaXlFOrQRsjtcHnw-2" value="Student" style="whiteSpace=wrap;html=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="-10" y="130" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="04VsyaXlFOrQRsjtcHnw-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="04VsyaXlFOrQRsjtcHnw-2" target="04VsyaXlFOrQRsjtcHnw-1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="04VsyaXlFOrQRsjtcHnw-4" value="รายละเอียดหนังสือ" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="110" y="120" width="170" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="04VsyaXlFOrQRsjtcHnw-5" value="" style="html=1;dashed=0;whiteSpace=wrap;shape=mxgraph.dfd.dataStoreID;align=left;spacingLeft=3;points=[[0,0],[0.5,0],[1,0],[0,0.5],[1,0.5],[0,1],[0.5,1],[1,1]];" vertex="1" parent="1">
+          <mxGeometry x="650" y="135" width="100" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
