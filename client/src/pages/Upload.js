@@ -6,6 +6,7 @@ const UploadDocument = () => {
   const [category, setCategory] = useState("");
   const [keywords, setKeywords] = useState("");
   const [academicYear, setAcademicYear] = useState("");
+  const [academicYearDate, setAcademicYearDate] = useState("");
   const [file, setFile] = useState(null);
   const [isDraft, setIsDraft] = useState(false);
   // ดึง userId จาก localStorage (ต้องมีตอนล็อกอิน)
@@ -94,6 +95,7 @@ const UploadDocument = () => {
       setCategory("");
       setKeywords("");
       setAcademicYear("");
+      setAcademicYearDate("");
       setFile(null);
       setIsDraft(false);
       setCoverFile(null);
@@ -144,13 +146,23 @@ const UploadDocument = () => {
           onChange={(e) => setKeywords(e.target.value)}
           className="border rounded px-3 py-2 w-full"
         />
-        <input
-          type="text"
-          placeholder="ปีการศึกษา"
-          value={academicYear}
-          onChange={(e) => setAcademicYear(e.target.value)}
-          className="border rounded px-3 py-2 w-full"
-        />
+        <div className="flex flex-col">
+          <label className="mb-1">ปีการศึกษา</label>
+          <input
+            type="date"
+            value={academicYearDate}
+            onChange={(e) => {
+              const val = e.target.value;
+              setAcademicYearDate(val);
+              const year = val ? new Date(val).getFullYear().toString() : "";
+              setAcademicYear(year);
+            }}
+            className="border rounded px-3 py-2 w-full"
+          />
+          {academicYear && (
+            <span className="text-sm text-gray-600 mt-1">เลือกปี: {academicYear}</span>
+          )}
+        </div>
         <div className="mt-2">
           <p className="font-semibold mb-2">ไฟล์หลักของเอกสาร</p>
           <input
