@@ -27,8 +27,9 @@ router.get('/video/:fileId', (req, res) => {
       
       // Normalize stored path to avoid duplicated 'uploads/' and backslashes
       const storedPath = String(file.file_path || '').replace(/\\/g, '/').replace(/^\.\/?/, '');
-      const relativePath = storedPath.startsWith('uploads/') ? storedPath.slice('uploads/'.length) : storedPath;
-      let fullPath = path.join(__dirname, '..', 'uploads', relativePath);
+      // If stored as absolute/legacy path (e.g., server/uploads/xxx or D:/.../server/uploads/xxx), reduce to basename
+      const baseName = path.basename(storedPath);
+      let fullPath = path.join(__dirname, '..', 'uploads', baseName);
 
       // Fallback: if not found, try using storedPath directly relative to server root
       if (!fs.existsSync(fullPath)) {
@@ -99,8 +100,8 @@ router.get('/download/:fileId', (req, res) => {
 
       // Normalize path like above
       const storedPath = String(file.file_path || '').replace(/\\/g, '/').replace(/^\.\/?/, '');
-      const relativePath = storedPath.startsWith('uploads/') ? storedPath.slice('uploads/'.length) : storedPath;
-      let fullPath = path.join(__dirname, '..', 'uploads', relativePath);
+      const baseName = path.basename(storedPath);
+      let fullPath = path.join(__dirname, '..', 'uploads', baseName);
 
       if (!fs.existsSync(fullPath)) {
         const altPath = path.join(__dirname, '..', storedPath);

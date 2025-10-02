@@ -12,12 +12,10 @@ router.get('/:id', (req, res) => {
     if (err || results.length === 0) return res.status(404).send('File not found');
     const { file_path, original_name } = results[0];
 
-    // Normalize stored path: fix slashes, remove leading ./, remove uploads/ prefix if present
+    // Normalize stored path and reduce to basename to ensure we resolve under uploads
     const storedPath = String(file_path || '').replace(/\\/g, '/').replace(/^\.\/?/, '');
-    const relativePath = storedPath.startsWith('uploads/') ? storedPath.slice('uploads/'.length) : storedPath;
-
-    // Resolve under uploads by default
-    let resolvedPath = path.join(__dirname, '..', 'uploads', relativePath);
+    const baseName = path.basename(storedPath);
+    let resolvedPath = path.join(__dirname, '..', 'uploads', baseName);
 
     // Fallback: try storedPath relative to project if default not found
     if (!fs.existsSync(resolvedPath)) {
