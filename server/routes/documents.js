@@ -33,6 +33,7 @@ router.get('/recommended', (req, res) => {
       d.uploaded_at,
       d.status,
       d.user_id,
+      df.document_file_id,
       df.original_name,
       df.file_type,
       df.section

@@ -30,7 +30,7 @@ function DocumentDetailTailwind({ documentId }) {
           <video
             className="w-full h-96 rounded-lg shadow-md"
             controls
-            src={`http://localhost:3000/video/${videoFile.document_file_id}`}
+            src={`http://localhost:3000/files/video/${videoFile.document_file_id}`}
           >
             Your browser does not support the video tag.
           </video>
@@ -57,7 +57,7 @@ function DocumentDetailTailwind({ documentId }) {
               <li key={file.document_file_id} className="flex justify-between items-center bg-gray-50 p-2 rounded">
                 <span className="truncate">{file.original_name || file.file_path}</span>
                 <a
-                  href={`http://localhost:3000/files/${file.document_file_id}`}
+                  href={`http://localhost:3000/files/download/${file.document_file_id}`}
                   target="_blank"
                   rel="noreferrer"
                   className="text-blue-600 hover:underline"
