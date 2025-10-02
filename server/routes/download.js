@@ -15,7 +15,8 @@ router.get('/:id', (req, res) => {
     // Normalize stored path and reduce to basename to ensure we resolve under uploads
     const storedPath = String(file_path || '').replace(/\\/g, '/').replace(/^\.\/?/, '');
     const baseName = path.basename(storedPath);
-    let resolvedPath = path.join(__dirname, '..', 'uploads', baseName);
+    const uploadsRoot = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
+    let resolvedPath = path.join(uploadsRoot, baseName);
 
     // Fallback: try storedPath relative to project if default not found
     if (!fs.existsSync(resolvedPath)) {

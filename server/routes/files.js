@@ -29,7 +29,8 @@ router.get('/video/:fileId', (req, res) => {
       const storedPath = String(file.file_path || '').replace(/\\/g, '/').replace(/^\.\/?/, '');
       // If stored as absolute/legacy path (e.g., server/uploads/xxx or D:/.../server/uploads/xxx), reduce to basename
       const baseName = path.basename(storedPath);
-      let fullPath = path.join(__dirname, '..', 'uploads', baseName);
+      const uploadsRoot = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
+      let fullPath = path.join(uploadsRoot, baseName);
 
       // Fallback: if not found, try using storedPath directly relative to server root
       if (!fs.existsSync(fullPath)) {
@@ -101,7 +102,8 @@ router.get('/download/:fileId', (req, res) => {
       // Normalize path like above
       const storedPath = String(file.file_path || '').replace(/\\/g, '/').replace(/^\.\/?/, '');
       const baseName = path.basename(storedPath);
-      let fullPath = path.join(__dirname, '..', 'uploads', baseName);
+      const uploadsRoot = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
+      let fullPath = path.join(uploadsRoot, baseName);
 
       if (!fs.existsSync(fullPath)) {
         const altPath = path.join(__dirname, '..', storedPath);

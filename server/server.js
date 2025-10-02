@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -26,7 +27,8 @@ app.use((req, res, next) => {
 });
 
 // หมายเหตุ: ห้ามบังคับ setEncoding กับ multipart/form-data เพราะจะทำให้ไฟล์ไบนารีเสียหาย
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
+app.use('/uploads', express.static(uploadsDir));
 app.use("/api/upload-files", uploadRouter);
 
 
