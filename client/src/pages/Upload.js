@@ -154,13 +154,14 @@ const UploadDocument = () => {
             onChange={(e) => {
               const val = e.target.value;
               setAcademicYearDate(val);
-              const year = val ? new Date(val).getFullYear().toString() : "";
-              setAcademicYear(year);
+              const gYear = val ? new Date(val).getFullYear() : null;
+              const thaiYear = gYear ? (gYear + 543).toString() : "";
+              setAcademicYear(thaiYear);
             }}
             className="border rounded px-3 py-2 w-full"
           />
           {academicYear && (
-            <span className="text-sm text-gray-600 mt-1">เลือกปี: {academicYear}</span>
+            <span className="text-sm text-gray-600 mt-1">เลือกปี (พ.ศ.): {academicYear}</span>
           )}
         </div>
         <div className="mt-2">
