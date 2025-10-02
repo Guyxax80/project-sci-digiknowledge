@@ -19,7 +19,16 @@ router.get('/video/:fileId', (req, res) => {
       if (!results.length) return res.status(404).send('ไม่พบไฟล์วิดีโอ');
 
       const file = results[0];
-      const videoPath = path.join(__dirname, '..', file.file_path);
+      if (!file.file_type || !file.file_type.startsWith('video/')) {
+        return res.status(404).send('ไฟล์นี้ไม่ใช่วิดีโอ');
+      }
+      
+      // สร้าง path ที่ถูกต้อง
+      const videoPath = path.join(__dirname, '..', 'uploads', file.file_path);
+      
+      console.log("Original path:", file.file_path);
+      console.log("Video path:", videoPath);
+      
       res.sendFile(videoPath);
     }
   );
@@ -41,8 +50,14 @@ router.get('/download/:fileId', (req, res) => {
       if (!results.length) return res.status(404).send('ไม่พบไฟล์');
 
       const file = results[0];
-      const filePath = path.join(__dirname, '..', file.file_path);
-      res.download(filePath, file.original_name || 'file');
+      
+      // สร้าง path ที่ถูกต้อง
+      const fullPath = path.join(__dirname, '..', 'uploads', file.file_path);
+      
+      console.log("Original path:", file.file_path);
+      console.log("Download path:", fullPath);
+      
+      res.download(fullPath, file.original_name || 'file');
     }
   );
 });
