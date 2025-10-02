@@ -29,7 +29,8 @@ const upload = multer({
 });
 
 router.post("/", upload.single("file"), (req, res) => {
-  const { title, keywords, academic_year, user_id, status, section } = req.body;
+  const { title, keywords, academic_year, user_id, status, section, categorie_id } = req.body;
+  const categoryName = (req.body.category || req.body.categorie_name || "").trim();
   const file = req.file;
 
   // Debug: ดูข้อมูลที่รับมา
@@ -46,8 +47,8 @@ router.post("/", upload.single("file"), (req, res) => {
 
   if (!file) return res.status(400).json({ message: "กรุณาเลือกไฟล์" });
 
-  // แปลง path ให้เป็น /
-  const filePath = file.path.replace(/\\/g, "/");
+  // แปลง path ให้เป็น / และลบ uploads/ prefix ออก
+  const filePath = file.path.replace(/\\/g, "/").replace(/^uploads\//, "");
 
   // 1️⃣ บันทึกข้อมูลเอกสาร (ข้อมูลที่กรอก)
   const sqlDoc = `
@@ -71,7 +72,55 @@ router.post("/", upload.single("file"), (req, res) => {
     const documentId = docResult.insertId;
     console.log("Document inserted successfully, ID:", documentId);
 
-    // 2️⃣ บันทึกข้อมูลไฟล์ (ข้อมูลไฟล์)
+    // 1.5 บันทึกความสัมพันธ์หมวดหมู่ (รองรับทั้ง categorie_id และ category name)
+    const insertCategoryRelation = (next) => {
+      // ถ้ามี id มาก่อน ใช้เลย
+      if (categorie_id) {
+        const sqlCat = "INSERT INTO document_categories (document_id, categorie_id) VALUES (?, ?)";
+        return db.query(sqlCat, [documentId, categorie_id], (catErr) => {
+          if (catErr) {
+            console.error("DB error (document_categories via id):", catErr);
+          }
+          return next();
+        });
+      }
+
+      // ถ้าไม่มี id แต่มีชื่อหมวดหมู่ ให้ find-or-create ในตาราง categorie
+      if (categoryName) {
+        db.query("SELECT categorie_id FROM categorie WHERE name = ? LIMIT 1", [categoryName], (selErr, rows) => {
+          if (selErr) {
+            console.error("DB error (select categorie by name):", selErr);
+            return next();
+          }
+          const ensureRelation = (catId) => {
+            const sqlCat = "INSERT INTO document_categories (document_id, categorie_id) VALUES (?, ?)";
+            db.query(sqlCat, [documentId, catId], (relErr) => {
+              if (relErr) {
+                console.error("DB error (document_categories via name):", relErr);
+              }
+              return next();
+            });
+          };
+
+        if (rows && rows.length) {
+            return ensureRelation(rows[0].categorie_id);
+          }
+          // create new category
+          db.query("INSERT INTO categorie (name) VALUES (?)", [categoryName], (insErr, insRes) => {
+            if (insErr) {
+              console.error("DB error (insert categorie):", insErr);
+              return next();
+            }
+            return ensureRelation(insRes.insertId);
+          });
+        });
+      } else {
+        return next();
+      }
+    };
+
+    insertCategoryRelation(() => {
+      // 2️⃣ บันทึกข้อมูลไฟล์ (ข้อมูลไฟล์)
     const sqlFile = `
       INSERT INTO document_files
       (document_id, file_path, original_name, file_type, section, uploaded_at)
@@ -93,6 +142,7 @@ router.post("/", upload.single("file"), (req, res) => {
 
       console.log("File inserted successfully");
       res.json({ message: "อัปโหลดสำเร็จ", documentId });
+    });
     });
   });
 });
