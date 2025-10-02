@@ -133,13 +133,13 @@ const Home = () => {
                         โดย: User ID {doc.user_id || "ไม่ระบุ"}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" className="mb-2">
-                        ปีการศึกษา: {doc.academic_year}
+                        ปีการศึกษา: {doc.academic_year || "ไม่ระบุ"}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" className="mb-2">
-                        หมวดหมู่: {doc.section || "อื่นๆ"}
+                        คำค้นหา: {doc.keywords || "ไม่ระบุ"}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" className="mb-2">
-                        ไฟล์: {doc.original_name}
+                        สถานะ: {doc.status || "ไม่ระบุ"}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         อัปโหลด: {new Date(doc.uploaded_at).toLocaleDateString('th-TH')}
@@ -149,7 +149,7 @@ const Home = () => {
                       <Button
                         size="small"
                         variant="outlined"
-                        onClick={() => navigate(`/documents/${doc.document_id}`)}
+                      onClick={() => navigate(`/document-detail/${doc.document_id}`)}
                       >
                         ดูรายละเอียด
                       </Button>

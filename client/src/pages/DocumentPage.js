@@ -9,7 +9,7 @@ const DocumentPage = () => {
 
   useEffect(() => {
     axios
-      .get("http://localhost:3000/documents")
+      .get("http://localhost:3000/api/documents")
       .then((res) => {
         setDocuments(res.data);
         setLoading(false);
@@ -29,10 +29,15 @@ const DocumentPage = () => {
   // ฟิลเตอร์เอกสารตาม searchText
   const filteredDocs = documents.filter((doc) => {
     const text = searchText.toLowerCase();
+    const title = (doc.title || "").toLowerCase();
+    const keywords = (doc.keywords || "").toLowerCase();
+    const academic = (doc.academic_year || "").toString().toLowerCase();
+    const status = (doc.status || "").toLowerCase();
     return (
-      doc.title.toLowerCase().includes(text) ||
-      doc.category.toLowerCase().includes(text) ||
-      doc.keywords.toLowerCase().includes(text)
+      title.includes(text) ||
+      keywords.includes(text) ||
+      academic.includes(text) ||
+      status.includes(text)
     );
   });
 
@@ -74,7 +79,7 @@ const DocumentPage = () => {
         <div className="space-y-6">
           {filteredDocs.map((doc) => (
             <div
-              key={doc.id}
+              key={doc.document_id}
               className="border rounded-lg p-5 shadow-md hover:shadow-lg transition-shadow duration-300"
             >
               <div className="flex justify-between items-center mb-3">
@@ -87,7 +92,7 @@ const DocumentPage = () => {
               </div>
               <div className="grid grid-cols-2 gap-4 mb-4 text-gray-700">
                 <p>
-                  <strong>หมวดหมู่:</strong> {doc.category}
+                  <strong>สถานะ:</strong> {doc.status || "-"}
                 </p>
                 <p>
                   <strong>ปีการศึกษา:</strong> {doc.academic_year}
