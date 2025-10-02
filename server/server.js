@@ -25,13 +25,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// ตั้งค่า encoding สำหรับ multipart
-app.use((req, res, next) => {
-  if (req.is('multipart/form-data')) {
-    req.setEncoding('utf8');
-  }
-  next();
-});
+// หมายเหตุ: ห้ามบังคับ setEncoding กับ multipart/form-data เพราะจะทำให้ไฟล์ไบนารีเสียหาย
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use("/api/upload-files", uploadRouter);
 
