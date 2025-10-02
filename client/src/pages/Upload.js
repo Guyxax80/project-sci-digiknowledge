@@ -128,13 +128,15 @@ const UploadDocument = () => {
           className="border rounded px-3 py-2 w-full"
           required
         />
-        <input
-          type="text"
-          placeholder="หมวดหมู่"
+        <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
           className="border rounded px-3 py-2 w-full"
-        />
+        >
+          <option value="">เลือกหมวดหมู่</option>
+          <option value="Hardware(ฮาร์ดแวร์)">Hardware (ฮาร์ดแวร์)</option>
+          <option value="Software(ซอฟต์แวร์)">Software (ซอฟต์แวร์)</option>
+        </select>
         <input
           type="text"
           placeholder="คำค้นหา"
