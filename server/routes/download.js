@@ -32,16 +32,22 @@ router.get('/:id', (req, res) => {
       return res.status(404).send('File not found on server');
     }
 
-    // Set content type for better behavior when opened in browser
+    // Set content type and RFC5987 Content-Disposition for UTF-8 filenames
     const contentType = mime.lookup(resolvedPath) || 'application/octet-stream';
     res.set('Content-Type', contentType);
 
-    res.download(resolvedPath, original_name || path.basename(resolvedPath), (err) => {
-      if (err) {
-        console.error('Error downloading file:', err);
+    const downloadName = original_name || path.basename(resolvedPath);
+    const encodedName = encodeURIComponent(downloadName);
+    res.set('Content-Disposition', `attachment; filename="${encodedName}"; filename*=UTF-8''${encodedName}`);
+
+    const stream = fs.createReadStream(resolvedPath);
+    stream.on('error', (err) => {
+      console.error('Error downloading file:', err);
+      if (!res.headersSent) {
         res.status(500).send('Error downloading file');
       }
     });
+    stream.pipe(res);
   });
 });
 

@@ -120,14 +120,21 @@ router.get('/download/:fileId', (req, res) => {
       }
 
       const downloadName = file.original_name || path.basename(fullPath) || 'file';
-      res.download(fullPath, downloadName, (downloadErr) => {
-        if (downloadErr) {
-          console.error('Download error:', downloadErr);
-          if (!res.headersSent) {
-            return res.status(500).send('เกิดข้อผิดพลาดในการดาวน์โหลดไฟล์');
-          }
+      const encodedName = encodeURIComponent(downloadName);
+      const contentType = mime.lookup(fullPath) || 'application/octet-stream';
+
+      res.setHeader('Content-Type', contentType);
+      // RFC 5987: include both filename (fallback ASCII) and filename* (UTF-8)
+      res.setHeader('Content-Disposition', `attachment; filename="${encodedName}"; filename*=UTF-8''${encodedName}`);
+
+      const stream = fs.createReadStream(fullPath);
+      stream.on('error', (downloadErr) => {
+        console.error('Download error:', downloadErr);
+        if (!res.headersSent) {
+          res.status(500).send('เกิดข้อผิดพลาดในการดาวน์โหลดไฟล์');
         }
       });
+      stream.pipe(res);
     }
   );
 });
