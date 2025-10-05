@@ -78,6 +78,67 @@ router.get('/:id', (req, res) => {
 
       console.log("Document found:", docs[0].title);
 
+      // Helper: ดึงหมวดหมู่ของเอกสาร โดยรองรับได้หลายแบบของชื่อตาราง/คอลัมน์
+      const fetchCategories = (cb) => {
+        const categoryQueries = [
+          // categories table
+          `SELECT c.categorie_id AS categorie_id, c.name
+             FROM document_categories dc
+             JOIN categories c ON c.categorie_id = dc.categorie_id
+            WHERE dc.document_id = ?
+            ORDER BY c.name ASC`,
+          `SELECT c.category_id AS categorie_id, c.name
+             FROM document_categories dc
+             JOIN categories c ON c.category_id = dc.category_id
+            WHERE dc.document_id = ?
+            ORDER BY c.name ASC`,
+          `SELECT c.categorie_id AS categorie_id, c.name
+             FROM document_categories dc
+             JOIN categories c ON c.categorie_id = dc.category_id
+            WHERE dc.document_id = ?
+            ORDER BY c.name ASC`,
+          `SELECT c.category_id AS categorie_id, c.name
+             FROM document_categories dc
+             JOIN categories c ON c.category_id = dc.categorie_id
+            WHERE dc.document_id = ?
+            ORDER BY c.name ASC`,
+          // categorie table (fallback)
+          `SELECT c.categorie_id AS categorie_id, c.name
+             FROM document_categories dc
+             JOIN categorie c ON c.categorie_id = dc.categorie_id
+            WHERE dc.document_id = ?
+            ORDER BY c.name ASC`,
+          `SELECT c.category_id AS categorie_id, c.name
+             FROM document_categories dc
+             JOIN categorie c ON c.category_id = dc.category_id
+            WHERE dc.document_id = ?
+            ORDER BY c.name ASC`,
+          `SELECT c.categorie_id AS categorie_id, c.name
+             FROM document_categories dc
+             JOIN categorie c ON c.categorie_id = dc.category_id
+            WHERE dc.document_id = ?
+            ORDER BY c.name ASC`,
+          `SELECT c.category_id AS categorie_id, c.name
+             FROM document_categories dc
+             JOIN categorie c ON c.category_id = dc.categorie_id
+            WHERE dc.document_id = ?
+            ORDER BY c.name ASC`
+        ];
+
+        const tryQuery = (i = 0) => {
+          if (i >= categoryQueries.length) return cb([]);
+          db.query(categoryQueries[i], [documentId], (qErr, rows) => {
+            if (qErr) {
+              // ลอง query ต่อไป
+              return tryQuery(i + 1);
+            }
+            return cb(rows || []);
+          });
+        };
+
+        tryQuery(0);
+      };
+
       // ดึงไฟล์ทั้งหมดของเอกสาร (รองรับทั้งหลายแถวและแถวเดียว)
       db.query(
         'SELECT * FROM document_files WHERE document_id = ? ORDER BY document_file_id ASC',
@@ -162,9 +223,13 @@ router.get('/:id', (req, res) => {
           });
 
           console.log("Final result - Video:", videoFile, "Download files:", downloadFiles.length);
-          console.log("===============================");
+          console.log("Fetching categories for document...");
 
-          res.json({ document: docs[0], videoFile, downloadFiles });
+          fetchCategories((categories) => {
+            console.log("Categories found:", categories.length);
+            console.log("===============================");
+            res.json({ document: docs[0], categories, videoFile, downloadFiles });
+          });
         }
       );
     }
