@@ -123,7 +123,7 @@ router.post("/", upload.single("file"), (req, res) => {
             return cb();
           }
           if (selRows && selRows.length) return cb();
-          const sqlCat = 'INSERT INTO document_categories (document_id, categorie_id) VALUES (?, ?)';
+          const sqlCat = 'INSERT IGNORE INTO document_categories (document_id, categorie_id) VALUES (?, ?)';
           db.query(sqlCat, [documentId, catId], (insErr) => {
             if (insErr) console.error('DB error (insert relation):', insErr);
             return cb();
