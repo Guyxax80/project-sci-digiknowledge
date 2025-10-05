@@ -129,22 +129,14 @@ const Home = () => {
                       <Typography variant="h6" gutterBottom className="line-clamp-2">
                         {doc.title}
                       </Typography>
-                      {doc.category_names !== undefined && (
-                        <Typography variant="body2" color="text.secondary" className="mb-2">
-                          หมวดหมู่: {doc.category_names || "-"}
-                        </Typography>
-                      )}
                       <Typography variant="body2" color="text.secondary" className="mb-2">
-                        ปีการศึกษา: {doc.academic_year || "ไม่ระบุ"}
+                        หมวดหมู่: {doc.category_names ? doc.category_names : "-"}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" className="mb-2">
                         คำค้นหา: {doc.keywords || "ไม่ระบุ"}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" className="mb-2">
-                        สถานะ: {doc.status || "ไม่ระบุ"}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        อัปโหลด: {new Date(doc.uploaded_at).toLocaleDateString('th-TH')}
+                        ปีการศึกษา: {doc.academic_year || "ไม่ระบุ"}
                       </Typography>
                     </CardContent>
                     <CardActions>
@@ -154,14 +146,6 @@ const Home = () => {
                       onClick={() => navigate(`/document-detail/${doc.document_id}`)}
                       >
                         ดูรายละเอียด
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        color="primary"
-                        href={`http://localhost:3000/files/download/${doc.document_id}`}
-                      >
-                        ดาวน์โหลด
                       </Button>
                     </CardActions>
                   </Card>
