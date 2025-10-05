@@ -11,6 +11,7 @@ const authRoute = require("./routes/auth");
 const filesRoute = require('./routes/files');
 const sectionFilesRoute = require('./routes/sectionFiles');
 const uploadRoute = require("./routes/upload");
+const categoriesRoute = require('./routes/categories');
 
 // ...ส่วนอื่น ๆ ของ server.js
 
@@ -43,6 +44,7 @@ app.use("/api/auth", authRoute);
 
 app.use('/files', filesRoute);
 app.use('/api', sectionFilesRoute);
+app.use('/api/categories', categoriesRoute);
 
 app.get('/', (req, res) => {
   res.send('Welcome to the API server');
