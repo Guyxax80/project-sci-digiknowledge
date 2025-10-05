@@ -78,56 +78,21 @@ router.get('/:id', (req, res) => {
 
       console.log("Document found:", docs[0].title);
 
-      // Helper: ดึงหมวดหมู่ของเอกสาร โดยตรวจโครงสร้างจริงของ DB ก่อน
+      // Helper: ดึงหมวดหมู่ของเอกสาร (สคีมาตามที่แจ้ง: categories.categorie_id)
       const fetchCategories = (cb) => {
-        const resolveCategoryTable = (next) => {
-          db.query("SHOW TABLES LIKE 'categories'", (e1, r1) => {
-            if (!e1 && r1 && r1.length) return next(null, 'categories');
-            db.query("SHOW TABLES LIKE 'categorie'", (e2, r2) => {
-              if (!e2 && r2 && r2.length) return next(null, 'categorie');
-              return next(new Error('no categories table'));
-            });
-          });
-        };
-
-        const resolveIdColumn = (table, next) => {
-          db.query(`SHOW COLUMNS FROM ${table} LIKE 'categorie_id'`, (e1, r1) => {
-            if (!e1 && r1 && r1.length) return next(null, 'categorie_id');
-            db.query(`SHOW COLUMNS FROM ${table} LIKE 'category_id'`, (e2, r2) => {
-              if (!e2 && r2 && r2.length) return next(null, 'category_id');
-              return next(new Error('no id column'));
-            });
-          });
-        };
-
-        const resolveDocCatIdColumn = (next) => {
-          db.query(`SHOW COLUMNS FROM document_categories LIKE 'categorie_id'`, (e1, r1) => {
-            if (!e1 && r1 && r1.length) return next(null, 'categorie_id');
-            db.query(`SHOW COLUMNS FROM document_categories LIKE 'category_id'`, (e2, r2) => {
-              if (!e2 && r2 && r2.length) return next(null, 'category_id');
-              return next(new Error('no doc_categories id column'));
-            });
-          });
-        };
-
-        resolveCategoryTable((tErr, catTable) => {
-          if (tErr) return cb([]);
-          resolveIdColumn(catTable, (idErr, catIdCol) => {
-            if (idErr) return cb([]);
-            resolveDocCatIdColumn((dcErr, dcIdCol) => {
-              if (dcErr) return cb([]);
-              const sql = `
-                SELECT c.${catIdCol} AS categorie_id, c.name
-                  FROM document_categories dc
-                  JOIN ${catTable} c ON c.${catIdCol} = dc.${dcIdCol}
-                 WHERE dc.document_id = ?
-                 ORDER BY c.name ASC`;
-              db.query(sql, [documentId], (qErr, rows) => {
-                if (qErr) return cb([]);
-                return cb(rows || []);
-              });
-            });
-          });
+        const sql = `
+          SELECT c.categorie_id AS categorie_id, c.name
+          FROM document_categories dc
+          JOIN categories c ON c.categorie_id = dc.categorie_id
+          WHERE dc.document_id = ?
+          ORDER BY c.name ASC
+        `;
+        db.query(sql, [documentId], (errCats, rows) => {
+          if (errCats) {
+            console.error('Error fetching categories:', errCats);
+            return cb([]);
+          }
+          return cb(rows || []);
         });
       };
 
