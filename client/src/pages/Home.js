@@ -129,9 +129,11 @@ const Home = () => {
                       <Typography variant="h6" gutterBottom className="line-clamp-2">
                         {doc.title}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary" className="mb-2">
-                        โดย: User ID {doc.user_id || "ไม่ระบุ"}
-                      </Typography>
+                      {doc.category_names !== undefined && (
+                        <Typography variant="body2" color="text.secondary" className="mb-2">
+                          หมวดหมู่: {doc.category_names || "-"}
+                        </Typography>
+                      )}
                       <Typography variant="body2" color="text.secondary" className="mb-2">
                         ปีการศึกษา: {doc.academic_year || "ไม่ระบุ"}
                       </Typography>

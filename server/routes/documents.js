@@ -23,18 +23,22 @@ router.get('/test', (req, res) => {
 router.get('/recommended', (req, res) => {
   console.log("=== RECOMMENDED DOCUMENTS API ===");
   
-  // ดึงข้อมูลจากตาราง documents เท่านั้น (ไม่ JOIN document_files)
+  // ดึงข้อมูลเอกสารพร้อมรายชื่อหมวดหมู่ (GROUP_CONCAT)
   const sql = `
     SELECT 
-      document_id,
-      title,
-      keywords,
-      academic_year,
-      uploaded_at,
-      status,
-      user_id
-    FROM documents
-    ORDER BY uploaded_at DESC
+      d.document_id,
+      d.title,
+      d.keywords,
+      d.academic_year,
+      d.uploaded_at,
+      d.status,
+      d.user_id,
+      COALESCE(GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', '), '') AS category_names
+    FROM documents d
+    LEFT JOIN document_categories dc ON dc.document_id = d.document_id
+    LEFT JOIN categories c ON c.categorie_id = dc.categorie_id
+    GROUP BY d.document_id, d.title, d.keywords, d.academic_year, d.uploaded_at, d.status, d.user_id
+    ORDER BY d.uploaded_at DESC
     LIMIT 6
   `;
   
