@@ -133,20 +133,42 @@ router.post("/", upload.single("file"), (req, res) => {
     };
 
     const ensureRelationByName = (name, cb) => {
-      db.query('SELECT categorie_id FROM categories WHERE name = ? LIMIT 1', [name], (selErr, rows) => {
-        if (selErr) {
-          console.error('DB error (select categories by name):', selErr);
-          return cb();
-        }
-        if (rows && rows.length) return ensureRelationById(rows[0].categorie_id, cb);
-        db.query('INSERT INTO categories (name) VALUES (?)', [name], (insErr, insRes) => {
-          if (insErr) {
-            console.error('DB error (insert categories):', insErr);
-            return cb();
+      // ลองทั้งสองตารางและสองชื่อคอลัมน์
+      const selectQueries = [
+        { sql: 'SELECT categorie_id AS id FROM categories WHERE name = ? LIMIT 1', table: 'categories' },
+        { sql: 'SELECT category_id AS id FROM categories WHERE name = ? LIMIT 1', table: 'categories' },
+        { sql: 'SELECT categorie_id AS id FROM categorie WHERE name = ? LIMIT 1', table: 'categorie' },
+        { sql: 'SELECT category_id AS id FROM categorie WHERE name = ? LIMIT 1', table: 'categorie' }
+      ];
+
+      const trySelect = (i = 0) => {
+        if (i >= selectQueries.length) return tryInsert(0);
+        const q = selectQueries[i];
+        db.query(q.sql, [name], (selErr, rows) => {
+          if (!selErr && rows && rows.length) {
+            return ensureRelationById(rows[0].id, cb);
           }
-          return ensureRelationById(insRes.insertId, cb);
+          return trySelect(i + 1);
         });
-      });
+      };
+
+      const insertQueries = [
+        { sql: 'INSERT INTO categories (name) VALUES (?)', table: 'categories' },
+        { sql: 'INSERT INTO categorie (name) VALUES (?)', table: 'categorie' }
+      ];
+
+      const tryInsert = (i = 0) => {
+        if (i >= insertQueries.length) return cb();
+        const q = insertQueries[i];
+        db.query(q.sql, [name], (insErr, insRes) => {
+          if (!insErr && insRes && insRes.insertId) {
+            return ensureRelationById(insRes.insertId, cb);
+          }
+          return tryInsert(i + 1);
+        });
+      };
+
+      trySelect(0);
     };
 
     const tasks = [];
