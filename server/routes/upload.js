@@ -30,6 +30,27 @@ const upload = multer({
 
 router.post("/", upload.single("file"), (req, res) => {
   const { title, keywords, academic_year, user_id, status, section } = req.body;
+  // รองรับ categorie_ids ทั้งแบบ 'categorie_ids[]', 'categorie_ids', คั่นด้วย comma หรือ JSON
+  const rawCategorieIds = req.body['categorie_ids[]'] ?? req.body.categorie_ids;
+  const normalizeCategorieIds = (raw) => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map((v) => parseInt(v, 10)).filter(Number.isFinite);
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((v) => parseInt(v, 10)).filter(Number.isFinite);
+      }
+    } catch (_) {}
+    if (typeof raw === 'string') {
+      return raw
+        .split(',')
+        .map((v) => v.trim())
+        .map((v) => parseInt(v, 10))
+        .filter(Number.isFinite);
+    }
+    return [];
+  };
+  const categorieIds = normalizeCategorieIds(rawCategorieIds);
   const file = req.file;
 
   // Debug: ดูข้อมูลที่รับมา
@@ -71,7 +92,19 @@ router.post("/", upload.single("file"), (req, res) => {
     const documentId = docResult.insertId;
     console.log("Document inserted successfully, ID:", documentId);
 
-    // 2️⃣ บันทึกข้อมูลไฟล์ (ข้อมูลไฟล์)
+    // 2️⃣ บันทึกความสัมพันธ์เอกสาร-หมวดหมู่ (ถ้ามี)
+    if (categorieIds.length) {
+      const values = categorieIds.map((cid) => [documentId, cid]);
+      const sqlLink = `INSERT INTO document_categories (document_id, categorie_id) VALUES ?`;
+      db.query(sqlLink, [values], (linkErr) => {
+        if (linkErr) {
+          console.error('DB error (document_categories):', linkErr);
+          // ไม่ต้อง return error เพื่อไม่ให้ล้มทั้งงานอัปโหลดไฟล์
+        }
+      });
+    }
+
+    // 3️⃣ บันทึกข้อมูลไฟล์ (ข้อมูลไฟล์)
     const sqlFile = `
       INSERT INTO document_files
       (document_id, file_path, original_name, file_type, section, uploaded_at)
