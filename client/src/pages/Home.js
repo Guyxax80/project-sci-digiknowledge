@@ -8,7 +8,7 @@ const Home = () => {
   const navigate = useNavigate();
   const [role] = useState(localStorage.getItem("role")?.trim().toLowerCase() || "");
   const [popularDocs, setPopularDocs] = useState([]);
-  const [stats, setStats] = useState({});
+  const [stats, setStats] = useState({ users: 0, documents: 0, downloads: 0, uploadsLast7Days: [], topCategories: [], usersByRole: [] });
   const [docCategoryNames, setDocCategoryNames] = useState({});
 
   useEffect(() => {
@@ -105,33 +105,56 @@ const Home = () => {
 
         {/* ================= Admin Stats ================= */}
         {role === "admin" && (
-          <div className="flex gap-4 mb-8 flex-wrap">
-            <Card className="flex-1 min-w-[200px]">
-              <CardContent>
-                <Typography variant="h6">👥 ผู้ใช้งานทั้งหมด</Typography>
-                <Typography variant="body1">{stats.users} คน</Typography>
-              </CardContent>
-            </Card>
-            <Card className="flex-1 min-w-[200px]">
-              <CardContent>
-                <Typography variant="h6">📚 ผลงานทั้งหมด</Typography>
-                <Typography variant="body1">{stats.documents} รายการ</Typography>
-              </CardContent>
-            </Card>
-            <Card className="flex-1 min-w-[200px]">
-              <CardContent>
-                <Typography variant="h6">⬇️ ดาวน์โหลดรวม</Typography>
-                <Typography variant="body1">{stats.downloads} ครั้ง</Typography>
-              </CardContent>
-            </Card>
+          <div className="space-y-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card><CardContent><Typography variant="h6">👥 ผู้ใช้งานทั้งหมด</Typography><Typography variant="h4">{stats.users}</Typography></CardContent></Card>
+              <Card><CardContent><Typography variant="h6">📚 ผลงานทั้งหมด</Typography><Typography variant="h4">{stats.documents}</Typography></CardContent></Card>
+              <Card><CardContent><Typography variant="h6">⬇️ ดาวน์โหลดรวม</Typography><Typography variant="h4">{stats.downloads}</Typography></CardContent></Card>
+            </div>
 
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={() => navigate("/admin/users")}
-            >
-              จัดการผู้ใช้งาน
-            </Button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>อัปโหลด 7 วันล่าสุด</Typography>
+                  <div className="space-y-2">
+                    {stats.uploadsLast7Days.length === 0 ? (
+                      <Typography color="text.secondary">ไม่มีข้อมูล</Typography>
+                    ) : (
+                      stats.uploadsLast7Days.map((r, idx) => (
+                        <div key={idx} className="flex justify-between text-sm">
+                          <span>{new Date(r.day).toLocaleDateString('th-TH')}</span>
+                          <span className="font-semibold">{r.count}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>หมวดหมู่ยอดนิยม</Typography>
+                  <div className="space-y-2">
+                    {stats.topCategories.length === 0 ? (
+                      <Typography color="text.secondary">ไม่มีข้อมูล</Typography>
+                    ) : (
+                      stats.topCategories.map((r, idx) => (
+                        <div key={idx} className="flex justify-between text-sm">
+                          <span>{r.category}</span>
+                          <span className="font-semibold">{r.count}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div>
+              <Button variant="contained" color="primary" onClick={() => navigate("/admin/users")}>
+                จัดการผู้ใช้งาน
+              </Button>
+            </div>
           </div>
         )}
 
