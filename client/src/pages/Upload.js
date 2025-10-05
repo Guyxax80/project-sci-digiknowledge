@@ -1,9 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 
 const UploadDocument = () => {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
+  const [categories, setCategories] = useState([]);
+  const [selectedCategorieIds, setSelectedCategorieIds] = useState([]);
   const [keywords, setKeywords] = useState("");
   const [academicYear, setAcademicYear] = useState("");
   const [file, setFile] = useState(null);
@@ -11,6 +13,18 @@ const UploadDocument = () => {
   const [userId, setUserId] = useState("1"); // ใช้ state สำหรับ user_id
 
   // const userId = localStorage.getItem("userId"); // สมมติ login แล้วเก็บ
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await axios.get("http://localhost:3000/api/categories");
+        setCategories(res.data || []);
+      } catch (e) {
+        console.error("โหลดหมวดหมู่ไม่สำเร็จ", e);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,6 +41,8 @@ const UploadDocument = () => {
       formData.append("user_id", userId);
       formData.append("status", isDraft ? "draft" : "published");
       formData.append("section", category || "อื่นๆ");
+      // ส่งรายการ categorie_id แบบ array
+      selectedCategorieIds.forEach((cid) => formData.append("categorie_ids[]", String(cid)));
 
       console.log("=== FRONTEND DATA ===");
       console.log("Title:", title);
@@ -72,13 +88,42 @@ const UploadDocument = () => {
           className="border rounded px-3 py-2 w-full"
           required
         />
+        {/* เลือก section (แทนที่การพิมพ์มือถ้าต้องการเก็บ section แยกจาก category) */}
         <input
           type="text"
-          placeholder="หมวดหมู่"
+          placeholder="ส่วน/Section (เช่น ปก, บทคัดย่อ)"
           value={category}
           onChange={(e) => setCategory(e.target.value)}
           className="border rounded px-3 py-2 w-full"
         />
+
+        {/* Multi-select ของหมวดหมู่จากตาราง categories */}
+        <div>
+          <label className="block font-medium mb-1">เลือกหมวดหมู่ (เลือกได้หลายรายการ)</label>
+          <div className="border rounded p-3 max-h-40 overflow-auto">
+            {categories.map((c) => {
+              const checked = selectedCategorieIds.includes(c.categorie_id);
+              return (
+                <label key={c.categorie_id} className="flex items-center gap-2 py-1">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => {
+                      setSelectedCategorieIds((prev) => {
+                        if (e.target.checked) return [...prev, c.categorie_id];
+                        return prev.filter((id) => id !== c.categorie_id);
+                      });
+                    }}
+                  />
+                  <span>{c.name}</span>
+                </label>
+              );
+            })}
+            {(!categories || categories.length === 0) && (
+              <p className="text-sm text-gray-500">ไม่มีหมวดหมู่</p>
+            )}
+          </div>
+        </div>
         <input
           type="text"
           placeholder="คำค้นหา"
