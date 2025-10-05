@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 
 const DocumentPage = () => {
+  const navigate = useNavigate();
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -101,15 +103,24 @@ const DocumentPage = () => {
                   <strong>คำค้น:</strong> {doc.keywords}
                 </p>
               </div>
-              <a
-                href={`http://localhost:3000/${doc.file_path}`}
-                download
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition-colors duration-200"
-              >
-                ดาวน์โหลดไฟล์
-              </a>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => navigate(`/document-detail/${doc.document_id}`)}
+                  className="inline-block border border-indigo-600 text-indigo-600 px-4 py-2 rounded hover:bg-indigo-50 transition-colors duration-200"
+                  type="button"
+                >
+                  ดูรายละเอียด
+                </button>
+                <a
+                  href={`http://localhost:3000/${doc.file_path}`}
+                  download
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition-colors duration-200"
+                >
+                  ดาวน์โหลดไฟล์
+                </a>
+              </div>
             </div>
           ))}
         </div>

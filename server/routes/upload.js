@@ -48,7 +48,7 @@ router.post("/", upload.single("file"), (req, res) => {
   if (!file) return res.status(400).json({ message: "กรุณาเลือกไฟล์" });
 
   // แปลง path ให้เป็น / และลบ uploads/ prefix ออก
-  const filePath = file.path.replace(/\\/g, "/").replace(/^uploads\//, "");
+ const filePath = "/uploads/" + file.filename;
 
   // 1️⃣ บันทึกข้อมูลเอกสาร (ข้อมูลที่กรอก)
   const sqlDoc = `
