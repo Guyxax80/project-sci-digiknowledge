@@ -9,6 +9,7 @@ const Home = () => {
   const [role] = useState(localStorage.getItem("role")?.trim().toLowerCase() || "");
   const [popularDocs, setPopularDocs] = useState([]);
   const [stats, setStats] = useState({});
+  const [docCategoryNames, setDocCategoryNames] = useState({});
 
   useEffect(() => {
     console.log("Role:", role);
@@ -24,10 +25,37 @@ const Home = () => {
           console.log("Fetching recommended documents...");
           return axios.get("http://localhost:3000/api/documents/recommended");
         })
-        .then((res) => {
+        .then(async (res) => {
           console.log("Recommended documents response:", res.data);
           console.log("Response length:", res.data.length);
-          setPopularDocs(res.data);
+          const docs = res.data || [];
+          setPopularDocs(docs);
+
+          // เติมชื่อหมวดหมู่ให้การ์ด (พยายามใช้ /api/documents/:id ถ้าใช้ไม่ได้ ใช้ category_names)
+          try {
+            const detailResults = await Promise.all(
+              docs.map((doc) =>
+                axios
+                  .get(`http://localhost:3000/api/documents/${doc.document_id}`)
+                  .then((dres) => ({ id: doc.document_id, detail: dres.data, fallback: doc }))
+                  .catch(() => ({ id: doc.document_id, detail: null, fallback: doc }))
+              )
+            );
+            const map = {};
+            detailResults.forEach(({ id, detail, fallback }) => {
+              let names = "-";
+              const cats = detail?.categories;
+              if (Array.isArray(cats) && cats.length) {
+                names = cats.map((c) => c.name).join(", ");
+              } else if (fallback && typeof fallback.category_names === 'string' && fallback.category_names.length) {
+                names = fallback.category_names;
+              }
+              map[id] = names;
+            });
+            setDocCategoryNames(map);
+          } catch (e) {
+            console.warn("Unable to enrich categories for recommended docs", e);
+          }
         })
         .catch((err) => {
           console.error("Error fetching recommended documents:", err);
@@ -130,7 +158,7 @@ const Home = () => {
                         {doc.title}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" className="mb-2">
-                        หมวดหมู่: {doc.category_names ? doc.category_names : "-"}
+                        หมวดหมู่: {docCategoryNames[doc.document_id] ?? "-"}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" className="mb-2">
                         คำค้นหา: {doc.keywords || "ไม่ระบุ"}
