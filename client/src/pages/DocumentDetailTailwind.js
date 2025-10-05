@@ -19,14 +19,17 @@ function DocumentDetailTailwind() {
         return;
       }
       try {
-        const [docRes, catRes] = await Promise.all([
-          axios.get(`http://localhost:3000/api/documents/${id}`),
-          axios.get(`http://localhost:3000/api/documents/${id}/categories`)
-        ]);
+        const docRes = await axios.get(`http://localhost:3000/api/documents/${id}`);
         setDocument(docRes.data.document);
-        setCategories(catRes.data || []);
         setVideoFile(docRes.data.videoFile);
         setDownloadFiles(docRes.data.downloadFiles);
+        try {
+          const catRes = await axios.get(`http://localhost:3000/api/documents/${id}/categories`);
+          setCategories(catRes.data || []);
+        } catch (_) {
+          // fallback หาก endpoint ไม่มี ใช้ categories ที่แนบมากับ document (ถ้ามี)
+          setCategories(docRes.data.categories || []);
+        }
         setLoading(false);
       } catch (err) {
         console.error("Error fetching document details:", err);
