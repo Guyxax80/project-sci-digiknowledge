@@ -133,15 +133,15 @@ router.post("/", upload.single("file"), (req, res) => {
     };
 
     const ensureRelationByName = (name, cb) => {
-      db.query('SELECT categorie_id FROM categorie WHERE name = ? LIMIT 1', [name], (selErr, rows) => {
+      db.query('SELECT categorie_id FROM categories WHERE name = ? LIMIT 1', [name], (selErr, rows) => {
         if (selErr) {
-          console.error('DB error (select categorie by name):', selErr);
+          console.error('DB error (select categories by name):', selErr);
           return cb();
         }
         if (rows && rows.length) return ensureRelationById(rows[0].categorie_id, cb);
-        db.query('INSERT INTO categorie (name) VALUES (?)', [name], (insErr, insRes) => {
+        db.query('INSERT INTO categories (name) VALUES (?)', [name], (insErr, insRes) => {
           if (insErr) {
-            console.error('DB error (insert categorie):', insErr);
+            console.error('DB error (insert categories):', insErr);
             return cb();
           }
           return ensureRelationById(insRes.insertId, cb);
