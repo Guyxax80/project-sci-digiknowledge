@@ -19,11 +19,14 @@ function DocumentDetailTailwind() {
         return;
       }
       try {
-        const res = await axios.get(`http://localhost:3000/api/documents/${id}`);
-        setDocument(res.data.document);
-        setCategories(res.data.categories || []);
-        setVideoFile(res.data.videoFile);
-        setDownloadFiles(res.data.downloadFiles);
+        const [docRes, catRes] = await Promise.all([
+          axios.get(`http://localhost:3000/api/documents/${id}`),
+          axios.get(`http://localhost:3000/api/documents/${id}/categories`)
+        ]);
+        setDocument(docRes.data.document);
+        setCategories(catRes.data || []);
+        setVideoFile(docRes.data.videoFile);
+        setDownloadFiles(docRes.data.downloadFiles);
         setLoading(false);
       } catch (err) {
         console.error("Error fetching document details:", err);

@@ -228,4 +228,64 @@ router.get('/:id', (req, res) => {
   );
 });
 
+// GET /documents/:id/categories - ดึงเฉพาะหมวดหมู่ของเอกสาร
+router.get('/:id/categories', (req, res) => {
+  const documentId = req.params.id;
+
+  const queries = [
+    // document_categories.categorie_id
+    `SELECT c.categorie_id AS categorie_id, c.name
+       FROM document_categories dc
+       JOIN categories c ON c.categorie_id = dc.categorie_id
+      WHERE dc.document_id = ?
+      ORDER BY c.name ASC`,
+    `SELECT c.category_id AS categorie_id, c.name
+       FROM document_categories dc
+       JOIN categories c ON c.category_id = dc.categorie_id
+      WHERE dc.document_id = ?
+      ORDER BY c.name ASC`,
+    `SELECT c.categorie_id AS categorie_id, c.name
+       FROM document_categories dc
+       JOIN categorie c ON c.categorie_id = dc.categorie_id
+      WHERE dc.document_id = ?
+      ORDER BY c.name ASC`,
+    `SELECT c.category_id AS categorie_id, c.name
+       FROM document_categories dc
+       JOIN categorie c ON c.category_id = dc.categorie_id
+      WHERE dc.document_id = ?
+      ORDER BY c.name ASC`,
+    // document_categories.category_id
+    `SELECT c.categorie_id AS categorie_id, c.name
+       FROM document_categories dc
+       JOIN categories c ON c.categorie_id = dc.category_id
+      WHERE dc.document_id = ?
+      ORDER BY c.name ASC`,
+    `SELECT c.category_id AS categorie_id, c.name
+       FROM document_categories dc
+       JOIN categories c ON c.category_id = dc.category_id
+      WHERE dc.document_id = ?
+      ORDER BY c.name ASC`,
+    `SELECT c.categorie_id AS categorie_id, c.name
+       FROM document_categories dc
+       JOIN categorie c ON c.categorie_id = dc.category_id
+      WHERE dc.document_id = ?
+      ORDER BY c.name ASC`,
+    `SELECT c.category_id AS categorie_id, c.name
+       FROM document_categories dc
+       JOIN categorie c ON c.category_id = dc.category_id
+      WHERE dc.document_id = ?
+      ORDER BY c.name ASC`
+  ];
+
+  const tryQuery = (i = 0) => {
+    if (i >= queries.length) return res.json([]);
+    db.query(queries[i], [documentId], (err, rows) => {
+      if (err) return tryQuery(i + 1);
+      return res.json(rows || []);
+    });
+  };
+
+  tryQuery(0);
+});
+
 module.exports = router;
