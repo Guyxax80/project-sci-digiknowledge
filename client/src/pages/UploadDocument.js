@@ -41,7 +41,7 @@ export default function UploadDocument() {
 
     const data = new FormData();
     Object.keys(formData).forEach((key) => data.append(key, formData[key]));
-    selectedCategoryIds.forEach((id) => data.append("categorie_ids[]", id));
+    data.append("categorie_ids", JSON.stringify(selectedCategoryIds));
     if (file) {
       data.append("file", file);
     }

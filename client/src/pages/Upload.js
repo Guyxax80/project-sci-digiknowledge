@@ -56,8 +56,8 @@ const UploadDocument = () => {
       formData.append("academic_year", academicYear);
       formData.append("user_id", storedUserId);
       formData.append("status", isDraft ? "draft" : "published");
-      // ส่งหมวดหมู่หลายค่าเป็น categorie_ids[]
-      selectedCategoryIds.forEach((id) => formData.append("categorie_ids[]", id));
+      // ส่งหมวดหมู่หลายค่าเป็น JSON เดียว เพื่อง่ายต่อการ parse ฝั่ง server
+      formData.append("categorie_ids", JSON.stringify(selectedCategoryIds));
 
       console.log("=== FRONTEND DATA ===");
       console.log("Title:", title);
