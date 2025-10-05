@@ -7,6 +7,7 @@ function DocumentDetailTailwind() {
   const [document, setDocument] = useState(null);
   const [videoFile, setVideoFile] = useState(null);
   const [downloadFiles, setDownloadFiles] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -18,10 +19,17 @@ function DocumentDetailTailwind() {
         return;
       }
       try {
-        const res = await axios.get(`http://localhost:3000/api/documents/${id}`);
-        setDocument(res.data.document);
-        setVideoFile(res.data.videoFile);
-        setDownloadFiles(res.data.downloadFiles);
+        const docRes = await axios.get(`http://localhost:3000/api/documents/${id}`);
+        setDocument(docRes.data.document);
+        setVideoFile(docRes.data.videoFile);
+        setDownloadFiles(docRes.data.downloadFiles);
+        try {
+          const catRes = await axios.get(`http://localhost:3000/api/documents/${id}/categories`);
+          setCategories(catRes.data || []);
+        } catch (_) {
+          // fallback หาก endpoint ไม่มี ใช้ categories ที่แนบมากับ document (ถ้ามี)
+          setCategories(docRes.data.categories || []);
+        }
         setLoading(false);
       } catch (err) {
         console.error("Error fetching document details:", err);
@@ -53,14 +61,12 @@ function DocumentDetailTailwind() {
 
       {/* รายละเอียดเอกสาร + ไฟล์ดาวน์โหลด */}
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Left Column - รายละเอียดเอกสาร */}
+        {/* Left Column - รายละเอียดเอกสาร (เฉพาะ Categorie, Keywords, Academic Year) */}
         <div className="flex-2 bg-white p-6 rounded-lg shadow-md">
           <h2 className="text-2xl font-bold mb-4">{document.title}</h2>
-          <p><span className="font-semibold">Uploader:</span> {document.user_id || "ไม่ระบุ"}</p>
-          <p><span className="font-semibold">Academic Year:</span> {document.academic_year}</p>
-          <p><span className="font-semibold">Keywords:</span> {document.keywords}</p>
-          <p><span className="font-semibold">Status:</span> {document.status}</p>
-          <p><span className="font-semibold">Uploaded at:</span> {new Date(document.uploaded_at).toLocaleString()}</p>
+          <p><span className="font-semibold">Categorie:</span> {categories.length > 0 ? categories.map(c => c.name).join(", ") : "-"}</p>
+          <p><span className="font-semibold">Keywords:</span> {document.keywords || "-"}</p>
+          <p><span className="font-semibold">Academic Year:</span> {document.academic_year || "-"}</p>
         </div>
 
         {/* Right Column - ไฟล์ดาวน์โหลด */}

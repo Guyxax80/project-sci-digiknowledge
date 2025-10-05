@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 
 const UploadDocument = () => {
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("");
+  const [categories, setCategories] = useState([]);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState([]);
   const [keywords, setKeywords] = useState("");
   const [academicYear, setAcademicYear] = useState("");
   const [academicYearDate, setAcademicYearDate] = useState("");
@@ -26,6 +27,20 @@ const UploadDocument = () => {
   const [authorBioFile, setAuthorBioFile] = useState(null);
   const [presentationVideoFile, setPresentationVideoFile] = useState(null);
 
+  // โหลดรายการหมวดหมู่จาก API
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await axios.get("http://localhost:3000/api/categories");
+        setCategories(res.data || []);
+      } catch (err) {
+        console.error("โหลดหมวดหมู่ไม่สำเร็จ", err);
+        setCategories([]);
+      }
+    };
+    loadCategories();
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title || !file) return alert("กรุณากรอกชื่อเอกสารและเลือกไฟล์");
@@ -41,11 +56,8 @@ const UploadDocument = () => {
       formData.append("academic_year", academicYear);
       formData.append("user_id", storedUserId);
       formData.append("status", isDraft ? "draft" : "published");
-      formData.append("section", category || "อื่นๆ");
-      // ส่งชื่อหมวดหมู่ให้ backend ทำ find-or-create ในตาราง categorie
-      if (category) {
-        formData.append("category", category);
-      }
+      // ส่งหมวดหมู่หลายค่าเป็น JSON เดียว เพื่อง่ายต่อการ parse ฝั่ง server
+      formData.append("categorie_ids", JSON.stringify(selectedCategoryIds));
 
       console.log("=== FRONTEND DATA ===");
       console.log("Title:", title);
@@ -53,7 +65,7 @@ const UploadDocument = () => {
       console.log("Academic Year:", academicYear);
       console.log("User ID:", storedUserId);
       console.log("Status:", isDraft ? "draft" : "published");
-      console.log("Section:", category || "อื่นๆ");
+      console.log("Categorie IDs:", selectedCategoryIds);
       console.log("File name:", file.name);
       console.log("====================");
 
@@ -92,7 +104,7 @@ const UploadDocument = () => {
 
       // เคลียร์ฟอร์ม
       setTitle("");
-      setCategory("");
+      setSelectedCategoryIds([]);
       setKeywords("");
       setAcademicYear("");
       setAcademicYearDate("");
@@ -130,15 +142,34 @@ const UploadDocument = () => {
           className="border rounded px-3 py-2 w-full"
           required
         />
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          className="border rounded px-3 py-2 w-full"
-        >
-          <option value="">เลือกหมวดหมู่</option>
-          <option value="Hardware(ฮาร์ดแวร์)">Hardware (ฮาร์ดแวร์)</option>
-          <option value="Software(ซอฟต์แวร์)">Software (ซอฟต์แวร์)</option>
-        </select>
+        <div>
+          <p className="font-semibold mb-2">เลือกหมวดหมู่ (เลือกได้หลายรายการ)</p>
+          <div className="flex flex-col gap-2 max-h-40 overflow-auto border rounded p-2">
+            {categories.map((cat) => {
+              const idStr = String(cat.categorie_id);
+              const checked = selectedCategoryIds.includes(idStr);
+              return (
+                <label key={idStr} className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedCategoryIds((prev) => [...prev, idStr]);
+                      } else {
+                        setSelectedCategoryIds((prev) => prev.filter((x) => x !== idStr));
+                      }
+                    }}
+                  />
+                  <span>{cat.name}</span>
+                </label>
+              );
+            })}
+            {categories.length === 0 && (
+              <span className="text-sm text-gray-500">ไม่มีหมวดหมู่</span>
+            )}
+          </div>
+        </div>
         <input
           type="text"
           placeholder="คำค้นหา"

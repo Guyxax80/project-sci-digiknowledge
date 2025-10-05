@@ -1,13 +1,15 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import axios from "axios";
 
 export default function UploadDocument() {
   const [formData, setFormData] = useState({
     user_id: "",
     title: "",
     keywords: "",
-    academic_year: "",
-    categorie_id: ""
+    academic_year: ""
   });
+  const [categories, setCategories] = useState([]);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState([]);
   const [file, setFile] = useState(null);
   const [message, setMessage] = useState("");
 
@@ -21,14 +23,25 @@ export default function UploadDocument() {
     setFile(e.target.files[0]);
   };
 
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await axios.get("http://localhost:3000/api/categories");
+        setCategories(res.data || []);
+      } catch (err) {
+        console.error("โหลดหมวดหมู่ไม่สำเร็จ", err);
+      }
+    };
+    loadCategories();
+  }, []);
+
   // ฟังก์ชัน submit
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     const data = new FormData();
-    Object.keys(formData).forEach((key) => {
-      data.append(key, formData[key]);
-    });
+    Object.keys(formData).forEach((key) => data.append(key, formData[key]));
+    data.append("categorie_ids", JSON.stringify(selectedCategoryIds));
     if (file) {
       data.append("file", file);
     }
@@ -88,14 +101,34 @@ export default function UploadDocument() {
           onChange={handleChange}
           className="w-full border p-2 rounded"
         />
-        <input
-          type="text"
-          name="categorie_id"
-          placeholder="Category ID"
-          value={formData.categorie_id}
-          onChange={handleChange}
-          className="w-full border p-2 rounded"
-        />
+        <div>
+          <p className="font-semibold mb-2">เลือกหมวดหมู่ (เลือกได้หลายรายการ)</p>
+          <div className="flex flex-col gap-2 max-h-40 overflow-auto border rounded p-2">
+            {categories.map((cat) => {
+              const idStr = String(cat.categorie_id);
+              const checked = selectedCategoryIds.includes(idStr);
+              return (
+                <label key={idStr} className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedCategoryIds((prev) => [...prev, idStr]);
+                      } else {
+                        setSelectedCategoryIds((prev) => prev.filter((x) => x !== idStr));
+                      }
+                    }}
+                  />
+                  <span>{cat.name}</span>
+                </label>
+              );
+            })}
+            {categories.length === 0 && (
+              <span className="text-sm text-gray-500">ไม่มีหมวดหมู่</span>
+            )}
+          </div>
+        </div>
 
         <input
           type="file"

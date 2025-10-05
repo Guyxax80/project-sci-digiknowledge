@@ -59,20 +59,54 @@ router.delete("/users/:user_id", (req, res) => {
 // 📌 ดึงสถิติ
 router.get("/stats", (req, res) => {
   const stats = {};
+  db.query("SELECT COUNT(*) AS total FROM users", (e1, r1) => {
+    if (e1) return res.status(500).json({ error: "DB error" });
+    stats.users = r1[0]?.total || 0;
 
-  db.query("SELECT COUNT(*) AS total FROM documents", (err, result) => {
-    if (err) return res.status(500).json({ error: "DB error" });
-    stats.documents = result[0].total;
+    db.query("SELECT COUNT(*) AS total FROM documents", (e2, r2) => {
+      if (e2) return res.status(500).json({ error: "DB error" });
+      stats.documents = r2[0]?.total || 0;
 
-    db.query("SELECT COUNT(*) AS total FROM downloads", (err2, result2) => {
-      if (err2) return res.status(500).json({ error: "DB error" });
-      stats.downloads = result2[0].total;
+      db.query("SELECT COUNT(*) AS total FROM downloads", (e3, r3) => {
+        if (e3) return res.status(500).json({ error: "DB error" });
+        stats.downloads = r3[0]?.total || 0;
 
-      db.query("SELECT COUNT(*) AS total FROM users", (err3, result3) => {
-        if (err3) return res.status(500).json({ error: "DB error" });
-        stats.users = result3[0].total;
+        // ยอดอัปโหลดรายวัน 7 วันล่าสุด
+        const uploadsSql = `
+          SELECT DATE(uploaded_at) AS day, COUNT(*) AS count
+          FROM documents
+          WHERE uploaded_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+          GROUP BY DATE(uploaded_at)
+          ORDER BY day ASC`;
 
-        res.json(stats);
+        db.query(uploadsSql, (e4, r4) => {
+          if (e4) return res.status(500).json({ error: "DB error" });
+          stats.uploadsLast7Days = r4 || [];
+
+          // เอกสารตามหมวดหมู่ Top 5
+          const byCatSql = `
+            SELECT c.name AS category, COUNT(*) AS count
+            FROM document_categories dc
+            JOIN categories c ON c.categorie_id = dc.categorie_id
+            GROUP BY c.name
+            ORDER BY count DESC
+            LIMIT 5`;
+
+          db.query(byCatSql, (e5, r5) => {
+            if (e5) return res.status(500).json({ error: "DB error" });
+            stats.topCategories = r5 || [];
+
+            // ผู้ใช้ตามบทบาท
+            db.query(
+              "SELECT role, COUNT(*) AS count FROM users GROUP BY role",
+              (e6, r6) => {
+                if (e6) return res.status(500).json({ error: "DB error" });
+                stats.usersByRole = r6 || [];
+                return res.json(stats);
+              }
+            );
+          });
+        });
       });
     });
   });

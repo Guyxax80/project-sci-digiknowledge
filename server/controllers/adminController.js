@@ -31,7 +31,7 @@ exports.uploadFile = async (req, res) => {
 
     // 2️⃣ บันทึกหมวดหมู่
     if (categorie_id) {
-      const catSql = `INSERT INTO document_categories (document_id, categorie_id) VALUES (?, ?)`;
+      const catSql = `INSERT IGNORE INTO document_categories (document_id, categorie_id) VALUES (?, ?)`;
       db.query(catSql, [documentId, categorie_id], (err) => {
         if (err) console.error('Error saving category:', err);
       });
