@@ -120,59 +120,7 @@ router.get('/download/:fileId', (req, res) => {
         return res.status(404).send('ไม่พบไฟล์บนเซิร์ฟเวอร์');
       }
 
-      // Log/download counters BEFORE sending file to guarantee counting
-      const rawUserId = (req.user && req.user.id) ? parseInt(req.user.id, 10) : 0;
-      const safeUserId = Number.isFinite(rawUserId) && rawUserId > 0 ? rawUserId : 0;
-
-      const ensureDownloadsTableSql = `
-        CREATE TABLE IF NOT EXISTS downloads (
-          dowload_id INT AUTO_INCREMENT PRIMARY KEY,
-          user_id INT NOT NULL,
-          document_id INT NOT NULL,
-          document_file_id INT NULL,
-          downloaded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`;
-
-      const insertDownloads = (downloaderUserId) => {
-        // ตรวจว่ามีคอลัมน์ document_file_id หรือไม่ เพื่อเลือกคำสั่ง INSERT ให้ถูกต้อง
-        db.query('SHOW COLUMNS FROM downloads LIKE "document_file_id"', (colErr, colRows) => {
-          const hasFileIdCol = !colErr && colRows && colRows.length > 0;
-          const sql = hasFileIdCol
-            ? 'INSERT INTO downloads (user_id, document_id, document_file_id, downloaded_at) VALUES (?, ?, ?, NOW())'
-            : 'INSERT INTO downloads (user_id, document_id, downloaded_at) VALUES (?, ?, NOW())';
-          const params = hasFileIdCol ? [downloaderUserId, documentId, fileId] : [downloaderUserId, documentId];
-          db.query(sql, params, (dlErr) => {
-            if (dlErr) {
-              console.warn('Log downloads failed (non-fatal):', dlErr.message || dlErr);
-            }
-          });
-        });
-      };
-
-      const resolveDownloaderIdAndInsert = () => {
-        if (safeUserId && safeUserId > 0) {
-          return insertDownloads(safeUserId);
-        }
-        // ไม่มีผู้ใช้ล็อกอิน: ใช้ผู้สร้างเอกสารเป็น fallback เพื่อไม่ให้ชน FK
-        db.query('SELECT user_id FROM documents WHERE document_id = ? LIMIT 1', [documentId], (e1, r1) => {
-          const fallbackOwnerId = (!e1 && r1 && r1.length) ? r1[0].user_id : null;
-          if (fallbackOwnerId) return insertDownloads(fallbackOwnerId);
-          // fallback สุดท้าย: เลือกผู้ใช้คนแรกในระบบ
-          db.query('SELECT user_id FROM users ORDER BY user_id ASC LIMIT 1', (e2, r2) => {
-            const anyUserId = (!e2 && r2 && r2.length) ? r2[0].user_id : null;
-            if (anyUserId) return insertDownloads(anyUserId);
-            // หากไม่มีผู้ใช้เลย ข้ามการบันทึก downloads เพื่อเลี่ยง FK
-            console.warn('Skip downloads insert: no valid user_id to satisfy FK');
-          });
-        });
-      };
-
-      db.query(ensureDownloadsTableSql, (crtDlErr) => {
-        if (crtDlErr) {
-          console.warn('Ensure downloads table failed (non-fatal):', crtDlErr.message || crtDlErr);
-        }
-        resolveDownloaderIdAndInsert();
-      });
+      // นับยอดดาวน์โหลดแบบไม่มีตาราง downloads: อัปเดต documents และ document_files โดยตรง
 
       if (documentId) {
         db.query(
@@ -184,7 +132,29 @@ router.get('/download/:fileId', (req, res) => {
         );
       }
 
-      // เลิกใช้ตาราง file_downloads และรวมข้อมูลไว้ที่ downloads แทน
+      // เพิ่มคอลัมน์ download_count ให้กับ document_files หากยังไม่มี แล้วอัปเดตนับต่อไฟล์
+      db.query('SHOW COLUMNS FROM document_files LIKE "download_count"', (colErr, colRows) => {
+        const ensureColumnAndUpdate = () => {
+          db.query(
+            'UPDATE document_files SET download_count = COALESCE(download_count, 0) + 1 WHERE document_file_id = ?',
+            [fileId],
+            (dfErr) => {
+              if (dfErr) console.warn('Update document_files.download_count failed (non-fatal):', dfErr.message || dfErr);
+            }
+          );
+        };
+
+        if (!colErr && colRows && colRows.length > 0) {
+          return ensureColumnAndUpdate();
+        }
+        db.query('ALTER TABLE document_files ADD COLUMN download_count INT NOT NULL DEFAULT 0', (altErr) => {
+          if (altErr) {
+            console.warn('Add document_files.download_count failed (non-fatal):', altErr.message || altErr);
+            return; // ไม่ block การดาวน์โหลด
+          }
+          ensureColumnAndUpdate();
+        });
+      });
 
       const downloadName = file.original_name || path.basename(fullPath) || 'file';
       res.download(fullPath, downloadName, (downloadErr) => {
