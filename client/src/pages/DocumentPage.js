@@ -8,6 +8,7 @@ const DocumentPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchText, setSearchText] = useState("");
+  
 
   useEffect(() => {
     axios
@@ -96,8 +97,8 @@ const DocumentPage = () => {
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-4 mb-4 text-gray-700">
-                <p>
-                  <strong>สถานะ:</strong> {doc.status || "-"}
+                <p className="col-span-2">
+                  <strong>หมวดหมู่:</strong> {doc.category_names || "-"}
                 </p>
                 <p>
                   <strong>ปีการศึกษา:</strong> {doc.academic_year}
@@ -114,15 +115,6 @@ const DocumentPage = () => {
                 >
                   ดูรายละเอียด
                 </button>
-                <a
-                  href={`http://localhost:3000/${doc.file_path}`}
-                  download
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition-colors duration-200"
-                >
-                  ดาวน์โหลดไฟล์
-                </a>
               </div>
             </div>
           ))}

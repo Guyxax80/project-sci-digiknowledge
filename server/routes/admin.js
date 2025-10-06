@@ -70,12 +70,9 @@ router.get("/stats", async (req, res) => {
     const docRows = await q("SELECT COUNT(*) AS total FROM documents");
     stats.documents = docRows[0]?.total || 0;
 
-    try {
-      const dlRows = await q("SELECT COUNT(*) AS total FROM downloads");
-      stats.downloads = dlRows[0]?.total || 0;
-    } catch (_) {
-      stats.downloads = 0;
-    }
+    // ดาวน์โหลดรวม: ใช้ผลรวมจาก documents.download_count (เชื่อถือได้กว่า)
+    const dlSumRows = await q("SELECT COALESCE(SUM(download_count), 0) AS total FROM documents");
+    stats.downloads = dlSumRows[0]?.total || 0;
 
     // อัปโหลด 7 วันล่าสุด — ลอง uploaded_at ก่อน, ถ้าไม่มีใช้ created_at
     let uploadsRows = [];
@@ -128,6 +125,33 @@ router.get("/stats", async (req, res) => {
     const roleRows = await q("SELECT role, COUNT(*) AS count FROM users GROUP BY role");
     stats.usersByRole = roleRows || [];
 
+    // รายการไฟล์ยอดดาวน์โหลด: รวมจาก document_files.download_count
+    const topFiles = await q(`
+      SELECT 
+        df.document_file_id,
+        df.document_id,
+        df.section,
+        df.original_name,
+        COALESCE(df.download_count, 0) AS download_count,
+        d.title
+      FROM document_files df
+      JOIN documents d ON d.document_id = df.document_id
+      WHERE COALESCE(df.download_count, 0) > 0
+      ORDER BY df.download_count DESC, df.document_file_id ASC
+      LIMIT 20
+    `);
+    stats.topFiles = topFiles || [];
+
+    // เอกสารยอดดาวน์โหลด (ตาม documents.download_count)
+    const topDocuments = await q(`
+      SELECT document_id, title, COALESCE(download_count, 0) AS download_count
+      FROM documents
+      WHERE COALESCE(download_count, 0) > 0
+      ORDER BY download_count DESC, uploaded_at DESC
+      LIMIT 20
+    `);
+    stats.topDocuments = topDocuments || [];
+
     return res.json(stats);
   } catch (err) {
     console.error("Admin stats error:", err);
@@ -135,17 +159,59 @@ router.get("/stats", async (req, res) => {
   }
 });
 
+// GET /api/admin/documents/:documentId/file-downloads - ไฟล์ของเอกสารและยอดดาวน์โหลดต่อไฟล์ (>0)
+router.get("/documents/:documentId/file-downloads", async (req, res) => {
+  try {
+    const documentId = req.params.documentId;
+    const rows = await q(
+      `SELECT document_file_id, section, original_name, COALESCE(download_count, 0) AS download_count
+       FROM document_files
+       WHERE document_id = ? AND COALESCE(download_count, 0) > 0
+       ORDER BY download_count DESC, document_file_id ASC`,
+      [documentId]
+    );
+    return res.json(rows || []);
+  } catch (err) {
+    console.error("Admin file downloads error:", err);
+    return res.status(500).json({ error: "DB error" });
+  }
+});
+
 // 📌 สำรองฐานข้อมูล (mysqldump)
 router.get("/backup", (req, res) => {
-  const backupPath = path.join(__dirname, "../backup.sql");
-  const command = `mysqldump -u root -p1234 sci_digiknowledge > ${backupPath}`;
+  // สร้างไฟล์ zip รวม: backup.sql + โฟลเดอร์ uploads
+  const dbName = 'sci_digiknowledge';
+  const dbUser = 'root';
+  const dbPass = '';
 
-  exec(command, (err) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).send("Backup failed");
-    }
-    res.download(backupPath);
+  const tmpDir = path.join(__dirname, '..', 'tmp_backup');
+  const sqlPath = path.join(tmpDir, 'backup.sql');
+  const uploadsDir = path.join(__dirname, '..', 'uploads');
+  const fs = require('fs');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+
+  // ใช้ไลบรารี mysqldump (Node) แทนคำสั่งระบบ
+  const { dump } = require('mysqldump');
+  dump({
+    connection: {
+      host: 'localhost',
+      user: dbUser,
+      password: dbPass,
+      database: dbName,
+    },
+    dumpToFile: sqlPath,
+  }).then(() => {
+    // ส่งไฟล์ SQL โดยตรง (ไม่ต้อง zip) เพื่อหลีกเลี่ยงการพึ่งพา archiver
+    const downloadName = `backup_${Date.now()}.sql`;
+    res.download(sqlPath, downloadName, (dlErr) => {
+      if (dlErr) {
+        console.warn('Download backup failed:', dlErr);
+      }
+      try { fs.unlinkSync(sqlPath); } catch (_) {}
+    });
+  }).catch((e) => {
+    console.error('mysqldump lib failed:', e);
+    return res.status(500).send('Backup failed');
   });
 });
 

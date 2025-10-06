@@ -13,13 +13,16 @@ router.get('/', (req, res) => {
       d.uploaded_at,
       d.status,
       d.user_id,
-      (COALESCE(d.download_count, 0) + COALESCE(fd.file_downloads, 0)) AS download_count
+      COALESCE(d.download_count, 0) AS download_count,
+      COALESCE(cat.category_names, '') AS category_names
     FROM documents d
     LEFT JOIN (
-      SELECT document_id, SUM(download_count) AS file_downloads
-      FROM document_files
-      GROUP BY document_id
-    ) fd ON fd.document_id = d.document_id
+      SELECT dc.document_id,
+             GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names
+      FROM document_categories dc
+      JOIN categories c ON c.categorie_id = dc.categorie_id
+      GROUP BY dc.document_id
+    ) cat ON cat.document_id = d.document_id
     WHERE COALESCE(LOWER(d.status), '') <> 'draft'
     ORDER BY d.uploaded_at DESC
   `;
@@ -52,16 +55,12 @@ router.get('/recommended', (req, res) => {
       d.uploaded_at,
       d.status,
       d.user_id,
-      (COALESCE(d.download_count, 0) + COALESCE(fd.file_downloads, 0)) AS download_count,
+      COALESCE(d.download_count, 0) AS download_count,
       COALESCE(cat.category_names, '') AS category_names
     FROM documents d
     LEFT JOIN (
-      SELECT document_id, SUM(download_count) AS file_downloads
-      FROM document_files
-      GROUP BY document_id
-    ) fd ON fd.document_id = d.document_id
-    LEFT JOIN (
-      SELECT dc.document_id, GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names
+      SELECT dc.document_id,
+             GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names
       FROM document_categories dc
       JOIN categories c ON c.categorie_id = dc.categorie_id
       GROUP BY dc.document_id
@@ -98,16 +97,12 @@ router.get('/by-user/:userId', (req, res) => {
       d.academic_year,
       d.uploaded_at,
       d.status,
-      (COALESCE(d.download_count, 0) + COALESCE(fd.file_downloads, 0)) AS download_count,
+      COALESCE(d.download_count, 0) AS download_count,
       COALESCE(cat.category_names, '') AS category_names
     FROM documents d
     LEFT JOIN (
-      SELECT document_id, SUM(download_count) AS file_downloads
-      FROM document_files
-      GROUP BY document_id
-    ) fd ON fd.document_id = d.document_id
-    LEFT JOIN (
-      SELECT dc.document_id, GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names
+      SELECT dc.document_id,
+             GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names
       FROM document_categories dc
       JOIN categories c ON c.categorie_id = dc.categorie_id
       GROUP BY dc.document_id

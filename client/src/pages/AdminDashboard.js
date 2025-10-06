@@ -14,7 +14,7 @@ import {
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
-  const [stats, setStats] = useState({ documents: 0, downloads: 0 });
+  const [stats, setStats] = useState({});
   const [form, setForm] = useState({ username: "", password: "", role: "" });
   const [editingUser, setEditingUser] = useState(null);
 
@@ -33,11 +33,11 @@ export default function AdminDashboard() {
     }
   };
 
-  // ดึงสถิติ
+  // ดึงสถิติ (อาจไม่ใช้งานแล้ว ถ้าต้องการซ่อนการ์ด)
   const fetchStats = async () => {
     try {
       const res = await axios.get("http://localhost:3000/admin/stats");
-      setStats(res.data);
+      setStats(res.data || {});
     } catch (err) {
       console.error("โหลดสถิติล้มเหลว", err);
     }
@@ -63,7 +63,7 @@ export default function AdminDashboard() {
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", "backup.sql");
+      link.setAttribute("download", "backup_all.zip");
       document.body.appendChild(link);
       link.click();
     } catch (err) {
@@ -161,21 +161,7 @@ export default function AdminDashboard() {
         </div>
       </form>
 
-      {/* แสดงสถิติ */}
-      <div className="grid grid-cols-2 gap-4">
-        <Card className="shadow-md">
-          <CardContent>
-            <Typography variant="h6">จำนวนผลงาน</Typography>
-            <Typography variant="h4">{stats.documents}</Typography>
-          </CardContent>
-        </Card>
-        <Card className="shadow-md">
-          <CardContent>
-            <Typography variant="h6">ยอดดาวน์โหลด</Typography>
-            <Typography variant="h4">{stats.downloads}</Typography>
-          </CardContent>
-        </Card>
-      </div>
+      {/* ซ่อนการ์ดจำนวนผลงาน/ยอดดาวน์โหลด ตามที่ร้องขอ */}
 
       {/* ปุ่มสำรองฐานข้อมูล */}
       <Button variant="contained" color="primary" onClick={backupDatabase}>
