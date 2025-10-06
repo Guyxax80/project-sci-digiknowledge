@@ -129,19 +129,24 @@ router.get('/download/:fileId', (req, res) => {
           dowload_id INT AUTO_INCREMENT PRIMARY KEY,
           user_id INT NOT NULL,
           document_id INT NOT NULL,
+          document_file_id INT NULL,
           downloaded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`;
 
       const insertDownloads = (downloaderUserId) => {
-        db.query(
-          'INSERT INTO downloads (user_id, document_id, downloaded_at) VALUES (?, ?, NOW())',
-          [downloaderUserId, documentId],
-          (dlErr) => {
+        // ตรวจว่ามีคอลัมน์ document_file_id หรือไม่ เพื่อเลือกคำสั่ง INSERT ให้ถูกต้อง
+        db.query('SHOW COLUMNS FROM downloads LIKE "document_file_id"', (colErr, colRows) => {
+          const hasFileIdCol = !colErr && colRows && colRows.length > 0;
+          const sql = hasFileIdCol
+            ? 'INSERT INTO downloads (user_id, document_id, document_file_id, downloaded_at) VALUES (?, ?, ?, NOW())'
+            : 'INSERT INTO downloads (user_id, document_id, downloaded_at) VALUES (?, ?, NOW())';
+          const params = hasFileIdCol ? [downloaderUserId, documentId, fileId] : [downloaderUserId, documentId];
+          db.query(sql, params, (dlErr) => {
             if (dlErr) {
               console.warn('Log downloads failed (non-fatal):', dlErr.message || dlErr);
             }
-          }
-        );
+          });
+        });
       };
 
       const resolveDownloaderIdAndInsert = () => {
@@ -179,20 +184,7 @@ router.get('/download/:fileId', (req, res) => {
         );
       }
 
-      const createFileDownloadsSql = 'CREATE TABLE IF NOT EXISTS file_downloads (document_file_id INT PRIMARY KEY, download_count INT NOT NULL DEFAULT 0)';
-      db.query(createFileDownloadsSql, (crtErr) => {
-        if (crtErr) {
-          console.warn('Create file_downloads failed (non-fatal):', crtErr.message || crtErr);
-        } else {
-          db.query(
-            'INSERT INTO file_downloads (document_file_id, download_count) VALUES (?, 1) ON DUPLICATE KEY UPDATE download_count = download_count + 1',
-            [fileId],
-            (fdlErr) => {
-              if (fdlErr) console.warn('Update file_downloads failed (non-fatal):', fdlErr.message || fdlErr);
-            }
-          );
-        }
-      });
+      // เลิกใช้ตาราง file_downloads และรวมข้อมูลไว้ที่ downloads แทน
 
       const downloadName = file.original_name || path.basename(fullPath) || 'file';
       res.download(fullPath, downloadName, (downloadErr) => {
