@@ -193,13 +193,17 @@ router.get("/backup", (req, res) => {
   const archiver = require('archiver');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
-  const dumpCmd = `mysqldump -u ${dbUser} ${dbPass ? `-p${dbPass} ` : ''}${dbName} > "${sqlPath}"`;
-  exec(dumpCmd, (dumpErr) => {
-    if (dumpErr) {
-      console.error('mysqldump failed:', dumpErr);
-      return res.status(500).send('Backup failed');
-    }
-
+  // ใช้ไลบรารี mysqldump (Node) แทนคำสั่งระบบ
+  const { dump } = require('mysqldump');
+  dump({
+    connection: {
+      host: 'localhost',
+      user: dbUser,
+      password: dbPass,
+      database: dbName,
+    },
+    dumpToFile: sqlPath,
+  }).then(() => {
     const output = fs.createWriteStream(zipPath);
     const archive = archiver('zip', { zlib: { level: 9 } });
 
@@ -217,13 +221,14 @@ router.get("/backup", (req, res) => {
     });
 
     archive.pipe(output);
-    // ใส่ไฟล์ SQL
     archive.file(sqlPath, { name: 'backup.sql' });
-    // ใส่โฟลเดอร์ uploads (หากมี)
     if (fs.existsSync(uploadsDir)) {
       archive.directory(uploadsDir, 'uploads');
     }
     archive.finalize();
+  }).catch((e) => {
+    console.error('mysqldump lib failed:', e);
+    return res.status(500).send('Backup failed');
   });
 });
 
