@@ -244,7 +244,12 @@ export default function AdminDashboard() {
             <TableBody>
               {users.map((u) => (
                 <TableRow key={u.user_id}>
-                  <TableCell>{u.username}</TableCell>
+                  <TableCell>
+                    <div>{u.username}</div>
+                    {u.student_id ? (
+                      <div className="text-xs text-gray-500">{u.student_id}</div>
+                    ) : null}
+                  </TableCell>
                   <TableCell>{u.role}</TableCell>
                   <TableCell>
                     <Button color="warning" onClick={() => handleEdit(u)}>
