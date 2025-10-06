@@ -180,7 +180,7 @@ export default function LoginForm() {
             </div>
 
             {/* Forgot Password only */}
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-center">
               <button
                 type="button"
                 className="text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200"
@@ -213,7 +213,7 @@ export default function LoginForm() {
                   }
                 }}
               >
-                Forgot password?
+                ลืมรหัสผ่าน?
               </button>
             </div>
 
@@ -231,7 +231,7 @@ export default function LoginForm() {
               ) : (
                 <div className="flex items-center justify-center space-x-2">
                   <LogIn className="w-5 h-5" />
-                  <span>Sign in</span>
+                  <span>เข้าสู่ระบบ</span>
                 </div>
               )}
             </button>
@@ -240,11 +240,11 @@ export default function LoginForm() {
           {/* Footer */}
           <div className="mt-8 text-center">
             <p className="text-sm text-gray-600">
-              Don't have an account?{' '}
+              ยังไม่มีบัญชีใช่ไหม?{' '}
               <button
                 onClick={() => navigate("/signup")}
                 className="text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200">
-                Sign up for free
+                ลงทะเบียนที่นี่
               </button>
 
             </p>
