@@ -121,25 +121,29 @@ router.get('/download/:fileId', (req, res) => {
       }
 
       // Log/download counters BEFORE sending file to guarantee counting
-      const userId = (req.user && req.user.id) ? req.user.id : null;
-      const tryInsertDownloads = (uid, did, attempt = 0) => {
-        const statements = [
-          'INSERT INTO downloads (user_id, document_id, downloaded_at) VALUES (?, ?, NOW())',
-          'INSERT INTO download (user_id, document_id, downloaded_at) VALUES (?, ?, NOW())'
-        ];
-        if (attempt >= statements.length) return;
-        db.query(statements[attempt], [uid, did], (dlErr) => {
+      const rawUserId = (req.user && req.user.id) ? parseInt(req.user.id, 10) : 0;
+      const safeUserId = Number.isFinite(rawUserId) && rawUserId > 0 ? rawUserId : 0;
+
+      const ensureDownloadsTableSql = `
+        CREATE TABLE IF NOT EXISTS downloads (
+          dowload_id INT AUTO_INCREMENT PRIMARY KEY,
+          user_id INT NOT NULL,
+          document_id INT NOT NULL,
+          downloaded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`;
+
+      const insertDownloadsSql = 'INSERT INTO downloads (user_id, document_id, downloaded_at) VALUES (?, ?, NOW())';
+
+      db.query(ensureDownloadsTableSql, (crtDlErr) => {
+        if (crtDlErr) {
+          console.warn('Ensure downloads table failed (non-fatal):', crtDlErr.message || crtDlErr);
+        }
+        db.query(insertDownloadsSql, [safeUserId, documentId], (dlErr) => {
           if (dlErr) {
-            // ถ้า user_id เป็น NOT NULL ให้ลองใส่ 0 แทน
-            if (uid == null) {
-              return tryInsertDownloads(0, did, attempt);
-            }
-            // ลองเปลี่ยนชื่อตาราง (downloads -> download)
-            return tryInsertDownloads(uid, did, attempt + 1);
+            console.warn('Log downloads failed (non-fatal):', dlErr.message || dlErr);
           }
         });
-      };
-      tryInsertDownloads(userId, documentId, 0);
+      });
 
       if (documentId) {
         db.query(
