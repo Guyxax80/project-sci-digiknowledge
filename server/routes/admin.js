@@ -187,10 +187,7 @@ router.get("/backup", (req, res) => {
   const tmpDir = path.join(__dirname, '..', 'tmp_backup');
   const sqlPath = path.join(tmpDir, 'backup.sql');
   const uploadsDir = path.join(__dirname, '..', 'uploads');
-  const zipPath = path.join(tmpDir, `backup_all_${Date.now()}.zip`);
-
   const fs = require('fs');
-  const archiver = require('archiver');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
   // ใช้ไลบรารี mysqldump (Node) แทนคำสั่งระบบ
@@ -204,28 +201,14 @@ router.get("/backup", (req, res) => {
     },
     dumpToFile: sqlPath,
   }).then(() => {
-    const output = fs.createWriteStream(zipPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
-
-    output.on('close', () => {
-      res.download(zipPath, (dlErr) => {
-        if (dlErr) console.warn('Download backup failed:', dlErr);
-        try { fs.unlinkSync(sqlPath); } catch (_) {}
-        try { fs.unlinkSync(zipPath); } catch (_) {}
-      });
-    });
-    archive.on('error', (zipErr) => {
-      console.error('Zip error:', zipErr);
+    // ส่งไฟล์ SQL โดยตรง (ไม่ต้อง zip) เพื่อหลีกเลี่ยงการพึ่งพา archiver
+    const downloadName = `backup_${Date.now()}.sql`;
+    res.download(sqlPath, downloadName, (dlErr) => {
+      if (dlErr) {
+        console.warn('Download backup failed:', dlErr);
+      }
       try { fs.unlinkSync(sqlPath); } catch (_) {}
-      return res.status(500).send('Zip failed');
     });
-
-    archive.pipe(output);
-    archive.file(sqlPath, { name: 'backup.sql' });
-    if (fs.existsSync(uploadsDir)) {
-      archive.directory(uploadsDir, 'uploads');
-    }
-    archive.finalize();
   }).catch((e) => {
     console.error('mysqldump lib failed:', e);
     return res.status(500).send('Backup failed');
