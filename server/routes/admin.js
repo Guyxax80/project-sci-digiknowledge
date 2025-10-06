@@ -81,9 +81,18 @@ router.put("/users/:user_id", (req, res) => {
       (chkErr, rows) => {
         if (chkErr) return res.status(500).json({ error: "DB error" });
         if (!rows || !rows.length) {
-          return res.status(400).json({ error: "Student ID ไม่พบในระบบ" });
+          // ถ้ายังไม่มีใน student_codes ให้เพิ่มให้อัตโนมัติ แล้วค่อยอัปเดตผู้ใช้
+          db.query(
+            "INSERT IGNORE INTO student_codes (student_id) VALUES (?)",
+            [student_id],
+            (insErr) => {
+              if (insErr) return res.status(500).json({ error: "DB error" });
+              updateUser();
+            }
+          );
+        } else {
+          updateUser();
         }
-        updateUser();
       }
     );
   } else {
