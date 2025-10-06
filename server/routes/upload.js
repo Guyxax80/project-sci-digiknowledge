@@ -51,10 +51,9 @@ router.post("/", upload.single("file"), (req, res) => {
   console.log("All body data:", req.body);
   console.log("===================");
 
-  if (!file) return res.status(400).json({ message: "กรุณาเลือกไฟล์" });
-
-  // แปลง path ให้เป็น / และลบ uploads/ prefix ออก
- const filePath = "/uploads/" + file.filename;
+  // หมายเหตุ: อนุญาตให้สร้างเอกสารได้แม้ไม่มีไฟล์หลัก (ไปอัปโหลดไฟล์รายส่วนภายหลัง)
+  // ถ้ามีไฟล์ จึงค่อยเตรียม path
+  const filePath = file ? ("/uploads/" + file.filename) : null;
 
   // 1️⃣ บันทึกข้อมูลเอกสาร (ข้อมูลที่กรอก)
   const sqlDoc = `
@@ -187,29 +186,34 @@ router.post("/", upload.single("file"), (req, res) => {
   };
 
     insertCategoryRelation(() => {
-      // 2️⃣ บันทึกข้อมูลไฟล์ (ข้อมูลไฟล์)
-    const sqlFile = `
-      INSERT INTO document_files
-      (document_id, file_path, original_name, file_type, section, uploaded_at)
-      VALUES (?, ?, ?, ?, ?, NOW())
-    `;
-    
-    const fileParams = [documentId, filePath, file.originalname, file.mimetype, section || 'main'];
-
-    console.log("=== FILE INSERT ===");
-    console.log("SQL:", sqlFile);
-    console.log("Params:", fileParams);
-    console.log("==================");
-
-    db.query(sqlFile, fileParams, (err2) => {
-      if (err2) {
-        console.error("DB error (document_files):", err2);
-        return res.status(500).json({ message: "เกิดข้อผิดพลาดในการบันทึกไฟล์" });
+      // กรณีไม่มีไฟล์หลัก ให้จบที่นี่
+      if (!file) {
+        console.log("No main file provided; skipping file insert");
+        return res.json({ message: "สร้างเอกสารสำเร็จ", documentId });
       }
 
-      console.log("File inserted successfully");
-      res.json({ message: "อัปโหลดสำเร็จ", documentId });
-    });
+      // 2️⃣ บันทึกข้อมูลไฟล์ (ข้อมูลไฟล์)
+      const sqlFile = `
+        INSERT INTO document_files
+        (document_id, file_path, original_name, file_type, section, uploaded_at)
+        VALUES (?, ?, ?, ?, ?, NOW())
+      `;
+      const fileParams = [documentId, filePath, file.originalname, file.mimetype, section || 'main'];
+
+      console.log("=== FILE INSERT ===");
+      console.log("SQL:", sqlFile);
+      console.log("Params:", fileParams);
+      console.log("==================");
+
+      db.query(sqlFile, fileParams, (err2) => {
+        if (err2) {
+          console.error("DB error (document_files):", err2);
+          return res.status(500).json({ message: "เกิดข้อผิดพลาดในการบันทึกไฟล์" });
+        }
+
+        console.log("File inserted successfully");
+        res.json({ message: "อัปโหลดสำเร็จ", documentId });
+      });
     });
   });
 });
