@@ -5,6 +5,24 @@ const path = require('path');
 const fs = require('fs');
 const mime = require('mime-types');
 
+// ป้องกัน double-count จากการกดซ้ำ/โหลดซ้ำเร็วๆ
+const recentDownloadMarks = new Map(); // key: `${fileId}:${ip}` -> timestamp
+function shouldCountDownloadOnce(fileId, ip) {
+  const key = `${fileId}:${ip || ''}`;
+  const now = Date.now();
+  const last = recentDownloadMarks.get(key) || 0;
+  if (now - last < 3000) return false; // ภายใน 3 วิ ไม่ให้นับซ้ำ
+  recentDownloadMarks.set(key, now);
+  // กำจัดข้อมูลเก่า
+  if (recentDownloadMarks.size > 1000) {
+    const cutoff = now - 60000;
+    for (const [k, ts] of recentDownloadMarks.entries()) {
+      if (ts < cutoff) recentDownloadMarks.delete(k);
+    }
+  }
+  return true;
+}
+
 // Route เล่นวิดีโอ
 // GET /files/video/:fileId
 router.get('/video/:fileId', (req, res) => {
@@ -120,41 +138,42 @@ router.get('/download/:fileId', (req, res) => {
         return res.status(404).send('ไม่พบไฟล์บนเซิร์ฟเวอร์');
       }
 
-      // นับยอดดาวน์โหลดแบบไม่มีตาราง downloads: อัปเดต documents และ document_files โดยตรง
-
-      if (documentId) {
-        db.query(
-          'UPDATE documents SET download_count = COALESCE(download_count, 0) + 1 WHERE document_id = ?',
-          [documentId],
-          (updErr) => {
-            if (updErr) console.warn('Update documents.download_count failed (non-fatal):', updErr.message || updErr);
-          }
-        );
-      }
-
-      // เพิ่มคอลัมน์ download_count ให้กับ document_files หากยังไม่มี แล้วอัปเดตนับต่อไฟล์
-      db.query('SHOW COLUMNS FROM document_files LIKE "download_count"', (colErr, colRows) => {
-        const ensureColumnAndUpdate = () => {
+      // นับยอดดาวน์โหลดเฉพาะเมื่อไม่นับซ้ำ (ภายใน 3 วินาทีต่อ IP/ไฟล์)
+      if (shouldCountDownloadOnce(fileId, req.ip)) {
+        if (documentId) {
           db.query(
-            'UPDATE document_files SET download_count = COALESCE(download_count, 0) + 1 WHERE document_file_id = ?',
-            [fileId],
-            (dfErr) => {
-              if (dfErr) console.warn('Update document_files.download_count failed (non-fatal):', dfErr.message || dfErr);
+            'UPDATE documents SET download_count = COALESCE(download_count, 0) + 1 WHERE document_id = ?',
+            [documentId],
+            (updErr) => {
+              if (updErr) console.warn('Update documents.download_count failed (non-fatal):', updErr.message || updErr);
             }
           );
-        };
-
-        if (!colErr && colRows && colRows.length > 0) {
-          return ensureColumnAndUpdate();
         }
-        db.query('ALTER TABLE document_files ADD COLUMN download_count INT NOT NULL DEFAULT 0', (altErr) => {
-          if (altErr) {
-            console.warn('Add document_files.download_count failed (non-fatal):', altErr.message || altErr);
-            return; // ไม่ block การดาวน์โหลด
+
+        // เพิ่มคอลัมน์ download_count ให้กับ document_files หากยังไม่มี แล้วอัปเดตนับต่อไฟล์
+        db.query('SHOW COLUMNS FROM document_files LIKE "download_count"', (colErr, colRows) => {
+          const ensureColumnAndUpdate = () => {
+            db.query(
+              'UPDATE document_files SET download_count = COALESCE(download_count, 0) + 1 WHERE document_file_id = ?',
+              [fileId],
+              (dfErr) => {
+                if (dfErr) console.warn('Update document_files.download_count failed (non-fatal):', dfErr.message || dfErr);
+              }
+            );
+          };
+
+          if (!colErr && colRows && colRows.length > 0) {
+            return ensureColumnAndUpdate();
           }
-          ensureColumnAndUpdate();
+          db.query('ALTER TABLE document_files ADD COLUMN download_count INT NOT NULL DEFAULT 0', (altErr) => {
+            if (altErr) {
+              console.warn('Add document_files.download_count failed (non-fatal):', altErr.message || altErr);
+              return; // ไม่ block การดาวน์โหลด
+            }
+            ensureColumnAndUpdate();
+          });
         });
-      });
+      }
 
       const downloadName = file.original_name || path.basename(fullPath) || 'file';
       res.download(fullPath, downloadName, (downloadErr) => {
