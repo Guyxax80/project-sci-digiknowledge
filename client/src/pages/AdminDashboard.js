@@ -1,26 +1,19 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import {
-  Button,
-  Card,
-  CardContent,
-  Typography,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-} from "@mui/material";
+import { Button, Card, CardContent, Typography, Table, TableBody, TableCell, TableHead, TableRow } from "@mui/material";
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState({});
-  const [form, setForm] = useState({ username: "", password: "", role: "" });
+  const [form, setForm] = useState({ username: "", password: "", role: "", student_id: "" });
   const [editingUser, setEditingUser] = useState(null);
+  const [studentCodes, setStudentCodes] = useState([]);
+  const [newCodesText, setNewCodesText] = useState("");
 
   useEffect(() => {
     fetchUsers();
     fetchStats();
+    fetchStudentCodes();
   }, []);
 
   // ดึงข้อมูลผู้ใช้งาน
@@ -40,6 +33,15 @@ export default function AdminDashboard() {
       setStats(res.data || {});
     } catch (err) {
       console.error("โหลดสถิติล้มเหลว", err);
+    }
+  };
+
+  const fetchStudentCodes = async () => {
+    try {
+      const res = await axios.get("http://localhost:3000/admin/student-codes");
+      setStudentCodes(res.data || []);
+    } catch (err) {
+      console.error("โหลด student codes ล้มเหลว", err);
     }
   };
 
@@ -63,7 +65,7 @@ export default function AdminDashboard() {
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", "backup_all.zip");
+      link.setAttribute("download", "backup.sql");
       document.body.appendChild(link);
       link.click();
     } catch (err) {
@@ -86,7 +88,7 @@ export default function AdminDashboard() {
       } else {
         await axios.post("http://localhost:3000/admin/users", form);
       }
-      setForm({ username: "", password: "", role: "" });
+      setForm({ username: "", password: "", role: "", student_id: "" });
       setEditingUser(null);
       fetchUsers();
     } catch (err) {
@@ -96,7 +98,7 @@ export default function AdminDashboard() {
 
   const handleEdit = (user) => {
     setEditingUser(user);
-    setForm({ username: user.username, password: "", role: user.role });
+    setForm({ username: user.username, password: "", role: user.role, student_id: user.student_id || "" });
   };
 
   return (
@@ -140,6 +142,7 @@ export default function AdminDashboard() {
             <option value="teacher">อาจารย์</option>
             <option value="admin">แอดมิน</option>
           </select>
+          {/* ไม่แก้ Student ID ตอนแก้ไขผู้ใช้ ตามคำขอ */}
         </div>
         <div className="flex gap-2 mt-2">
           <Button type="submit" variant="contained" color="primary">
@@ -161,7 +164,63 @@ export default function AdminDashboard() {
         </div>
       </form>
 
-      {/* ซ่อนการ์ดจำนวนผลงาน/ยอดดาวน์โหลด ตามที่ร้องขอ */}
+      {/* จัดการ Student Codes */}
+      <Card className="shadow-md">
+        <CardContent>
+          <Typography variant="h6" gutterBottom>จัดการรหัสนักศึกษา (student_codes)</Typography>
+          <div className="flex gap-2 mb-2">
+            <textarea
+              className="border p-2 rounded w-full"
+              rows={3}
+              placeholder={"วาง Student ID ได้หลายบรรทัด หรือคั่นด้วย ,"}
+              value={newCodesText}
+              onChange={(e) => setNewCodesText(e.target.value)}
+            />
+            <Button
+              variant="contained"
+              onClick={async () => {
+                try {
+                  const payload = { student_ids: newCodesText };
+                  await axios.post("http://localhost:3000/admin/student-codes", payload);
+                  setNewCodesText("");
+                  fetchStudentCodes();
+                } catch (err) {
+                  console.error("เพิ่ม student codes ล้มเหลว", err);
+                  alert("เพิ่มรหัสนักศึกษาไม่สำเร็จ");
+                }
+              }}
+            >เพิ่มรหัส</Button>
+          </div>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>ID</TableCell>
+                <TableCell>Student ID</TableCell>
+                <TableCell></TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {studentCodes.map((s) => (
+                <TableRow key={s.student_code_id}>
+                  <TableCell>{s.student_code_id}</TableCell>
+                  <TableCell>{s.student_id}</TableCell>
+                  <TableCell>
+                    <Button color="error" onClick={async () => {
+                      try {
+                        await axios.delete(`http://localhost:3000/admin/student-codes/${s.student_code_id}`);
+                        fetchStudentCodes();
+                      } catch (err) {
+                        console.error("ลบ student code ล้มเหลว", err);
+                        alert("ลบไม่สำเร็จ");
+                      }
+                    }}>ลบ</Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       {/* ปุ่มสำรองฐานข้อมูล */}
       <Button variant="contained" color="primary" onClick={backupDatabase}>
@@ -185,7 +244,12 @@ export default function AdminDashboard() {
             <TableBody>
               {users.map((u) => (
                 <TableRow key={u.user_id}>
-                  <TableCell>{u.username}</TableCell>
+                  <TableCell>
+                    <div>{u.username}</div>
+                    {u.student_id ? (
+                      <div className="text-xs text-gray-500">{u.student_id}</div>
+                    ) : null}
+                  </TableCell>
                   <TableCell>{u.role}</TableCell>
                   <TableCell>
                     <Button color="warning" onClick={() => handleEdit(u)}>

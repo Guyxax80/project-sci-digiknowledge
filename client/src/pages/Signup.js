@@ -7,7 +7,9 @@ export default function Signup() {
   const [formData, setFormData] = useState({
     username: "",
     student_id: "",
-    password: ""
+    password: "",
+    class_group: "",
+    level: ""
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -19,6 +21,7 @@ export default function Signup() {
     if (!formData.password) newErrors.password = "กรุณากรอกรหัสผ่าน";
     else if (formData.password.length < 4)
       newErrors.password = "รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร";
+    if (formData.level && isNaN(Number(formData.level))) newErrors.level = "ชั้นปีต้องเป็นตัวเลข";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -130,6 +133,38 @@ export default function Signup() {
               className="block w-full px-3 py-3 border rounded-xl shadow-sm border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500"
               placeholder="เช่น 6501234567"
             />
+          </div>
+
+          {/* Class Group */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">กลุ่มชั้นเรียน (class_group)</label>
+            <input
+              type="text"
+              value={formData.class_group}
+              onChange={(e) => handleInputChange("class_group", e.target.value)}
+              className="block w-full px-3 py-3 border rounded-xl shadow-sm border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="เช่น CS1, CS2"
+            />
+          </div>
+
+          {/* Level */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">ชั้นปี (level)</label>
+            <input
+              type="number"
+              value={formData.level}
+              onChange={(e) => handleInputChange("level", e.target.value)}
+              className={`block w-full px-3 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                errors.level ? "border-red-300 focus:ring-red-500" : "border-gray-300"
+              }`}
+              placeholder="เช่น 1, 2, 3, 4"
+              min="1"
+            />
+            {errors.level && (
+              <p className="mt-2 text-sm text-red-600 flex items-center space-x-1">
+                <AlertCircle className="w-4 h-4" /> <span>{errors.level}</span>
+              </p>
+            )}
           </div>
 
           <button

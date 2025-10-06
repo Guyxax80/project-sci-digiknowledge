@@ -7,7 +7,7 @@ const Navbar = ({ role }) => {
   const location = useLocation();
 
   return (
-    <nav className="bg-blue-700 text-white px-6 py-4 shadow fixed top-0 left-0 w-full z-50">
+  <nav className="bg-blue-700 text-white px-6 py-4 shadow sticky top-0 left-0 w-full z-50">
       <div className="container mx-auto flex flex-row items-center justify-between">
         <Link to="/" className="text-xl font-bold mr-8">
           SCI-DigiKnowledge

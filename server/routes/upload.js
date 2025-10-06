@@ -51,10 +51,9 @@ router.post("/", upload.single("file"), (req, res) => {
   console.log("All body data:", req.body);
   console.log("===================");
 
-  if (!file) return res.status(400).json({ message: "กรุณาเลือกไฟล์" });
-
-  // แปลง path ให้เป็น / และลบ uploads/ prefix ออก
- const filePath = "/uploads/" + file.filename;
+  // หมายเหตุ: อนุญาตให้สร้างเอกสารได้แม้ไม่มีไฟล์หลัก (ไปอัปโหลดไฟล์รายส่วนภายหลัง)
+  // ถ้ามีไฟล์ จึงค่อยเตรียม path
+  const filePath = file ? ("/uploads/" + file.filename) : null;
 
   // 1️⃣ บันทึกข้อมูลเอกสาร (ข้อมูลที่กรอก)
   const sqlDoc = `
@@ -123,7 +122,7 @@ router.post("/", upload.single("file"), (req, res) => {
             return cb();
           }
           if (selRows && selRows.length) return cb();
-          const sqlCat = 'INSERT INTO document_categories (document_id, categorie_id) VALUES (?, ?)';
+          const sqlCat = 'INSERT IGNORE INTO document_categories (document_id, categorie_id) VALUES (?, ?)';
           db.query(sqlCat, [documentId, catId], (insErr) => {
             if (insErr) console.error('DB error (insert relation):', insErr);
             return cb();
@@ -133,20 +132,42 @@ router.post("/", upload.single("file"), (req, res) => {
     };
 
     const ensureRelationByName = (name, cb) => {
-      db.query('SELECT categorie_id FROM categorie WHERE name = ? LIMIT 1', [name], (selErr, rows) => {
-        if (selErr) {
-          console.error('DB error (select categorie by name):', selErr);
-          return cb();
-        }
-        if (rows && rows.length) return ensureRelationById(rows[0].categorie_id, cb);
-        db.query('INSERT INTO categorie (name) VALUES (?)', [name], (insErr, insRes) => {
-          if (insErr) {
-            console.error('DB error (insert categorie):', insErr);
-            return cb();
+      // ลองทั้งสองตารางและสองชื่อคอลัมน์
+      const selectQueries = [
+        { sql: 'SELECT categorie_id AS id FROM categories WHERE name = ? LIMIT 1', table: 'categories' },
+        { sql: 'SELECT category_id AS id FROM categories WHERE name = ? LIMIT 1', table: 'categories' },
+        { sql: 'SELECT categorie_id AS id FROM categorie WHERE name = ? LIMIT 1', table: 'categorie' },
+        { sql: 'SELECT category_id AS id FROM categorie WHERE name = ? LIMIT 1', table: 'categorie' }
+      ];
+
+      const trySelect = (i = 0) => {
+        if (i >= selectQueries.length) return tryInsert(0);
+        const q = selectQueries[i];
+        db.query(q.sql, [name], (selErr, rows) => {
+          if (!selErr && rows && rows.length) {
+            return ensureRelationById(rows[0].id, cb);
           }
-          return ensureRelationById(insRes.insertId, cb);
+          return trySelect(i + 1);
         });
-      });
+      };
+
+      const insertQueries = [
+        { sql: 'INSERT INTO categories (name) VALUES (?)', table: 'categories' },
+        { sql: 'INSERT INTO categorie (name) VALUES (?)', table: 'categorie' }
+      ];
+
+      const tryInsert = (i = 0) => {
+        if (i >= insertQueries.length) return cb();
+        const q = insertQueries[i];
+        db.query(q.sql, [name], (insErr, insRes) => {
+          if (!insErr && insRes && insRes.insertId) {
+            return ensureRelationById(insRes.insertId, cb);
+          }
+          return tryInsert(i + 1);
+        });
+      };
+
+      trySelect(0);
     };
 
     const tasks = [];
@@ -165,29 +186,34 @@ router.post("/", upload.single("file"), (req, res) => {
   };
 
     insertCategoryRelation(() => {
-      // 2️⃣ บันทึกข้อมูลไฟล์ (ข้อมูลไฟล์)
-    const sqlFile = `
-      INSERT INTO document_files
-      (document_id, file_path, original_name, file_type, section, uploaded_at)
-      VALUES (?, ?, ?, ?, ?, NOW())
-    `;
-    
-    const fileParams = [documentId, filePath, file.originalname, file.mimetype, section || 'main'];
-
-    console.log("=== FILE INSERT ===");
-    console.log("SQL:", sqlFile);
-    console.log("Params:", fileParams);
-    console.log("==================");
-
-    db.query(sqlFile, fileParams, (err2) => {
-      if (err2) {
-        console.error("DB error (document_files):", err2);
-        return res.status(500).json({ message: "เกิดข้อผิดพลาดในการบันทึกไฟล์" });
+      // กรณีไม่มีไฟล์หลัก ให้จบที่นี่
+      if (!file) {
+        console.log("No main file provided; skipping file insert");
+        return res.json({ message: "สร้างเอกสารสำเร็จ", documentId });
       }
 
-      console.log("File inserted successfully");
-      res.json({ message: "อัปโหลดสำเร็จ", documentId });
-    });
+      // 2️⃣ บันทึกข้อมูลไฟล์ (ข้อมูลไฟล์)
+      const sqlFile = `
+        INSERT INTO document_files
+        (document_id, file_path, original_name, file_type, section, uploaded_at)
+        VALUES (?, ?, ?, ?, ?, NOW())
+      `;
+      const fileParams = [documentId, filePath, file.originalname, file.mimetype, section || 'main'];
+
+      console.log("=== FILE INSERT ===");
+      console.log("SQL:", sqlFile);
+      console.log("Params:", fileParams);
+      console.log("==================");
+
+      db.query(sqlFile, fileParams, (err2) => {
+        if (err2) {
+          console.error("DB error (document_files):", err2);
+          return res.status(500).json({ message: "เกิดข้อผิดพลาดในการบันทึกไฟล์" });
+        }
+
+        console.log("File inserted successfully");
+        res.json({ message: "อัปโหลดสำเร็จ", documentId });
+      });
     });
   });
 });

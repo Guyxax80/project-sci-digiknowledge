@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Button, Card, CardContent, Typography, CardActions } from "@mui/material";
-import Navbar from "../components/Navbar";
 
 const Home = () => {
   const navigate = useNavigate();
@@ -73,9 +72,8 @@ const Home = () => {
 
   return (
     <div>
-      <Navbar />
 
-      <div className="p-6 mt-16 max-w-7xl mx-auto">
+      <div className="p-6 max-w-7xl mx-auto">
         <Typography variant="h4" gutterBottom>
           ยินดีต้อนรับ{" "}
           {role === "student"
