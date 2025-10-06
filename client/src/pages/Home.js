@@ -150,8 +150,47 @@ const Home = () => {
               </Card>
             </div>
 
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>เอกสารยอดดาวน์โหลด</Typography>
+                <div className="space-y-2">
+                  {!stats.topDocuments || stats.topDocuments.length === 0 ? (
+                    <Typography color="text.secondary">ไม่มีข้อมูล</Typography>
+                  ) : (
+                    stats.topDocuments.map((d) => (
+                      <button
+                        key={d.document_id}
+                        className="w-full flex justify-between text-left text-sm hover:bg-gray-50 p-1 rounded"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`http://localhost:3000/api/admin/documents/${d.document_id}/file-downloads`);
+                            const files = await res.json();
+                            const list = files && files.length
+                              ? files.map(f => `${f.section || 'main'} - ${(f.original_name || 'file')} : ${f.download_count}`).join('\n')
+                              : 'ไม่มีไฟล์ที่มีการดาวน์โหลด';
+                            alert(`ไฟล์ของ: ${d.title}\n\n${list}`);
+                          } catch (e) {
+                            alert('โหลดข้อมูลไฟล์ไม่สำเร็จ');
+                          }
+                        }}
+                        title={d.title}
+                      >
+                        <span className="truncate max-w-[70%]">{d.title}</span>
+                        <span className="font-semibold">{d.download_count}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             <div>
-              <Button variant="contained" color="primary" onClick={() => navigate("/admin/users")}>
+              <Button
+                variant="contained"
+                color="primary"
+                component="a"
+                href="http://localhost:3001/admin"
+              >
                 จัดการผู้ใช้งาน
               </Button>
             </div>
@@ -162,7 +201,7 @@ const Home = () => {
         {(role === "student" || role === "teacher") && (
           <div>
             <Typography variant="h5" gutterBottom className="mb-4">
-              🌟 ผลงานยอดนิยม
+              🌟 ผลงานล่าสุด
             </Typography>
             
             {popularDocs.length === 0 ? (
