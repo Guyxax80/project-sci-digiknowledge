@@ -9,7 +9,7 @@ const q = util.promisify(db.query).bind(db);
 // 📌 ดึงผู้ใช้ทั้งหมด
 router.get("/users", (req, res) => {
   db.query(
-    "SELECT user_id, username, role, created_at FROM users",
+    "SELECT user_id, username, role, student_id, created_at FROM users",
     (err, result) => {
       if (err) return res.status(500).json({ error: "DB error" });
       res.json(result);
@@ -23,27 +23,96 @@ router.post("/users", (req, res) => {
   if (!username || !password || !role)
     return res.status(400).json({ error: "กรอกข้อมูลไม่ครบ" });
 
-  db.query(
-    "INSERT INTO users (username, student_id, password, role) VALUES (?, ?, ?, ?)",
-    [username, student_id || null, password, role],
-    (err, result) => {
-      if (err) return res.status(500).json({ error: "DB insert error" });
-      res.json({ message: "เพิ่มผู้ใช้สำเร็จ" });
-    }
-  );
+  const insertUser = () => {
+    db.query(
+      "INSERT INTO users (username, student_id, password, role) VALUES (?, ?, ?, ?)",
+      [username, student_id || null, password, role],
+      (err) => {
+        if (err) return res.status(500).json({ error: "DB insert error" });
+        res.json({ message: "เพิ่มผู้ใช้สำเร็จ" });
+      }
+    );
+  };
+
+  // หากกำหนด student_id หรือ role เป็น student ให้ตรวจสอบตาราง student_codes
+  if ((role === 'student' && !student_id)) {
+    return res.status(400).json({ error: "กรุณาระบุ Student ID สำหรับนักศึกษา" });
+  }
+  if (student_id) {
+    db.query(
+      "SELECT 1 FROM student_codes WHERE student_id = ? LIMIT 1",
+      [student_id],
+      (chkErr, rows) => {
+        if (chkErr) return res.status(500).json({ error: "DB error" });
+        if (!rows || !rows.length) {
+          return res.status(400).json({ error: "Student ID ไม่พบในระบบ" });
+        }
+        insertUser();
+      }
+    );
+  } else {
+    insertUser();
+  }
 });
 
 // 📌 แก้ไขผู้ใช้
 router.put("/users/:user_id", (req, res) => {
   const { user_id } = req.params;
-  const { username, role } = req.body;
+  const { username, role, student_id } = req.body;
 
+  // อ่านค่า student_id เดิม เพื่อไม่ให้ถูกลบทิ้งโดยไม่ได้ตั้งใจ
   db.query(
-    "UPDATE users SET username=?, role=? WHERE user_id=?",
-    [username, role, user_id],
-    (err, result) => {
-      if (err) return res.status(500).json({ error: "DB update error" });
-      res.json({ message: "อัปเดตผู้ใช้สำเร็จ" });
+    "SELECT student_id FROM users WHERE user_id = ? LIMIT 1",
+    [user_id],
+    (selErr, rows) => {
+      if (selErr) return res.status(500).json({ error: "DB error" });
+      if (!rows || !rows.length) return res.status(404).json({ error: "ไม่พบผู้ใช้" });
+      const currentStudentId = rows[0].student_id;
+
+      // ถ้า body ไม่ส่ง student_id มาเลย ให้คงค่าเดิม
+      const targetStudentId = (typeof student_id === 'undefined') ? currentStudentId : (student_id || null);
+
+      const doUpdate = (finalStudentId) => {
+        db.query(
+          "UPDATE users SET username=?, role=?, student_id=? WHERE user_id=?",
+          [username, role, finalStudentId, user_id],
+          (updErr) => {
+            if (updErr) return res.status(500).json({ error: "DB update error" });
+            res.json({ message: "อัปเดตผู้ใช้สำเร็จ" });
+          }
+        );
+      };
+
+      // ถ้า role เป็น student แต่ไม่มี student_id ทั้งใหม่และเดิม ให้แจ้งเตือน
+      if (role === 'student' && !targetStudentId) {
+        return res.status(400).json({ error: "กรุณาระบุ Student ID สำหรับนักศึกษา" });
+      }
+
+      // หากมีการส่ง student_id ใหม่มา และยังไม่มีใน student_codes ให้เพิ่มให้อัตโนมัติ
+      if (typeof student_id !== 'undefined' && student_id) {
+        db.query(
+          "SELECT 1 FROM student_codes WHERE student_id = ? LIMIT 1",
+          [student_id],
+          (chkErr, srows) => {
+            if (chkErr) return res.status(500).json({ error: "DB error" });
+            if (!srows || !srows.length) {
+              db.query(
+                "INSERT IGNORE INTO student_codes (student_id) VALUES (?)",
+                [student_id],
+                (insErr) => {
+                  if (insErr) return res.status(500).json({ error: "DB error" });
+                  doUpdate(student_id);
+                }
+              );
+            } else {
+              doUpdate(student_id);
+            }
+          }
+        );
+      } else {
+        // ไม่ได้แก้ student_id ให้ใช้ค่าเดิม
+        doUpdate(targetStudentId);
+      }
     }
   );
 });
@@ -191,8 +260,8 @@ router.get("/backup", (req, res) => {
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
   // ใช้ไลบรารี mysqldump (Node) แทนคำสั่งระบบ
-  const { dump } = require('mysqldump');
-  dump({
+  const mysqldump = require('mysqldump');
+  mysqldump({
     connection: {
       host: 'localhost',
       user: dbUser,
@@ -213,6 +282,65 @@ router.get("/backup", (req, res) => {
     console.error('mysqldump lib failed:', e);
     return res.status(500).send('Backup failed');
   });
+});
+
+// 📌 จัดการ student_codes
+// ดึงรายการรหัสนักศึกษา
+router.get("/student-codes", (req, res) => {
+  db.query(
+    "SELECT student_code_id, student_id FROM student_codes ORDER BY student_code_id DESC",
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: "DB error" });
+      return res.json(rows || []);
+    }
+  );
+});
+
+// เพิ่มรหัสนักศึกษา (รองรับหลายค่า คั่นด้วยบรรทัดใหม่หรือคอมมา)
+router.post("/student-codes", (req, res) => {
+  let { student_ids } = req.body;
+  if (!student_ids) return res.status(400).json({ error: "กรุณาระบุ Student ID" });
+
+  const normalize = (val) => {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') {
+      return val
+        .split(/[\n,]/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    }
+    return [];
+  };
+  const ids = normalize(student_ids);
+  if (ids.length === 0) return res.status(400).json({ error: "ไม่มี Student ID ที่เพิ่มได้" });
+
+  // ใช้ INSERT IGNORE เพื่อข้ามค่าซ้ำโดยไม่ error (ต้องมี UNIQUE ที่ student_id)
+  const placeholders = ids.map(() => "(?)").join(",");
+  db.query(
+    `INSERT IGNORE INTO student_codes (student_id) VALUES ${placeholders}`,
+    ids,
+    (err, result) => {
+      if (err) {
+        console.error("insert student_codes error:", err);
+        return res.status(500).json({ error: "เพิ่มรหัสนักศึกษาไม่สำเร็จ" });
+      }
+      // result.affectedRows = จำนวนที่เพิ่มจริง (ไม่รวมที่ถูก ignore)
+      return res.json({ success: true, inserted: result.affectedRows, totalSubmitted: ids.length });
+    }
+  );
+});
+
+// ลบรหัสนักศึกษา
+router.delete("/student-codes/:student_code_id", (req, res) => {
+  const { student_code_id } = req.params;
+  db.query(
+    "DELETE FROM student_codes WHERE student_code_id = ?",
+    [student_code_id],
+    (err) => {
+      if (err) return res.status(500).json({ error: "DB delete error" });
+      return res.json({ success: true });
+    }
+  );
 });
 
 module.exports = router;

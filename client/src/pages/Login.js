@@ -7,7 +7,6 @@ export default function LoginForm() {
   const [formData, setFormData] = useState({
     username: '',
     password: '',
-    rememberMe: false,
   });
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
@@ -63,7 +62,7 @@ export default function LoginForm() {
   // Redirect ตาม role
   setTimeout(() => {
     setLoginSuccess(false);
-    if (data.role === "admin") navigate("/home");
+    if (data.role === "admin") navigate("/admin");
     else if (data.role === "student") navigate("/home");
     else if (data.role === "teacher") navigate("/home");
     else navigate("/");
@@ -87,7 +86,7 @@ export default function LoginForm() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-yellow-200 to-yellow-400 mt-10">
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-yellow-200 to-yellow-400 ">
       <div className="bg-yellow-200 p-6 rounded-3xl shadow-2xl w-full max-w-md flex flex-col items-center justify-center border-4 border-yellow-400">
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100 w-full">
           {/* Header */}
@@ -180,25 +179,41 @@ export default function LoginForm() {
               )}
             </div>
 
-            {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  type="checkbox"
-                  checked={formData.rememberMe}
-                  onChange={(e) => handleInputChange('rememberMe', e.target.checked)}
-                  className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="remember-me" className="ml-2 text-sm text-gray-700">
-                  Remember me
-                </label>
-              </div>
+            {/* Forgot Password only */}
+            <div className="flex items-center justify-center">
               <button
                 type="button"
                 className="text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200"
+                onClick={async () => {
+                  const username = prompt('ระบุชื่อผู้ใช้เพื่อรีเซ็ตรหัสผ่าน');
+                  if (!username) return;
+                  try {
+                    const res = await fetch('http://localhost:3000/api/auth/forgot-password', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ username })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) return alert(data.message || 'ส่งรหัสรีเซ็ตไม่สำเร็จ');
+                    const code = prompt(`กรอกรหัส OTP ที่ได้รับ (เดโม: ${data.code})`);
+                    if (!code) return;
+                    const newPass = prompt('กรอกรหัสผ่านใหม่');
+                    if (!newPass) return;
+                    const res2 = await fetch('http://localhost:3000/api/auth/reset-password', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ username, code, new_password: newPass })
+                    });
+                    const data2 = await res2.json();
+                    if (!res2.ok || !data2.success) return alert(data2.message || 'รีเซ็ตไม่สำเร็จ');
+                    alert('รีเซ็ตรหัสผ่านสำเร็จ ลองเข้าสู่ระบบใหม่');
+                  } catch (e) {
+                    console.error(e);
+                    alert('เกิดข้อผิดพลาด');
+                  }
+                }}
               >
-                Forgot password?
+                ลืมรหัสผ่าน?
               </button>
             </div>
 
@@ -216,7 +231,7 @@ export default function LoginForm() {
               ) : (
                 <div className="flex items-center justify-center space-x-2">
                   <LogIn className="w-5 h-5" />
-                  <span>Sign in</span>
+                  <span>เข้าสู่ระบบ</span>
                 </div>
               )}
             </button>
@@ -225,11 +240,11 @@ export default function LoginForm() {
           {/* Footer */}
           <div className="mt-8 text-center">
             <p className="text-sm text-gray-600">
-              Don't have an account?{' '}
+              ยังไม่มีบัญชีใช่ไหม?{' '}
               <button
                 onClick={() => navigate("/signup")}
                 className="text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200">
-                Sign up for free
+                ลงทะเบียนที่นี่
               </button>
 
             </p>

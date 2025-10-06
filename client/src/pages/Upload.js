@@ -8,7 +8,7 @@ const UploadDocument = () => {
   const [keywords, setKeywords] = useState("");
   const [academicYear, setAcademicYear] = useState("");
   const [academicYearDate, setAcademicYearDate] = useState("");
-  const [file, setFile] = useState(null);
+  // ไม่ต้องอัปโหลดไฟล์หลัก
   const [isDraft, setIsDraft] = useState(false);
   // ดึง userId จาก localStorage (ต้องมีตอนล็อกอิน)
 
@@ -43,14 +43,13 @@ const UploadDocument = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title || !file) return alert("กรุณากรอกชื่อเอกสารและเลือกไฟล์");
+    if (!title) return alert("กรุณากรอกชื่อเอกสาร");
     const storedUserId = localStorage.getItem("userId");
     if (!storedUserId) return alert("กรุณา login ก่อนอัปโหลด");
 
     try {
-      // ส่ง multipart เพียงครั้งเดียวให้ตรงกับ server: /api/upload (upload.single("file"))
+      // ส่ง multipart ไปสร้างเอกสาร (ไม่ต้องมีไฟล์หลัก)
       const formData = new FormData();
-      formData.append("file", file);
       formData.append("title", title);
       formData.append("keywords", keywords);
       formData.append("academic_year", academicYear);
@@ -66,7 +65,6 @@ const UploadDocument = () => {
       console.log("User ID:", storedUserId);
       console.log("Status:", isDraft ? "draft" : "published");
       console.log("Categorie IDs:", selectedCategoryIds);
-      console.log("File name:", file.name);
       console.log("====================");
 
       const response = await axios.post("http://localhost:3000/api/upload", formData, {
@@ -100,7 +98,7 @@ const UploadDocument = () => {
         }
       }
 
-      alert("อัปโหลดเอกสารและไฟล์สำเร็จ");
+      alert("อัปโหลดเอกสารสำเร็จ");
 
       // เคลียร์ฟอร์ม
       setTitle("");
@@ -108,7 +106,6 @@ const UploadDocument = () => {
       setKeywords("");
       setAcademicYear("");
       setAcademicYearDate("");
-      setFile(null);
       setIsDraft(false);
       setCoverFile(null);
       setAbstractFile(null);
@@ -195,17 +192,8 @@ const UploadDocument = () => {
             <span className="text-sm text-gray-600 mt-1">เลือกปี (พ.ศ.): {academicYear}</span>
           )}
         </div>
-        <div className="mt-2">
-          <p className="font-semibold mb-2">ไฟล์หลักของเอกสาร</p>
-          <input
-            type="file"
-            onChange={(e) => setFile(e.target.files[0])}
-            required
-          />
-        </div>
-
         <hr className="my-2" />
-        <h3 className="text-xl font-bold">อัปโหลดไฟล์รายส่วน (อัปโหลดเฉพาะที่มี)</h3>
+        <h3 className="text-xl font-bold">อัปโหลดไฟล์รายส่วน</h3>
 
         <div className="grid grid-cols-1 gap-3">
           <label className="flex flex-col">
