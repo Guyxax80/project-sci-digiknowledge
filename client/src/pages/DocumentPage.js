@@ -111,7 +111,7 @@ const DocumentPage = () => {
                 >
                   ดูรายละเอียด
                 </button>
-                <a
+                {/*<a
                   href={`http://localhost:3000/${doc.file_path}`}
                   download
                   target="_blank"
@@ -119,7 +119,7 @@ const DocumentPage = () => {
                   className="inline-block bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition-colors duration-200"
                 >
                   ดาวน์โหลดไฟล์
-                </a>
+                </a>}*/}
               </div>
             </div>
           ))}

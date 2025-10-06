@@ -2,6 +2,10 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 const bcrypt = require("bcrypt");
+const util = require("util");
+
+// Promisify db.query for async/await usage
+const query = util.promisify(db.query).bind(db);
 
 router.post("/", async (req, res) => {
   const { username, student_id, password } = req.body;
@@ -12,8 +16,8 @@ router.post("/", async (req, res) => {
 
   try {
     // ตรวจสอบ username ซ้ำ
-    const [existingUser] = await db.query("SELECT * FROM users WHERE username = ?", [username]);
-    if (existingUser.length > 0) {
+    const existingUsers = await query("SELECT * FROM users WHERE username = ?", [username]);
+    if (existingUsers.length > 0) {
       return res.status(400).json({ success: false, message: "ชื่อผู้ใช้นี้ถูกใช้แล้ว" });
     }
 
@@ -27,15 +31,15 @@ router.post("/", async (req, res) => {
     let validStudentId = null;
 
     if (student_id) {
-      const [studentRow] = await db.query("SELECT * FROM student_codes WHERE student_id = ?", [student_id]);
-      if (studentRow.length > 0) {
+      const studentRows = await query("SELECT * FROM student_codes WHERE student_id = ?", [student_id]);
+      if (studentRows.length > 0) {
         role = "student";
         validStudentId = student_id;
       }
     }
 
     // บันทึกลงฐานข้อมูล
-    await db.query(
+    await query(
       "INSERT INTO users (username, student_id, password, role) VALUES (?, ?, ?, ?)",
       [username, validStudentId, hashedPassword, role]
     );
