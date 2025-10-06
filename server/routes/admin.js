@@ -142,6 +142,16 @@ router.get("/stats", async (req, res) => {
     `);
     stats.topFiles = topFiles || [];
 
+    // เอกสารยอดดาวน์โหลด (ตาม documents.download_count)
+    const topDocuments = await q(`
+      SELECT document_id, title, COALESCE(download_count, 0) AS download_count
+      FROM documents
+      WHERE COALESCE(download_count, 0) > 0
+      ORDER BY download_count DESC, uploaded_at DESC
+      LIMIT 20
+    `);
+    stats.topDocuments = topDocuments || [];
+
     return res.json(stats);
   } catch (err) {
     console.error("Admin stats error:", err);
