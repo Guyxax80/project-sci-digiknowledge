@@ -58,14 +58,36 @@ router.get("/me", authenticateToken, async (req, res) => {
 
 // ===================== Forgot/Reset Password =====================
 // ส่งโค้ดรีเซ็ตรหัสผ่าน (OTP 6 หลัก) ไปยังผู้ใช้ (เดโม: ส่งกลับใน response)
-router.post("/forgot-password", (req, res) => {
+router.post("/forgot-password", async (req, res) => {
   const { username } = req.body || {};
-  if (!username) return res.status(400).json({ success: false, message: "กรุณาระบุชื่อผู้ใช้" });
+  if (!username) {
+    return res.status(400).json({ success: false, message: "กรุณาระบุชื่อผู้ใช้" });
+  }
 
-  db.query("SELECT user_id FROM users WHERE username = ? LIMIT 1", [username], (err, rows) => {
-    if (err) return res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดในระบบ" });
-    if (!rows || !rows.length) return res.status(404).json({ success: false, message: "ไม่พบผู้ใช้" });
-    const userId = rows[0].user_id;
+  try {
+    // รองรับค้นหาทั้งตาม username หรือ student_id กรณีผู้ใช้กรอกรหัสนักศึกษา
+    let users;
+    try {
+      users = await query(
+        "SELECT user_id FROM users WHERE username = ? OR student_id = ? LIMIT 1",
+        [username, username]
+      );
+    } catch (e) {
+      // เผื่อกรณีไม่มีคอลัมน์ student_id
+      if (e && e.code === 'ER_BAD_FIELD_ERROR') {
+        users = await query(
+          "SELECT user_id FROM users WHERE username = ? LIMIT 1",
+          [username]
+        );
+      } else {
+        throw e;
+      }
+    }
+
+    if (!users || users.length === 0) {
+      return res.status(404).json({ success: false, message: "ไม่พบผู้ใช้" });
+    }
+    const userId = users[0].user_id;
 
     const createSql = `
       CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -77,21 +99,21 @@ router.post("/forgot-password", (req, res) => {
         INDEX (token)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`;
 
-    db.query(createSql, (cErr) => {
-      if (cErr) return res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดในระบบ" });
-      const token = (Math.floor(100000 + Math.random() * 900000)).toString();
-      const expires = new Date(Date.now() + 15 * 60 * 1000);
-      db.query(
-        "INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)",
-        [userId, token, expires],
-        (iErr) => {
-          if (iErr) return res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดในระบบ" });
-          // เดโม: ส่ง code กลับ (จริงควรส่งอีเมล/ช่องทางอื่น)
-          return res.json({ success: true, message: "ส่งรหัสรีเซ็ตสำเร็จ", code: token });
-        }
-      );
-    });
-  });
+    await query(createSql);
+
+    const token = (Math.floor(100000 + Math.random() * 900000)).toString();
+    const expires = new Date(Date.now() + 15 * 60 * 1000);
+    await query(
+      "INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)",
+      [userId, token, expires]
+    );
+
+    // เดโม: ส่ง code กลับ (จริงควรส่งอีเมล/ช่องทางอื่น)
+    return res.json({ success: true, message: "ส่งรหัสรีเซ็ตสำเร็จ", code: token });
+  } catch (err) {
+    console.error("forgot-password error:", err);
+    return res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดในระบบ" });
+  }
 });
 
 // รีเซ็ตรหัสผ่าน
