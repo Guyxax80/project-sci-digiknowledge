@@ -159,6 +159,24 @@ router.get("/stats", async (req, res) => {
   }
 });
 
+// GET /api/admin/documents/:documentId/file-downloads - ไฟล์ของเอกสารและยอดดาวน์โหลดต่อไฟล์ (>0)
+router.get("/documents/:documentId/file-downloads", async (req, res) => {
+  try {
+    const documentId = req.params.documentId;
+    const rows = await q(
+      `SELECT document_file_id, section, original_name, COALESCE(download_count, 0) AS download_count
+       FROM document_files
+       WHERE document_id = ? AND COALESCE(download_count, 0) > 0
+       ORDER BY download_count DESC, document_file_id ASC`,
+      [documentId]
+    );
+    return res.json(rows || []);
+  } catch (err) {
+    console.error("Admin file downloads error:", err);
+    return res.status(500).json({ error: "DB error" });
+  }
+});
+
 // 📌 สำรองฐานข้อมูล (mysqldump)
 router.get("/backup", (req, res) => {
   const backupPath = path.join(__dirname, "../backup.sql");

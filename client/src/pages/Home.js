@@ -158,12 +158,26 @@ const Home = () => {
                     <Typography color="text.secondary">ไม่มีข้อมูล</Typography>
                   ) : (
                     stats.topDocuments.map((d) => (
-                      <div key={d.document_id} className="flex justify-between text-sm">
-                        <span className="truncate max-w-[70%]" title={d.title}>
-                          {d.title}
-                        </span>
+                      <button
+                        key={d.document_id}
+                        className="w-full flex justify-between text-left text-sm hover:bg-gray-50 p-1 rounded"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`http://localhost:3000/api/admin/documents/${d.document_id}/file-downloads`);
+                            const files = await res.json();
+                            const list = files && files.length
+                              ? files.map(f => `${f.section || 'main'} - ${(f.original_name || 'file')} : ${f.download_count}`).join('\n')
+                              : 'ไม่มีไฟล์ที่มีการดาวน์โหลด';
+                            alert(`ไฟล์ของ: ${d.title}\n\n${list}`);
+                          } catch (e) {
+                            alert('โหลดข้อมูลไฟล์ไม่สำเร็จ');
+                          }
+                        }}
+                        title={d.title}
+                      >
+                        <span className="truncate max-w-[70%]">{d.title}</span>
                         <span className="font-semibold">{d.download_count}</span>
-                      </div>
+                      </button>
                     ))
                   )}
                 </div>
