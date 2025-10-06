@@ -33,13 +33,21 @@ router.get('/recommended', (req, res) => {
       d.uploaded_at,
       d.status,
       d.user_id,
-      d.download_count,
-      COALESCE(GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', '), '') AS category_names
+      (COALESCE(d.download_count, 0) + COALESCE(fd.file_downloads, 0)) AS download_count,
+      COALESCE(cat.category_names, '') AS category_names
     FROM documents d
-    LEFT JOIN document_categories dc ON dc.document_id = d.document_id
-    LEFT JOIN categories c ON c.categorie_id = dc.categorie_id
-    GROUP BY d.document_id, d.title, d.keywords, d.academic_year, d.uploaded_at, d.status, d.user_id, d.download_count
-    ORDER BY d.download_count DESC, d.uploaded_at DESC
+    LEFT JOIN (
+      SELECT document_id, SUM(download_count) AS file_downloads
+      FROM document_files
+      GROUP BY document_id
+    ) fd ON fd.document_id = d.document_id
+    LEFT JOIN (
+      SELECT dc.document_id, GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names
+      FROM document_categories dc
+      JOIN categories c ON c.categorie_id = dc.categorie_id
+      GROUP BY dc.document_id
+    ) cat ON cat.document_id = d.document_id
+    ORDER BY download_count DESC, d.uploaded_at DESC
     LIMIT 6
   `;
   
