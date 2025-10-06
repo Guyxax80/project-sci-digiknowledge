@@ -197,6 +197,34 @@ export default function LoginForm() {
               <button
                 type="button"
                 className="text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200"
+                onClick={async () => {
+                  const username = prompt('ระบุชื่อผู้ใช้เพื่อรีเซ็ตรหัสผ่าน');
+                  if (!username) return;
+                  try {
+                    const res = await fetch('http://localhost:3000/api/auth/forgot-password', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ username })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) return alert(data.message || 'ส่งรหัสรีเซ็ตไม่สำเร็จ');
+                    const code = prompt(`กรอกรหัส OTP ที่ได้รับ (เดโม: ${data.code})`);
+                    if (!code) return;
+                    const newPass = prompt('กรอกรหัสผ่านใหม่');
+                    if (!newPass) return;
+                    const res2 = await fetch('http://localhost:3000/api/auth/reset-password', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ username, code, new_password: newPass })
+                    });
+                    const data2 = await res2.json();
+                    if (!res2.ok || !data2.success) return alert(data2.message || 'รีเซ็ตไม่สำเร็จ');
+                    alert('รีเซ็ตรหัสผ่านสำเร็จ ลองเข้าสู่ระบบใหม่');
+                  } catch (e) {
+                    console.error(e);
+                    alert('เกิดข้อผิดพลาด');
+                  }
+                }}
               >
                 Forgot password?
               </button>

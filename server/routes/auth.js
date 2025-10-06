@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+const express = require("express");
+const router = express.Router();
 const db = require("../db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
@@ -54,8 +56,8 @@ router.get("/me", authenticateToken, async (req, res) => {
 });
 
 
-module.exports = router;
- 
+// (module export moved to bottom)
+
 // ===================== Forgot/Reset Password =====================
 // ส่งโค้ดรีเซ็ตรหัสผ่าน (OTP 6 หลัก) ไปยังผู้ใช้ (เดโม: ส่งกลับใน response)
 router.post("/forgot-password", (req, res) => {
