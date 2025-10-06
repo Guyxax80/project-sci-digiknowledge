@@ -3,6 +3,8 @@ const router = express.Router();
 const db = require("../db"); // ใช้ connection MySQL
 const { exec } = require("child_process");
 const path = require("path");
+const util = require("util");
+const q = util.promisify(db.query).bind(db);
 
 // 📌 ดึงผู้ใช้ทั้งหมด
 router.get("/users", (req, res) => {
@@ -57,59 +59,80 @@ router.delete("/users/:user_id", (req, res) => {
 });
 
 // 📌 ดึงสถิติ
-router.get("/stats", (req, res) => {
-  const stats = {};
-  db.query("SELECT COUNT(*) AS total FROM users", (e1, r1) => {
-    if (e1) return res.status(500).json({ error: "DB error" });
-    stats.users = r1[0]?.total || 0;
+router.get("/stats", async (req, res) => {
+  try {
+    const stats = {};
 
-    db.query("SELECT COUNT(*) AS total FROM documents", (e2, r2) => {
-      if (e2) return res.status(500).json({ error: "DB error" });
-      stats.documents = r2[0]?.total || 0;
+    // รวมจำนวนผู้ใช้/เอกสาร/ดาวน์โหลด (ดาวน์โหลดล้มเหลวถือเป็น 0)
+    const usersRows = await q("SELECT COUNT(*) AS total FROM users");
+    stats.users = usersRows[0]?.total || 0;
 
-      db.query("SELECT COUNT(*) AS total FROM downloads", (e3, r3) => {
-        if (e3) return res.status(500).json({ error: "DB error" });
-        stats.downloads = r3[0]?.total || 0;
+    const docRows = await q("SELECT COUNT(*) AS total FROM documents");
+    stats.documents = docRows[0]?.total || 0;
 
-        // ยอดอัปโหลดรายวัน 7 วันล่าสุด
-        const uploadsSql = `
-          SELECT DATE(uploaded_at) AS day, COUNT(*) AS count
+    try {
+      const dlRows = await q("SELECT COUNT(*) AS total FROM downloads");
+      stats.downloads = dlRows[0]?.total || 0;
+    } catch (_) {
+      stats.downloads = 0;
+    }
+
+    // อัปโหลด 7 วันล่าสุด — ลอง uploaded_at ก่อน, ถ้าไม่มีใช้ created_at
+    let uploadsRows = [];
+    try {
+      uploadsRows = await q(`
+        SELECT DATE(uploaded_at) AS day, COUNT(*) AS count
+        FROM documents
+        WHERE uploaded_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+        GROUP BY DATE(uploaded_at)
+        ORDER BY day ASC`);
+    } catch (_) {
+      try {
+        uploadsRows = await q(`
+          SELECT DATE(created_at) AS day, COUNT(*) AS count
           FROM documents
-          WHERE uploaded_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-          GROUP BY DATE(uploaded_at)
-          ORDER BY day ASC`;
+          WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+          GROUP BY DATE(created_at)
+          ORDER BY day ASC`);
+      } catch (_) {
+        uploadsRows = [];
+      }
+    }
+    stats.uploadsLast7Days = uploadsRows || [];
 
-        db.query(uploadsSql, (e4, r4) => {
-          if (e4) return res.status(500).json({ error: "DB error" });
-          stats.uploadsLast7Days = r4 || [];
+    // หมวดหมู่ยอดนิยม — รองรับทั้ง categories/categorie และ (categorie_id/category_id)
+    const catQueries = [
+      `SELECT c.name AS category, COUNT(*) AS count
+       FROM document_categories dc JOIN categories c ON c.categorie_id = dc.categorie_id
+       GROUP BY c.name ORDER BY count DESC LIMIT 5`,
+      `SELECT c.name AS category, COUNT(*) AS count
+       FROM document_categories dc JOIN categories c ON c.category_id = dc.category_id
+       GROUP BY c.name ORDER BY count DESC LIMIT 5`,
+      `SELECT c.name AS category, COUNT(*) AS count
+       FROM document_categories dc JOIN categorie c ON c.categorie_id = dc.categorie_id
+       GROUP BY c.name ORDER BY count DESC LIMIT 5`,
+      `SELECT c.name AS category, COUNT(*) AS count
+       FROM document_categories dc JOIN categorie c ON c.category_id = dc.category_id
+       GROUP BY c.name ORDER BY count DESC LIMIT 5`
+    ];
+    let topCategories = [];
+    for (const sql of catQueries) {
+      try {
+        const rows = await q(sql);
+        if (rows && rows.length) { topCategories = rows; break; }
+      } catch (_) {}
+    }
+    stats.topCategories = topCategories;
 
-          // เอกสารตามหมวดหมู่ Top 5
-          const byCatSql = `
-            SELECT c.name AS category, COUNT(*) AS count
-            FROM document_categories dc
-            JOIN categories c ON c.categorie_id = dc.categorie_id
-            GROUP BY c.name
-            ORDER BY count DESC
-            LIMIT 5`;
+    // ผู้ใช้ตามบทบาท
+    const roleRows = await q("SELECT role, COUNT(*) AS count FROM users GROUP BY role");
+    stats.usersByRole = roleRows || [];
 
-          db.query(byCatSql, (e5, r5) => {
-            if (e5) return res.status(500).json({ error: "DB error" });
-            stats.topCategories = r5 || [];
-
-            // ผู้ใช้ตามบทบาท
-            db.query(
-              "SELECT role, COUNT(*) AS count FROM users GROUP BY role",
-              (e6, r6) => {
-                if (e6) return res.status(500).json({ error: "DB error" });
-                stats.usersByRole = r6 || [];
-                return res.json(stats);
-              }
-            );
-          });
-        });
-      });
-    });
-  });
+    return res.json(stats);
+  } catch (err) {
+    console.error("Admin stats error:", err);
+    return res.status(500).json({ error: "DB error" });
+  }
 });
 
 // 📌 สำรองฐานข้อมูล (mysqldump)

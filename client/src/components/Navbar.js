@@ -24,7 +24,7 @@ const Navbar = ({ role }) => {
             </Link>
           )}
 
-          <Link to={token ? "/document/1" : "/login"} className={`hover:underline ${!token ? "opacity-60 cursor-not-allowed" : ""}`} onClick={(e) => { if (!token) e.preventDefault(); }}>
+          <Link to={token ? "/document" : "/login"} className={`hover:underline ${!token ? "opacity-60 cursor-not-allowed" : ""}`} onClick={(e) => { if (!token) e.preventDefault(); }}>
             เอกสารทั้งหมด
           </Link>
           <Link to={token ? "/profile" : "/login"} className={`hover:underline ${!token ? "opacity-60 cursor-not-allowed" : ""}`} onClick={(e) => { if (!token) e.preventDefault(); }}>

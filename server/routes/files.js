@@ -5,6 +5,24 @@ const path = require('path');
 const fs = require('fs');
 const mime = require('mime-types');
 
+// ป้องกัน double-count จากการกดซ้ำ/โหลดซ้ำเร็วๆ
+const recentDownloadMarks = new Map(); // key: `${fileId}:${ip}` -> timestamp
+function shouldCountDownloadOnce(fileId, ip) {
+  const key = `${fileId}:${ip || ''}`;
+  const now = Date.now();
+  const last = recentDownloadMarks.get(key) || 0;
+  if (now - last < 3000) return false; // ภายใน 3 วิ ไม่ให้นับซ้ำ
+  recentDownloadMarks.set(key, now);
+  // กำจัดข้อมูลเก่า
+  if (recentDownloadMarks.size > 1000) {
+    const cutoff = now - 60000;
+    for (const [k, ts] of recentDownloadMarks.entries()) {
+      if (ts < cutoff) recentDownloadMarks.delete(k);
+    }
+  }
+  return true;
+}
+
 // Route เล่นวิดีโอ
 // GET /files/video/:fileId
 router.get('/video/:fileId', (req, res) => {
@@ -88,7 +106,7 @@ router.get('/download/:fileId', (req, res) => {
   const fileId = req.params.fileId;
 
   db.query(
-    'SELECT file_path, original_name FROM document_files WHERE document_file_id = ?',
+    'SELECT document_id, file_path, original_name FROM document_files WHERE document_file_id = ?',
     [fileId],
     (err, results) => {
       if (err) {
@@ -98,6 +116,7 @@ router.get('/download/:fileId', (req, res) => {
       if (!results.length) return res.status(404).send('ไม่พบไฟล์');
 
       const file = results[0];
+      const documentId = file.document_id;
 
       // Normalize path like above
       const storedPath = String(file.file_path || '').replace(/\\/g, '/').replace(/^\.\/?/, '');
@@ -117,6 +136,19 @@ router.get('/download/:fileId', (req, res) => {
 
       if (!fs.existsSync(fullPath)) {
         return res.status(404).send('ไม่พบไฟล์บนเซิร์ฟเวอร์');
+      }
+
+      // นับยอดดาวน์โหลดเฉพาะเมื่อไม่นับซ้ำ (ภายใน 3 วินาทีต่อ IP/ไฟล์) และนับเฉพาะที่ documents เท่านั้น
+      if (shouldCountDownloadOnce(fileId, req.ip)) {
+        if (documentId) {
+          db.query(
+            'UPDATE documents SET download_count = COALESCE(download_count, 0) + 1 WHERE document_id = ?',
+            [documentId],
+            (updErr) => {
+              if (updErr) console.warn('Update documents.download_count failed (non-fatal):', updErr.message || updErr);
+            }
+          );
+        }
       }
 
       const downloadName = file.original_name || path.basename(fullPath) || 'file';
