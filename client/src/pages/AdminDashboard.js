@@ -142,18 +142,7 @@ export default function AdminDashboard() {
             <option value="teacher">อาจารย์</option>
             <option value="admin">แอดมิน</option>
           </select>
-
-          <select
-            className="border p-2 w-full"
-            value={form.student_id}
-            onChange={(e) => setForm({ ...form, student_id: e.target.value })}
-            disabled={form.role !== 'student'}
-          >
-            <option value="">-- เลือก Student ID (เฉพาะนักศึกษา) --</option>
-            {studentCodes.map((s) => (
-              <option key={s.student_id} value={s.student_id}>{s.student_id}</option>
-            ))}
-          </select>
+          {/* ไม่แก้ Student ID ตอนแก้ไขผู้ใช้ ตามคำขอ */}
         </div>
         <div className="flex gap-2 mt-2">
           <Button type="submit" variant="contained" color="primary">
