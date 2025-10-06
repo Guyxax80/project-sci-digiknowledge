@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Button, Card, CardContent, Typography } from "@mui/material";
-import Navbar from "../components/Navbar";
 
 const TeacherDashboard = () => {
   const navigate = useNavigate();
@@ -23,9 +22,8 @@ const TeacherDashboard = () => {
 
   return (
     <div>
-      <Navbar />
 
-      <div className="p-6 mt-16">
+      <div className="p-6">
         <Typography variant="h4" gutterBottom>
           แดชบอร์ดครู
         </Typography>

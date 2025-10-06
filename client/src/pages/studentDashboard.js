@@ -1,31 +1,51 @@
-import React from "react";
-import { Link } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
+import { Button, Card, CardContent, Typography } from "@mui/material";
 
-const Navbar = () => {
+export default function StudentDashboard() {
+  const navigate = useNavigate();
+  const [popularDocs, setPopularDocs] = useState([]);
+
+  useEffect(() => {
+    axios
+      .get("http://localhost:3000/api/documents/recommended")
+      .then((res) => setPopularDocs(res.data || []))
+      .catch((err) => console.error(err));
+  }, []);
+
   return (
-    <nav className="bg-blue-700 text-white px-6 py-4 shadow fixed top-0 left-0 w-full z-50">
-      <div className="container mx-auto flex flex-row items-center justify-between">
-        <Link to="/" className="text-xl font-bold mr-8">
-          SCI-DigiKnowledge
-        </Link>
-        <div className="flex flex-row space-x-8">
-          <Link to="/student" className="hover:underline">
-            หน้าแรก
-          </Link>
-          <Link to="/upload" className="hover:underline">
-            อัปโหลดไฟล์
-          </Link>
-          <Link to="/documents" className="hover:underline">
-            เอกสารทั้งหมด
-          </Link>          
-          <Link to="/login" className="hover:underline">
-            Login
-          </Link>
+    <div className="p-6 max-w-7xl mx-auto">
+      <Typography variant="h4" gutterBottom>
+        หน้านักศึกษา
+      </Typography>
 
+      {popularDocs.length === 0 ? (
+        <Typography variant="body1" color="text.secondary">
+          ยังไม่มีผลงานที่อัปโหลด
+        </Typography>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {popularDocs.map((doc) => (
+            <Card key={doc.document_id} className="shadow">
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  {doc.title}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" className="mb-2">
+                  คำค้นหา: {doc.keywords || "ไม่ระบุ"}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" className="mb-2">
+                  ปีการศึกษา: {doc.academic_year || "ไม่ระบุ"}
+                </Typography>
+                <Button size="small" variant="outlined" onClick={() => navigate(`/document-detail/${doc.document_id}`)}>
+                  ดูรายละเอียด
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
         </div>
-      </div>
-    </nav>
+      )}
+    </div>
   );
-};
-
-export default Navbar;
+}
