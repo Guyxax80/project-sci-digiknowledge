@@ -8,7 +8,8 @@ const Home = () => {
   const navigate = useNavigate();
   const [role] = useState(localStorage.getItem("role")?.trim().toLowerCase() || "");
   const [popularDocs, setPopularDocs] = useState([]);
-  const [stats, setStats] = useState({});
+  const [stats, setStats] = useState({ users: 0, documents: 0, downloads: 0, uploadsLast7Days: [], topCategories: [], usersByRole: [] });
+  const [docCategoryNames, setDocCategoryNames] = useState({});
 
   useEffect(() => {
     console.log("Role:", role);
@@ -24,10 +25,37 @@ const Home = () => {
           console.log("Fetching recommended documents...");
           return axios.get("http://localhost:3000/api/documents/recommended");
         })
-        .then((res) => {
+        .then(async (res) => {
           console.log("Recommended documents response:", res.data);
           console.log("Response length:", res.data.length);
-          setPopularDocs(res.data);
+          const docs = res.data || [];
+          setPopularDocs(docs);
+
+          // เติมชื่อหมวดหมู่ให้การ์ด (พยายามใช้ /api/documents/:id ถ้าใช้ไม่ได้ ใช้ category_names)
+          try {
+            const detailResults = await Promise.all(
+              docs.map((doc) =>
+                axios
+                  .get(`http://localhost:3000/api/documents/${doc.document_id}`)
+                  .then((dres) => ({ id: doc.document_id, detail: dres.data, fallback: doc }))
+                  .catch(() => ({ id: doc.document_id, detail: null, fallback: doc }))
+              )
+            );
+            const map = {};
+            detailResults.forEach(({ id, detail, fallback }) => {
+              let names = "-";
+              const cats = detail?.categories;
+              if (Array.isArray(cats) && cats.length) {
+                names = cats.map((c) => c.name).join(", ");
+              } else if (fallback && typeof fallback.category_names === 'string' && fallback.category_names.length) {
+                names = fallback.category_names;
+              }
+              map[id] = names;
+            });
+            setDocCategoryNames(map);
+          } catch (e) {
+            console.warn("Unable to enrich categories for recommended docs", e);
+          }
         })
         .catch((err) => {
           console.error("Error fetching recommended documents:", err);
@@ -77,33 +105,56 @@ const Home = () => {
 
         {/* ================= Admin Stats ================= */}
         {role === "admin" && (
-          <div className="flex gap-4 mb-8 flex-wrap">
-            <Card className="flex-1 min-w-[200px]">
-              <CardContent>
-                <Typography variant="h6">👥 ผู้ใช้งานทั้งหมด</Typography>
-                <Typography variant="body1">{stats.users} คน</Typography>
-              </CardContent>
-            </Card>
-            <Card className="flex-1 min-w-[200px]">
-              <CardContent>
-                <Typography variant="h6">📚 ผลงานทั้งหมด</Typography>
-                <Typography variant="body1">{stats.documents} รายการ</Typography>
-              </CardContent>
-            </Card>
-            <Card className="flex-1 min-w-[200px]">
-              <CardContent>
-                <Typography variant="h6">⬇️ ดาวน์โหลดรวม</Typography>
-                <Typography variant="body1">{stats.downloads} ครั้ง</Typography>
-              </CardContent>
-            </Card>
+          <div className="space-y-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card><CardContent><Typography variant="h6">👥 ผู้ใช้งานทั้งหมด</Typography><Typography variant="h4">{stats.users}</Typography></CardContent></Card>
+              <Card><CardContent><Typography variant="h6">📚 ผลงานทั้งหมด</Typography><Typography variant="h4">{stats.documents}</Typography></CardContent></Card>
+              <Card><CardContent><Typography variant="h6">⬇️ ดาวน์โหลดรวม</Typography><Typography variant="h4">{stats.downloads}</Typography></CardContent></Card>
+            </div>
 
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={() => navigate("/admin/users")}
-            >
-              จัดการผู้ใช้งาน
-            </Button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>อัปโหลด 7 วันล่าสุด</Typography>
+                  <div className="space-y-2">
+                    {stats.uploadsLast7Days.length === 0 ? (
+                      <Typography color="text.secondary">ไม่มีข้อมูล</Typography>
+                    ) : (
+                      stats.uploadsLast7Days.map((r, idx) => (
+                        <div key={idx} className="flex justify-between text-sm">
+                          <span>{new Date(r.day).toLocaleDateString('th-TH')}</span>
+                          <span className="font-semibold">{r.count}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>หมวดหมู่ยอดนิยม</Typography>
+                  <div className="space-y-2">
+                    {stats.topCategories.length === 0 ? (
+                      <Typography color="text.secondary">ไม่มีข้อมูล</Typography>
+                    ) : (
+                      stats.topCategories.map((r, idx) => (
+                        <div key={idx} className="flex justify-between text-sm">
+                          <span>{r.category}</span>
+                          <span className="font-semibold">{r.count}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div>
+              <Button variant="contained" color="primary" onClick={() => navigate("/admin")}>
+                จัดการผู้ใช้งาน
+              </Button>
+            </div>
           </div>
         )}
 
@@ -130,19 +181,13 @@ const Home = () => {
                         {doc.title}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" className="mb-2">
-                        โดย: User ID {doc.user_id || "ไม่ระบุ"}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" className="mb-2">
-                        ปีการศึกษา: {doc.academic_year || "ไม่ระบุ"}
+                        หมวดหมู่: {docCategoryNames[doc.document_id] ?? "-"}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" className="mb-2">
                         คำค้นหา: {doc.keywords || "ไม่ระบุ"}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" className="mb-2">
-                        สถานะ: {doc.status || "ไม่ระบุ"}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        อัปโหลด: {new Date(doc.uploaded_at).toLocaleDateString('th-TH')}
+                        ปีการศึกษา: {doc.academic_year || "ไม่ระบุ"}
                       </Typography>
                     </CardContent>
                     <CardActions>
@@ -152,14 +197,6 @@ const Home = () => {
                       onClick={() => navigate(`/document-detail/${doc.document_id}`)}
                       >
                         ดูรายละเอียด
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        color="primary"
-                        href={`http://localhost:3000/files/download/${doc.document_id}`}
-                      >
-                        ดาวน์โหลด
                       </Button>
                     </CardActions>
                   </Card>

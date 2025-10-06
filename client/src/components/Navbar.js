@@ -2,6 +2,7 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 
 const Navbar = ({ role }) => {
+  const token = (localStorage.getItem("token") || "").trim();
   const effectiveRole = (role || localStorage.getItem("role") || "").trim().toLowerCase();
   const location = useLocation();
 
@@ -12,26 +13,39 @@ const Navbar = ({ role }) => {
           SCI-DigiKnowledge
         </Link>
         <div className="flex flex-row space-x-8">
-          <Link to="/home" className="hover:underline">
+          <Link to={token ? "/home" : "/login"} className={`hover:underline ${!token ? "opacity-60 cursor-not-allowed" : ""}`} onClick={(e) => { if (!token) e.preventDefault(); }}>
             หน้าแรก
           </Link>
 
           {/* เฉพาะ student และไม่ใช่หน้า login เท่านั้น */}
-          {effectiveRole === "student" && location.pathname !== "/login" && (
+          {effectiveRole === "student" && token && location.pathname !== "/login" && (
             <Link to="/upload" className="hover:underline">
               อัปโหลดไฟล์
             </Link>
           )}
 
-          <Link to="/document/:id" className="hover:underline">
+          <Link to={token ? "/document/1" : "/login"} className={`hover:underline ${!token ? "opacity-60 cursor-not-allowed" : ""}`} onClick={(e) => { if (!token) e.preventDefault(); }}>
             เอกสารทั้งหมด
           </Link>
-          <Link to="/profile" className="hover:underline">
+          <Link to={token ? "/profile" : "/login"} className={`hover:underline ${!token ? "opacity-60 cursor-not-allowed" : ""}`} onClick={(e) => { if (!token) e.preventDefault(); }}>
             Profile
           </Link>
-          <Link to="/login" className="hover:underline">
-            Login
-          </Link>
+          {!token ? (
+            <Link to="/login" className="hover:underline">
+              Login
+            </Link>
+          ) : (
+            <button
+              className="hover:underline"
+              onClick={() => {
+                localStorage.removeItem("token");
+                localStorage.removeItem("role");
+                window.location.href = "/login";
+              }}
+            >
+              Logout
+            </button>
+          )}
         </div>
       </div>
     </nav>
