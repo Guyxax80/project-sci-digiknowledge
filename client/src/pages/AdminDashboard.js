@@ -137,17 +137,22 @@ export default function AdminDashboard() {
             onChange={(e) => setForm({ ...form, role: e.target.value })}
             required
           >
-          <input
-            type="text"
-            placeholder="Student ID (สำหรับนักศึกษา)"
-            className="border p-2 rounded"
-            value={form.student_id}
-            onChange={(e) => setForm({ ...form, student_id: e.target.value })}
-          />
             <option value="">-- เลือกบทบาทผู้ใช้ --</option>
             <option value="student">นักศึกษา</option>
             <option value="teacher">อาจารย์</option>
             <option value="admin">แอดมิน</option>
+          </select>
+
+          <select
+            className="border p-2 w-full"
+            value={form.student_id}
+            onChange={(e) => setForm({ ...form, student_id: e.target.value })}
+            disabled={form.role !== 'student'}
+          >
+            <option value="">-- เลือก Student ID (เฉพาะนักศึกษา) --</option>
+            {studentCodes.map((s) => (
+              <option key={s.student_id} value={s.student_id}>{s.student_id}</option>
+            ))}
           </select>
         </div>
         <div className="flex gap-2 mt-2">
