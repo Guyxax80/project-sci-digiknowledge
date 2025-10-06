@@ -179,15 +179,51 @@ router.get("/documents/:documentId/file-downloads", async (req, res) => {
 
 // 📌 สำรองฐานข้อมูล (mysqldump)
 router.get("/backup", (req, res) => {
-  const backupPath = path.join(__dirname, "../backup.sql");
-  const command = `mysqldump -u root -p1234 sci_digiknowledge > ${backupPath}`;
+  // สร้างไฟล์ zip รวม: backup.sql + โฟลเดอร์ uploads
+  const dbName = 'sci_digiknowledge';
+  const dbUser = 'root';
+  const dbPass = '';
 
-  exec(command, (err) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).send("Backup failed");
+  const tmpDir = path.join(__dirname, '..', 'tmp_backup');
+  const sqlPath = path.join(tmpDir, 'backup.sql');
+  const uploadsDir = path.join(__dirname, '..', 'uploads');
+  const zipPath = path.join(tmpDir, `backup_all_${Date.now()}.zip`);
+
+  const fs = require('fs');
+  const archiver = require('archiver');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+
+  const dumpCmd = `mysqldump -u ${dbUser} ${dbPass ? `-p${dbPass} ` : ''}${dbName} > "${sqlPath}"`;
+  exec(dumpCmd, (dumpErr) => {
+    if (dumpErr) {
+      console.error('mysqldump failed:', dumpErr);
+      return res.status(500).send('Backup failed');
     }
-    res.download(backupPath);
+
+    const output = fs.createWriteStream(zipPath);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    output.on('close', () => {
+      res.download(zipPath, (dlErr) => {
+        if (dlErr) console.warn('Download backup failed:', dlErr);
+        try { fs.unlinkSync(sqlPath); } catch (_) {}
+        try { fs.unlinkSync(zipPath); } catch (_) {}
+      });
+    });
+    archive.on('error', (zipErr) => {
+      console.error('Zip error:', zipErr);
+      try { fs.unlinkSync(sqlPath); } catch (_) {}
+      return res.status(500).send('Zip failed');
+    });
+
+    archive.pipe(output);
+    // ใส่ไฟล์ SQL
+    archive.file(sqlPath, { name: 'backup.sql' });
+    // ใส่โฟลเดอร์ uploads (หากมี)
+    if (fs.existsSync(uploadsDir)) {
+      archive.directory(uploadsDir, 'uploads');
+    }
+    archive.finalize();
   });
 });
 
