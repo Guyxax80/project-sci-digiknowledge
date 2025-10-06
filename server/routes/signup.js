@@ -8,7 +8,7 @@ const util = require("util");
 const query = util.promisify(db.query).bind(db);
 
 router.post("/", async (req, res) => {
-  const { username, student_id, password } = req.body;
+  const { username, student_id, password, class_group, level } = req.body;
 
   if (!username || !password) {
     return res.status(400).json({ success: false, message: "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน" });
@@ -38,11 +38,23 @@ router.post("/", async (req, res) => {
       }
     }
 
-    // บันทึกลงฐานข้อมูล
-    await query(
-      "INSERT INTO users (username, student_id, password, role) VALUES (?, ?, ?, ?)",
-      [username, validStudentId, hashedPassword, role]
-    );
+    // บันทึกลงฐานข้อมูล (พยายามรวม class_group และ level ถ้ามีคอลัมน์)
+    try {
+      await query(
+        "INSERT INTO users (username, student_id, password, role, class_group, level) VALUES (?, ?, ?, ?, ?, ?)",
+        [username, validStudentId, hashedPassword, role, class_group || null, level || null]
+      );
+    } catch (e) {
+      // กรณีตารางยังไม่มีคอลัมน์ class_group/level ให้ fallback ไป query เดิม
+      if (e && e.code === 'ER_BAD_FIELD_ERROR') {
+        await query(
+          "INSERT INTO users (username, student_id, password, role) VALUES (?, ?, ?, ?)",
+          [username, validStudentId, hashedPassword, role]
+        );
+      } else {
+        throw e;
+      }
+    }
 
     res.json({ success: true, message: "สมัครสมาชิกสำเร็จ", role });
   } catch (err) {
