@@ -6,9 +6,9 @@ const fs = require('fs');
 const mime = require('mime-types');
 const db = require('../db');  // เชื่อมฐานข้อมูล
 
-router.get('/:id', (req, res) => {
-  const id = req.params.id;
-  db.query('SELECT file_path, original_name FROM documents WHERE id = ?', [id], (err, results) => {
+router.get('/:fileId', (req, res) => {
+  const fileId = req.params.fileId;
+  db.query('SELECT document_id, file_path, original_name FROM document_files WHERE document_file_id = ?', [fileId], (err, results) => {
     if (err || results.length === 0) return res.status(404).send('File not found');
     const { file_path, original_name } = results[0];
 

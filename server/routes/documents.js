@@ -4,7 +4,26 @@ const db = require('../db');
 
 // GET /documents - ดึงเอกสารทั้งหมด
 router.get('/', (req, res) => {
-  db.query('SELECT * FROM documents', (err, results) => {
+  const sql = `
+    SELECT 
+      d.document_id,
+      d.title,
+      d.keywords,
+      d.academic_year,
+      d.uploaded_at,
+      d.status,
+      d.user_id,
+      (COALESCE(d.download_count, 0) + COALESCE(fd.file_downloads, 0)) AS download_count
+    FROM documents d
+    LEFT JOIN (
+      SELECT document_id, SUM(download_count) AS file_downloads
+      FROM document_files
+      GROUP BY document_id
+    ) fd ON fd.document_id = d.document_id
+    WHERE COALESCE(LOWER(d.status), '') <> 'draft'
+    ORDER BY d.uploaded_at DESC
+  `;
+  db.query(sql, (err, results) => {
     if (err) {
       console.error('เกิดข้อผิดพลาด:', err);
       return res.status(500).json({ error: 'ไม่สามารถดึงข้อมูลได้' });
@@ -23,18 +42,32 @@ router.get('/test', (req, res) => {
 router.get('/recommended', (req, res) => {
   console.log("=== RECOMMENDED DOCUMENTS API ===");
   
-  // ดึงข้อมูลจากตาราง documents เท่านั้น (ไม่ JOIN document_files)
+  // ดึงเอกสารยอดนิยมตามจำนวนดาวน์โหลด (fallback: เรียงล่าสุดเมื่อ download_count เท่ากัน)
   const sql = `
     SELECT 
-      document_id,
-      title,
-      keywords,
-      academic_year,
-      uploaded_at,
-      status,
-      user_id
-    FROM documents
-    ORDER BY uploaded_at DESC
+      d.document_id,
+      d.title,
+      d.keywords,
+      d.academic_year,
+      d.uploaded_at,
+      d.status,
+      d.user_id,
+      (COALESCE(d.download_count, 0) + COALESCE(fd.file_downloads, 0)) AS download_count,
+      COALESCE(cat.category_names, '') AS category_names
+    FROM documents d
+    LEFT JOIN (
+      SELECT document_id, SUM(download_count) AS file_downloads
+      FROM document_files
+      GROUP BY document_id
+    ) fd ON fd.document_id = d.document_id
+    LEFT JOIN (
+      SELECT dc.document_id, GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names
+      FROM document_categories dc
+      JOIN categories c ON c.categorie_id = dc.categorie_id
+      GROUP BY dc.document_id
+    ) cat ON cat.document_id = d.document_id
+    WHERE COALESCE(LOWER(d.status), '') <> 'draft'
+    ORDER BY download_count DESC, d.uploaded_at DESC
     LIMIT 6
   `;
   
@@ -51,6 +84,72 @@ router.get('/recommended', (req, res) => {
     console.log("===============================");
     
     res.json(results);
+  });
+});
+
+// GET /documents/by-user/:userId - เอกสารทั้งหมดที่ผู้ใช้อัปโหลด
+router.get('/by-user/:userId', (req, res) => {
+  const userId = req.params.userId;
+  const sql = `
+    SELECT 
+      d.document_id,
+      d.title,
+      d.keywords,
+      d.academic_year,
+      d.uploaded_at,
+      d.status,
+      (COALESCE(d.download_count, 0) + COALESCE(fd.file_downloads, 0)) AS download_count,
+      COALESCE(cat.category_names, '') AS category_names
+    FROM documents d
+    LEFT JOIN (
+      SELECT document_id, SUM(download_count) AS file_downloads
+      FROM document_files
+      GROUP BY document_id
+    ) fd ON fd.document_id = d.document_id
+    LEFT JOIN (
+      SELECT dc.document_id, GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names
+      FROM document_categories dc
+      JOIN categories c ON c.categorie_id = dc.categorie_id
+      GROUP BY dc.document_id
+    ) cat ON cat.document_id = d.document_id
+    WHERE d.user_id = ?
+    ORDER BY d.uploaded_at DESC
+  `;
+  db.query(sql, [userId], (err, rows) => {
+    if (err) {
+      console.error('Error fetching documents by user:', err);
+      return res.status(500).json({ message: 'เกิดข้อผิดพลาด' });
+    }
+    res.json(rows || []);
+  });
+});
+
+// POST /documents/:id/publish - เผยแพร่เอกสาร (เปลี่ยนสถานะ draft -> published)
+router.post('/:id/publish', (req, res) => {
+  const documentId = req.params.id;
+  const requesterUserId = req.body?.user_id; // ควรยืนยันตัวตนจริงจังด้วย token ในภายหลัง
+
+  // ตรวจสิทธิ์แบบง่าย: ต้องเป็นเจ้าของเอกสาร
+  db.query('SELECT user_id, status FROM documents WHERE document_id = ? LIMIT 1', [documentId], (selErr, rows) => {
+    if (selErr) {
+      console.error('Error selecting document for publish:', selErr);
+      return res.status(500).json({ message: 'เกิดข้อผิดพลาด' });
+    }
+    if (!rows || !rows.length) return res.status(404).json({ message: 'ไม่พบเอกสาร' });
+    const doc = rows[0];
+    if (requesterUserId && Number(requesterUserId) !== Number(doc.user_id)) {
+      return res.status(403).json({ message: 'ไม่มีสิทธิ์เผยแพร่เอกสารนี้' });
+    }
+    if (doc.status === 'published') {
+      return res.json({ success: true, message: 'เอกสารถูกเผยแพร่แล้ว' });
+    }
+    db.query('UPDATE documents SET status = ? WHERE document_id = ?', ['published', documentId], (updErr) => {
+      if (updErr) {
+        console.error('Error publishing document:', updErr);
+        return res.status(500).json({ message: 'เกิดข้อผิดพลาด' });
+      }
+      return res.json({ success: true, message: 'เผยแพร่สำเร็จ' });
+    });
   });
 });
 

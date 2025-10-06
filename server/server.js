@@ -10,8 +10,8 @@ const signupRoute = require("./routes/signup");
 const authRoute = require("./routes/auth");
 const filesRoute = require('./routes/files');
 const sectionFilesRoute = require('./routes/sectionFiles');
-const categoriesRoute = require('./routes/categories');
 const uploadRoute = require("./routes/upload");
+const categoriesRoute = require('./routes/categories');
 
 // ...ส่วนอื่น ๆ ของ server.js
 
@@ -27,6 +27,7 @@ app.use("/api/upload-files", uploadRouter);
 app.use('/api/upload', uploadRoute);
 
 app.use('/admin', adminRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Route สำหรับดึงเอกสารทั้งหมด
 app.use('/api/documents', documentRoute);

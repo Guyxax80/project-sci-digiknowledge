@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useParams } from "react-router-dom";
 
@@ -8,6 +8,8 @@ function DocumentDetailTailwind() {
   const [videoFile, setVideoFile] = useState(null);
   const [downloadFiles, setDownloadFiles] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [replacingSection, setReplacingSection] = useState(null);
+  const fileInputsRef = useRef({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -40,6 +42,42 @@ function DocumentDetailTailwind() {
     fetchDocument();
   }, [id]);
 
+  const canReplace = () => {
+    if (!document) return false;
+    const statusOk = String(document.status || '').toLowerCase() === 'draft';
+    const currentUserId = localStorage.getItem('userId');
+    const ownerOk = currentUserId && String(currentUserId) === String(document.user_id || '');
+    return statusOk && ownerOk;
+  };
+
+  const triggerReplace = (section) => {
+    if (!fileInputsRef.current[section]) return;
+    setReplacingSection(section);
+    fileInputsRef.current[section].click();
+  };
+
+  const handleFileSelected = async (section, file) => {
+    if (!file) return;
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      await fetch(`http://localhost:3000/api/documents/${document.document_id}/sections/${section}`, {
+        method: 'PUT',
+        body: form
+      });
+      // refresh details
+      const docRes = await axios.get(`http://localhost:3000/api/documents/${id}`);
+      setDocument(docRes.data.document);
+      setVideoFile(docRes.data.videoFile);
+      setDownloadFiles(docRes.data.downloadFiles);
+      setReplacingSection(null);
+    } catch (e) {
+      console.error(e);
+      alert('แทนที่ไฟล์ไม่สำเร็จ');
+      setReplacingSection(null);
+    }
+  };
+
   if (loading) return <p className="text-center mt-10">กำลังโหลด...</p>;
   if (error) return <p className="text-center mt-10 text-red-500">{error}</p>;
   if (!document) return <p className="text-center mt-10">ไม่พบเอกสาร</p>;
@@ -64,9 +102,9 @@ function DocumentDetailTailwind() {
         {/* Left Column - รายละเอียดเอกสาร (เฉพาะ Categorie, Keywords, Academic Year) */}
         <div className="flex-2 bg-white p-6 rounded-lg shadow-md">
           <h2 className="text-2xl font-bold mb-4">{document.title}</h2>
-          <p><span className="font-semibold">หมวดหมู่:</span> {categories.length > 0 ? categories.map(c => c.name).join(", ") : "-"}</p>
-          <p><span className="font-semibold">คำค้นหา:</span> {document.keywords || "-"}</p>
-          <p><span className="font-semibold">ปีการศึกษา:</span> {document.academic_year || "-"}</p>
+          <p><span className="font-semibold">Categorie:</span> {categories.length > 0 ? categories.map(c => c.name).join(", ") : "-"}</p>
+          <p><span className="font-semibold">Keywords:</span> {document.keywords || "-"}</p>
+          <p><span className="font-semibold">Academic Year:</span> {document.academic_year || "-"}</p>
         </div>
 
         {/* Right Column - ไฟล์ดาวน์โหลด */}
@@ -77,18 +115,37 @@ function DocumentDetailTailwind() {
           ) : (
             <ul className="space-y-2">
               {downloadFiles.map((file, index) => (
-                <li key={index} className="flex justify-between items-center bg-gray-50 p-2 rounded">
+                <li key={index} className="flex justify-between items-center bg-gray-50 p-2 rounded gap-2">
                   <span className="truncate">
                     {file.section === 'main' ? 'ไฟล์หลัก' : file.section}: {file.original_name}
                   </span>
-                  <a
-                    href={`http://localhost:3000/files/download/${file.document_file_id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 hover:underline"
-                  >
-                    ดาวน์โหลด
-                  </a>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={`http://localhost:3000/files/download/${file.document_file_id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      ดาวน์โหลด
+                    </a>
+                    {canReplace() && (
+                      <>
+                        <button
+                          className="text-sm px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600"
+                          onClick={() => triggerReplace(file.section || 'main')}
+                          disabled={replacingSection === (file.section || 'main')}
+                        >
+                          {replacingSection === (file.section || 'main') ? 'กำลังอัปโหลด...' : 'แทนที่ไฟล์'}
+                        </button>
+                        <input
+                          type="file"
+                          style={{ display: 'none' }}
+                          ref={(el) => { fileInputsRef.current[file.section || 'main'] = el; }}
+                          onChange={(e) => handleFileSelected(file.section || 'main', e.target.files?.[0])}
+                        />
+                      </>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
