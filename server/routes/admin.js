@@ -125,6 +125,22 @@ router.get("/stats", async (req, res) => {
     const roleRows = await q("SELECT role, COUNT(*) AS count FROM users GROUP BY role");
     stats.usersByRole = roleRows || [];
 
+    // รายการไฟล์ยอดดาวน์โหลด: รวมจาก document_files.download_count
+    const topFiles = await q(`
+      SELECT 
+        df.document_file_id,
+        df.document_id,
+        df.section,
+        df.original_name,
+        COALESCE(df.download_count, 0) AS download_count,
+        d.title
+      FROM document_files df
+      JOIN documents d ON d.document_id = df.document_id
+      ORDER BY COALESCE(df.download_count, 0) DESC, df.document_file_id ASC
+      LIMIT 20
+    `);
+    stats.topFiles = topFiles || [];
+
     return res.json(stats);
   } catch (err) {
     console.error("Admin stats error:", err);

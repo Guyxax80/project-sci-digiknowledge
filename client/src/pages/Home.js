@@ -150,6 +150,26 @@ const Home = () => {
               </Card>
             </div>
 
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>ไฟล์ยอดดาวน์โหลด</Typography>
+                <div className="space-y-2">
+                  {!stats.topFiles || stats.topFiles.length === 0 ? (
+                    <Typography color="text.secondary">ไม่มีข้อมูล</Typography>
+                  ) : (
+                    stats.topFiles.map((f) => (
+                      <div key={f.document_file_id} className="flex justify-between text-sm">
+                        <span className="truncate max-w-[70%]" title={`${f.title} - ${f.original_name || f.section}`}>
+                          {f.title} - {(f.original_name || f.section)}
+                        </span>
+                        <span className="font-semibold">{f.download_count}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             <div>
               <Button variant="contained" color="primary" onClick={() => navigate("/admin/users")}>
                 จัดการผู้ใช้งาน
