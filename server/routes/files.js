@@ -138,7 +138,7 @@ router.get('/download/:fileId', (req, res) => {
         return res.status(404).send('ไม่พบไฟล์บนเซิร์ฟเวอร์');
       }
 
-      // นับยอดดาวน์โหลดเฉพาะเมื่อไม่นับซ้ำ (ภายใน 3 วินาทีต่อ IP/ไฟล์)
+      // นับยอดดาวน์โหลดเฉพาะเมื่อไม่นับซ้ำ (ภายใน 3 วินาทีต่อ IP/ไฟล์) และนับเฉพาะที่ documents เท่านั้น
       if (shouldCountDownloadOnce(fileId, req.ip)) {
         if (documentId) {
           db.query(
@@ -149,30 +149,6 @@ router.get('/download/:fileId', (req, res) => {
             }
           );
         }
-
-        // เพิ่มคอลัมน์ download_count ให้กับ document_files หากยังไม่มี แล้วอัปเดตนับต่อไฟล์
-        db.query('SHOW COLUMNS FROM document_files LIKE "download_count"', (colErr, colRows) => {
-          const ensureColumnAndUpdate = () => {
-            db.query(
-              'UPDATE document_files SET download_count = COALESCE(download_count, 0) + 1 WHERE document_file_id = ?',
-              [fileId],
-              (dfErr) => {
-                if (dfErr) console.warn('Update document_files.download_count failed (non-fatal):', dfErr.message || dfErr);
-              }
-            );
-          };
-
-          if (!colErr && colRows && colRows.length > 0) {
-            return ensureColumnAndUpdate();
-          }
-          db.query('ALTER TABLE document_files ADD COLUMN download_count INT NOT NULL DEFAULT 0', (altErr) => {
-            if (altErr) {
-              console.warn('Add document_files.download_count failed (non-fatal):', altErr.message || altErr);
-              return; // ไม่ block การดาวน์โหลด
-            }
-            ensureColumnAndUpdate();
-          });
-        });
       }
 
       const downloadName = file.original_name || path.basename(fullPath) || 'file';
