@@ -70,12 +70,9 @@ router.get("/stats", async (req, res) => {
     const docRows = await q("SELECT COUNT(*) AS total FROM documents");
     stats.documents = docRows[0]?.total || 0;
 
-    try {
-      const dlRows = await q("SELECT COUNT(*) AS total FROM downloads");
-      stats.downloads = dlRows[0]?.total || 0;
-    } catch (_) {
-      stats.downloads = 0;
-    }
+    // ดาวน์โหลดรวม: ใช้ผลรวมจาก documents.download_count (เชื่อถือได้กว่า)
+    const dlSumRows = await q("SELECT COALESCE(SUM(download_count), 0) AS total FROM documents");
+    stats.downloads = dlSumRows[0]?.total || 0;
 
     // อัปโหลด 7 วันล่าสุด — ลอง uploaded_at ก่อน, ถ้าไม่มีใช้ created_at
     let uploadsRows = [];
