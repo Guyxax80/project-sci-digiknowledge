@@ -122,13 +122,24 @@ router.get('/download/:fileId', (req, res) => {
 
       // Log/download counters BEFORE sending file to guarantee counting
       const userId = (req.user && req.user.id) ? req.user.id : null;
-      db.query(
-        'INSERT INTO downloads (user_id, document_id, downloaded_at) VALUES (?, ?, NOW())',
-        [userId, documentId],
-        (dlErr) => {
-          if (dlErr) console.warn('Log downloads failed (non-fatal):', dlErr.message || dlErr);
-        }
-      );
+      const tryInsertDownloads = (uid, did, attempt = 0) => {
+        const statements = [
+          'INSERT INTO downloads (user_id, document_id, downloaded_at) VALUES (?, ?, NOW())',
+          'INSERT INTO download (user_id, document_id, downloaded_at) VALUES (?, ?, NOW())'
+        ];
+        if (attempt >= statements.length) return;
+        db.query(statements[attempt], [uid, did], (dlErr) => {
+          if (dlErr) {
+            // ถ้า user_id เป็น NOT NULL ให้ลองใส่ 0 แทน
+            if (uid == null) {
+              return tryInsertDownloads(0, did, attempt);
+            }
+            // ลองเปลี่ยนชื่อตาราง (downloads -> download)
+            return tryInsertDownloads(uid, did, attempt + 1);
+          }
+        });
+      };
+      tryInsertDownloads(userId, documentId, 0);
 
       if (documentId) {
         db.query(
