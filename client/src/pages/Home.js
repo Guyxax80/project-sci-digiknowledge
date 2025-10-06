@@ -185,7 +185,14 @@ const Home = () => {
             </Card>
 
             <div>
-              <Button variant="contained" color="primary" onClick={() => navigate("/admin/users")}>
+              <Button
+                variant="contained"
+                color="primary"
+                component="a"
+                href="http://localhost:3001/admin"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 จัดการผู้ใช้งาน
               </Button>
             </div>
