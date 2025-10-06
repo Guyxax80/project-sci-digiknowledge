@@ -190,8 +190,6 @@ const Home = () => {
                 color="primary"
                 component="a"
                 href="http://localhost:3001/admin"
-                target="_blank"
-                rel="noopener noreferrer"
               >
                 จัดการผู้ใช้งาน
               </Button>
