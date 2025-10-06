@@ -191,8 +191,8 @@ router.get("/backup", (req, res) => {
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
   // ใช้ไลบรารี mysqldump (Node) แทนคำสั่งระบบ
-  const { dump } = require('mysqldump');
-  dump({
+  const mysqldump = require('mysqldump');
+  mysqldump({
     connection: {
       host: 'localhost',
       user: dbUser,
