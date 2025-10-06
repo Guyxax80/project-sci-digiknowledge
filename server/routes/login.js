@@ -69,7 +69,6 @@ router.post("/", (req, res) => {
     return res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดในระบบ" });
   }
 });
-});
 
 module.exports = router;
  
