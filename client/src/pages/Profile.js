@@ -85,6 +85,7 @@ function Profile() {
                 <Typography variant="body2" color="text.secondary">หมวดหมู่: {doc.category_names || "-"}</Typography>
                 <Typography variant="body2" color="text.secondary">คำค้นหา: {doc.keywords || "-"}</Typography>
                 <Typography variant="body2" color="text.secondary">ปีการศึกษา: {doc.academic_year || "-"}</Typography>
+                <Typography variant="body2" color="text.secondary">สถานะ: {doc.status || '-'}</Typography>
                 <Typography variant="body2" color="text.secondary">ดาวน์โหลด: {doc.download_count || 0} ครั้ง</Typography>
                 <div className="mt-2">
                   <Button size="small" variant="outlined" onClick={() => navigate(`/document-detail/${doc.document_id}`)}>ดูรายละเอียด</Button>

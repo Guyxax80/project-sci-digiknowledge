@@ -269,7 +269,7 @@ const UploadDocument = () => {
             checked={isDraft}
             onChange={(e) => setIsDraft(e.target.checked)}
           />
-          <label htmlFor="draft">บันทึกเป็นแบบร่าง</label>
+          <label htmlFor="draft">บันทึกเป็นแบบร่าง (Draft)</label>
         </div>
 
         <button

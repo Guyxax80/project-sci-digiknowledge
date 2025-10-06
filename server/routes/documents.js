@@ -4,7 +4,26 @@ const db = require('../db');
 
 // GET /documents - ดึงเอกสารทั้งหมด
 router.get('/', (req, res) => {
-  db.query('SELECT * FROM documents', (err, results) => {
+  const sql = `
+    SELECT 
+      d.document_id,
+      d.title,
+      d.keywords,
+      d.academic_year,
+      d.uploaded_at,
+      d.status,
+      d.user_id,
+      (COALESCE(d.download_count, 0) + COALESCE(fd.file_downloads, 0)) AS download_count
+    FROM documents d
+    LEFT JOIN (
+      SELECT document_id, SUM(download_count) AS file_downloads
+      FROM document_files
+      GROUP BY document_id
+    ) fd ON fd.document_id = d.document_id
+    WHERE d.status = 'published'
+    ORDER BY d.uploaded_at DESC
+  `;
+  db.query(sql, (err, results) => {
     if (err) {
       console.error('เกิดข้อผิดพลาด:', err);
       return res.status(500).json({ error: 'ไม่สามารถดึงข้อมูลได้' });
@@ -47,6 +66,7 @@ router.get('/recommended', (req, res) => {
       JOIN categories c ON c.categorie_id = dc.categorie_id
       GROUP BY dc.document_id
     ) cat ON cat.document_id = d.document_id
+    WHERE d.status = 'published'
     ORDER BY download_count DESC, d.uploaded_at DESC
     LIMIT 6
   `;
