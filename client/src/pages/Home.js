@@ -106,10 +106,13 @@ const Home = () => {
         {/* ================= Admin Stats ================= */}
         {role === "admin" && (
           <div className="space-y-6 mb-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card><CardContent><Typography variant="h6">👥 ผู้ใช้งานทั้งหมด</Typography><Typography variant="h4">{stats.users}</Typography></CardContent></Card>
-              <Card><CardContent><Typography variant="h6">📚 ผลงานทั้งหมด</Typography><Typography variant="h4">{stats.documents}</Typography></CardContent></Card>
-              <Card><CardContent><Typography variant="h6">⬇️ ดาวน์โหลดรวม</Typography><Typography variant="h4">{stats.downloads}</Typography></CardContent></Card>
+            <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+              <Card>
+                <CardContent>
+                  <Typography variant="h6">👥 ผู้ใช้งานทั้งหมด</Typography>
+                  <Typography variant="h4">{stats.users}</Typography>
+                </CardContent>
+              </Card>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
