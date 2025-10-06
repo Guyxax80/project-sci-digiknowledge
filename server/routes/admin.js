@@ -136,7 +136,8 @@ router.get("/stats", async (req, res) => {
         d.title
       FROM document_files df
       JOIN documents d ON d.document_id = df.document_id
-      ORDER BY COALESCE(df.download_count, 0) DESC, df.document_file_id ASC
+      WHERE COALESCE(df.download_count, 0) > 0
+      ORDER BY df.download_count DESC, df.document_file_id ASC
       LIMIT 20
     `);
     stats.topFiles = topFiles || [];
