@@ -27,6 +27,7 @@ app.use("/api/upload-files", uploadRouter);
 app.use('/api/upload', uploadRoute);
 
 app.use('/admin', adminRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Route สำหรับดึงเอกสารทั้งหมด
 app.use('/api/documents', documentRoute);
