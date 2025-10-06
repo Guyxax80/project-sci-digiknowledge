@@ -63,7 +63,7 @@ export default function AdminDashboard() {
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", "backup.sql");
+      link.setAttribute("download", "backup_all.zip");
       document.body.appendChild(link);
       link.click();
     } catch (err) {
