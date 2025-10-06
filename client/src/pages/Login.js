@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, LogIn, AlertCircle, CheckCircle } from 'lucide-react';
+import { API_BASE_URL } from "../config";
 
 export default function LoginForm() {
   const navigate = useNavigate();
@@ -37,7 +38,7 @@ export default function LoginForm() {
     setIsLoading(true);
 
     try {
-      const res = await fetch("http://localhost:3000/api/login", {
+      const res = await fetch(`${API_BASE_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -188,7 +189,7 @@ export default function LoginForm() {
                   const username = prompt('ระบุชื่อผู้ใช้เพื่อรีเซ็ตรหัสผ่าน');
                   if (!username) return;
                   try {
-                    const res = await fetch('http://localhost:3000/api/auth/forgot-password', {
+                    const res = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ username })
@@ -199,7 +200,7 @@ export default function LoginForm() {
                     if (!code) return;
                     const newPass = prompt('กรอกรหัสผ่านใหม่');
                     if (!newPass) return;
-                    const res2 = await fetch('http://localhost:3000/api/auth/reset-password', {
+                    const res2 = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ username, code, new_password: newPass })

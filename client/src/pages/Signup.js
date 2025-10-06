@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { UserPlus, AlertCircle, CheckCircle } from "lucide-react";
+import { API_BASE_URL } from "../config";
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ export default function Signup() {
     setIsLoading(true);
 
     try {
-      const res = await fetch("http://localhost:3000/api/signup", {
+      const res = await fetch(`${API_BASE_URL}/api/signup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(formData),

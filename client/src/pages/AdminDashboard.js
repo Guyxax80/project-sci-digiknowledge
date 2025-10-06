@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Button, Card, CardContent, Typography, Table, TableBody, TableCell, TableHead, TableRow } from "@mui/material";
+import { API_BASE_URL } from "../config";
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
@@ -19,7 +20,7 @@ export default function AdminDashboard() {
   // ดึงข้อมูลผู้ใช้งาน
   const fetchUsers = async () => {
     try {
-      const res = await axios.get("http://localhost:3000/admin/users");
+      const res = await axios.get(`${API_BASE_URL}/admin/users`);
       setUsers(res.data);
     } catch (err) {
       console.error("โหลดข้อมูลผู้ใช้ล้มเหลว", err);
@@ -29,7 +30,7 @@ export default function AdminDashboard() {
   // ดึงสถิติ (อาจไม่ใช้งานแล้ว ถ้าต้องการซ่อนการ์ด)
   const fetchStats = async () => {
     try {
-      const res = await axios.get("http://localhost:3000/admin/stats");
+      const res = await axios.get(`${API_BASE_URL}/admin/stats`);
       setStats(res.data || {});
     } catch (err) {
       console.error("โหลดสถิติล้มเหลว", err);
@@ -38,7 +39,7 @@ export default function AdminDashboard() {
 
   const fetchStudentCodes = async () => {
     try {
-      const res = await axios.get("http://localhost:3000/admin/student-codes");
+      const res = await axios.get(`${API_BASE_URL}/admin/student-codes`);
       setStudentCodes(res.data || []);
     } catch (err) {
       console.error("โหลด student codes ล้มเหลว", err);
@@ -49,7 +50,7 @@ export default function AdminDashboard() {
   const deleteUser = async (user_id) => {
     if (!window.confirm("ยืนยันการลบผู้ใช้นี้?")) return;
     try {
-      await axios.delete(`http://localhost:3000/admin/users/${user_id}`);
+      await axios.delete(`${API_BASE_URL}/admin/users/${user_id}`);
       fetchUsers();
     } catch (err) {
       console.error("ลบผู้ใช้ล้มเหลว", err);
@@ -59,7 +60,7 @@ export default function AdminDashboard() {
   // สำรองฐานข้อมูล
   const backupDatabase = async () => {
     try {
-      const res = await axios.get("http://localhost:3000/admin/backup", {
+      const res = await axios.get(`${API_BASE_URL}/admin/backup`, {
         responseType: "blob",
       });
       const url = window.URL.createObjectURL(new Blob([res.data]));
@@ -79,14 +80,14 @@ export default function AdminDashboard() {
     try {
       if (editingUser) {
         await axios.put(
-          `http://localhost:3000/admin/users/${editingUser.user_id}`,
+          `${API_BASE_URL}/admin/users/${editingUser.user_id}`,
           {
             username: form.username,
             role: form.role,
           }
         );
       } else {
-        await axios.post("http://localhost:3000/admin/users", form);
+        await axios.post(`${API_BASE_URL}/admin/users`, form);
       }
       setForm({ username: "", password: "", role: "", student_id: "" });
       setEditingUser(null);
@@ -181,7 +182,7 @@ export default function AdminDashboard() {
               onClick={async () => {
                 try {
                   const payload = { student_ids: newCodesText };
-                  await axios.post("http://localhost:3000/admin/student-codes", payload);
+                  await axios.post(`${API_BASE_URL}/admin/student-codes`, payload);
                   setNewCodesText("");
                   fetchStudentCodes();
                 } catch (err) {
@@ -207,7 +208,7 @@ export default function AdminDashboard() {
                   <TableCell>
                     <Button color="error" onClick={async () => {
                       try {
-                        await axios.delete(`http://localhost:3000/admin/student-codes/${s.student_code_id}`);
+                    await axios.delete(`${API_BASE_URL}/admin/student-codes/${s.student_code_id}`);
                         fetchStudentCodes();
                       } catch (err) {
                         console.error("ลบ student code ล้มเหลว", err);

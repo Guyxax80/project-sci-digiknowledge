@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Typography, Card, CardContent, Button } from "@mui/material";
+import { API_BASE_URL } from "../config";
 
 function Profile() {
   const [user, setUser] = useState(null);
@@ -15,7 +16,7 @@ function Profile() {
       return;
     }
 
-    fetch("http://localhost:3000/api/auth/me", {
+    fetch(`${API_BASE_URL}/api/auth/me`, {
       headers: {
         Authorization: "Bearer " + token,
       },
@@ -25,7 +26,7 @@ function Profile() {
         if (data.success) {
           setUser(data.user);
           // ดึงเอกสารของผู้ใช้
-          fetch(`http://localhost:3000/api/documents/by-user/${data.user.user_id}`)
+          fetch(`${API_BASE_URL}/api/documents/by-user/${data.user.user_id}`)
             .then((r) => r.json())
             .then((docs) => setMyDocs(Array.isArray(docs) ? docs : []))
             .catch((e) => console.error("Error fetching my documents:", e))
@@ -96,7 +97,7 @@ function Profile() {
                       onClick={async () => {
                         try {
                           const userId = user?.user_id;
-                          const res = await fetch(`http://localhost:3000/api/documents/${doc.document_id}/publish`, {
+                          const res = await fetch(`${API_BASE_URL}/api/documents/${doc.document_id}/publish`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ user_id: userId })
@@ -107,7 +108,7 @@ function Profile() {
                             return;
                           }
                           // refresh myDocs
-                          const r = await fetch(`http://localhost:3000/api/documents/by-user/${userId}`);
+                          const r = await fetch(`${API_BASE_URL}/api/documents/by-user/${userId}`);
                           const docs = await r.json();
                           setMyDocs(Array.isArray(docs) ? docs : []);
                         } catch (e) {

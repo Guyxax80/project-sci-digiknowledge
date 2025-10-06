@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "../config";
 
 const UploadDocument = () => {
   const [title, setTitle] = useState("");
@@ -31,7 +32,7 @@ const UploadDocument = () => {
   useEffect(() => {
     const loadCategories = async () => {
       try {
-        const res = await axios.get("http://localhost:3000/api/categories");
+        const res = await axios.get(`${API_BASE_URL}/api/categories`);
         setCategories(res.data || []);
       } catch (err) {
         console.error("โหลดหมวดหมู่ไม่สำเร็จ", err);
@@ -67,7 +68,7 @@ const UploadDocument = () => {
       console.log("Categorie IDs:", selectedCategoryIds);
       console.log("====================");
 
-      const response = await axios.post("http://localhost:3000/api/upload", formData, {
+      const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
         headers: { "Content-Type": "multipart/form-data" }
       });
       
@@ -92,7 +93,7 @@ const UploadDocument = () => {
         if (presentationVideoFile) sections.append("presentation_video", presentationVideoFile);
 
         if ([...sections.keys()].length > 0) {
-          await axios.post(`http://localhost:3000/api/documents/${documentId}/sections`, sections, {
+          await axios.post(`${API_BASE_URL}/api/documents/${documentId}/sections`, sections, {
             headers: { "Content-Type": "multipart/form-data" }
           });
         }

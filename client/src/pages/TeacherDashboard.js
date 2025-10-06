@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { API_BASE_URL } from "../config";
 import { Button, Card, CardContent, Typography } from "@mui/material";
 import Navbar from "../components/Navbar";
 
@@ -11,12 +12,12 @@ const TeacherDashboard = () => {
 
   useEffect(() => {
     // โหลดผลงานนักศึกษาที่ครูต้องตรวจสอบ
-    axios.get("http://localhost:3000/api/teacher/documents")
+    axios.get(`${API_BASE_URL}/api/teacher/documents`)
       .then(res => setStudentDocs(res.data))
       .catch(err => console.error(err));
 
     // โหลดสถิติสำหรับครู (เช่น จำนวนผลงานรอตรวจ)
-    axios.get("http://localhost:3000/api/teacher/stats")
+    axios.get(`${API_BASE_URL}/api/teacher/stats`)
       .then(res => setStats(res.data))
       .catch(err => console.error(err));
   }, []);

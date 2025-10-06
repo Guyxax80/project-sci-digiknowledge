@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { API_BASE_URL } from "../config";
 import { Button, Card, CardContent, Typography, CardActions } from "@mui/material";
 
 const Home = () => {
@@ -16,13 +17,13 @@ const Home = () => {
       // ทดสอบ API ก่อน
       console.log("Testing API connection...");
       axios
-        .get("http://localhost:3000/api/documents/test")
+        .get(`${API_BASE_URL}/api/documents/test`)
         .then((res) => {
           console.log("Test API response:", res.data);
           
           // ถ้า API ทำงานได้ ให้ดึงข้อมูลจริง
           console.log("Fetching recommended documents...");
-          return axios.get("http://localhost:3000/api/documents/recommended");
+          return axios.get(`${API_BASE_URL}/api/documents/recommended`);
         })
         .then(async (res) => {
           console.log("Recommended documents response:", res.data);
@@ -35,7 +36,7 @@ const Home = () => {
             const detailResults = await Promise.all(
               docs.map((doc) =>
                 axios
-                  .get(`http://localhost:3000/api/documents/${doc.document_id}`)
+                  .get(`${API_BASE_URL}/api/documents/${doc.document_id}`)
                   .then((dres) => ({ id: doc.document_id, detail: dres.data, fallback: doc }))
                   .catch(() => ({ id: doc.document_id, detail: null, fallback: doc }))
               )
@@ -64,7 +65,7 @@ const Home = () => {
 
     if (role === "admin") {
       axios
-        .get("http://localhost:3000/api/admin/stats")
+        .get(`${API_BASE_URL}/api/admin/stats`)
         .then((res) => setStats(res.data))
         .catch((err) => console.error(err));
     }
@@ -161,7 +162,7 @@ const Home = () => {
                         className="w-full flex justify-between text-left text-sm hover:bg-gray-50 p-1 rounded"
                         onClick={async () => {
                           try {
-                            const res = await fetch(`http://localhost:3000/api/admin/documents/${d.document_id}/file-downloads`);
+                          const res = await fetch(`${API_BASE_URL}/api/admin/documents/${d.document_id}/file-downloads`);
                             const files = await res.json();
                             const list = files && files.length
                               ? files.map(f => `${f.section || 'main'} - ${(f.original_name || 'file')} : ${f.download_count}`).join('\n')
@@ -187,7 +188,7 @@ const Home = () => {
                 variant="contained"
                 color="primary"
                 component="a"
-                href="http://localhost:3001/admin"
+                href="/admin"
               >
                 จัดการผู้ใช้งาน
               </Button>
