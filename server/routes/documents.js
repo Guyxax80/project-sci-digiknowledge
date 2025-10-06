@@ -20,7 +20,7 @@ router.get('/', (req, res) => {
       FROM document_files
       GROUP BY document_id
     ) fd ON fd.document_id = d.document_id
-    WHERE (d.status IS NULL OR d.status = '' OR LOWER(d.status) = 'published')
+    WHERE COALESCE(LOWER(d.status), '') <> 'draft'
     ORDER BY d.uploaded_at DESC
   `;
   db.query(sql, (err, results) => {
@@ -66,7 +66,7 @@ router.get('/recommended', (req, res) => {
       JOIN categories c ON c.categorie_id = dc.categorie_id
       GROUP BY dc.document_id
     ) cat ON cat.document_id = d.document_id
-    WHERE (d.status IS NULL OR d.status = '' OR LOWER(d.status) = 'published')
+    WHERE COALESCE(LOWER(d.status), '') <> 'draft'
     ORDER BY download_count DESC, d.uploaded_at DESC
     LIMIT 6
   `;
