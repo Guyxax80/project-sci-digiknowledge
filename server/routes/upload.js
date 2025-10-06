@@ -29,8 +29,14 @@ const upload = multer({
 });
 
 router.post("/", upload.single("file"), (req, res) => {
-  const { title, keywords, academic_year, user_id, status, section, categorie_id } = req.body;
-  const categoryName = (req.body.category || req.body.categorie_name || "").trim();
+  const { title, keywords, academic_year, user_id, status } = req.body;
+  // หมวดหมู่ที่ส่งมาได้หลายรูปแบบ: categorie_id (เดี่ยว), categorie_ids[] (หลายค่า), category/categorie_name (ชื่อเดี่ยว), category_names[] (หลายชื่อ)
+  const singleCategorieId = req.body.categorie_id;
+  const rawCategorieIds = req.body.categorie_ids || req.body["categorie_ids[]"]; // อาจเป็น array หรือ string
+  const singleCategoryName = (req.body.category || req.body.categorie_name || "").trim();
+  const rawCategoryNames = req.body.category_names || req.body["category_names[]"]; // อาจเป็น array หรือ string
+  // ค่า section สำหรับไฟล์หลัก ใช้ 'main' เป็นค่าเริ่มต้น ไม่ผูกกับหมวดหมู่
+  const section = (req.body.section || 'main').toString();
   const file = req.file;
 
   // Debug: ดูข้อมูลที่รับมา
@@ -72,52 +78,91 @@ router.post("/", upload.single("file"), (req, res) => {
     const documentId = docResult.insertId;
     console.log("Document inserted successfully, ID:", documentId);
 
-    // 1.5 บันทึกความสัมพันธ์หมวดหมู่ (รองรับทั้ง categorie_id และ category name)
-    const insertCategoryRelation = (next) => {
-      // ถ้ามี id มาก่อน ใช้เลย
-      if (categorie_id) {
-        const sqlCat = "INSERT INTO document_categories (document_id, categorie_id) VALUES (?, ?)";
-        return db.query(sqlCat, [documentId, categorie_id], (catErr) => {
-          if (catErr) {
-            console.error("DB error (document_categories via id):", catErr);
-          }
-          return next();
-        });
+  // 1.5 บันทึกความสัมพันธ์หมวดหมู่ (รองรับหลายค่า ทั้ง id และชื่อ)
+  const insertCategoryRelation = (next) => {
+    const parseToArray = (raw) => {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw.filter(Boolean);
+      if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        if (!trimmed) return [];
+        try {
+          const parsed = JSON.parse(trimmed);
+          return Array.isArray(parsed) ? parsed : [trimmed];
+        } catch (_) {
+          // รองรับคั่นด้วย comma
+          if (trimmed.includes(',')) return trimmed.split(',').map(s => s.trim()).filter(Boolean);
+          return [trimmed];
+        }
       }
-
-      // ถ้าไม่มี id แต่มีชื่อหมวดหมู่ ให้ find-or-create ในตาราง categorie
-      if (categoryName) {
-        db.query("SELECT categorie_id FROM categorie WHERE name = ? LIMIT 1", [categoryName], (selErr, rows) => {
-          if (selErr) {
-            console.error("DB error (select categorie by name):", selErr);
-            return next();
-          }
-          const ensureRelation = (catId) => {
-            const sqlCat = "INSERT INTO document_categories (document_id, categorie_id) VALUES (?, ?)";
-            db.query(sqlCat, [documentId, catId], (relErr) => {
-              if (relErr) {
-                console.error("DB error (document_categories via name):", relErr);
-              }
-              return next();
-            });
-          };
-
-        if (rows && rows.length) {
-            return ensureRelation(rows[0].categorie_id);
-          }
-          // create new category
-          db.query("INSERT INTO categorie (name) VALUES (?)", [categoryName], (insErr, insRes) => {
-            if (insErr) {
-              console.error("DB error (insert categorie):", insErr);
-              return next();
-            }
-            return ensureRelation(insRes.insertId);
-          });
-        });
-      } else {
-        return next();
-      }
+      return [];
     };
+
+    const categorieIds = [
+      ...(singleCategorieId ? [singleCategorieId] : []),
+      ...parseToArray(rawCategorieIds)
+    ]
+      .map(v => String(v).trim())
+      .filter(Boolean);
+
+    const categoryNames = [
+      ...(singleCategoryName ? [singleCategoryName] : []),
+      ...parseToArray(rawCategoryNames)
+    ]
+      .map(v => String(v).trim())
+      .filter(Boolean);
+
+    const ensureRelationById = (catId, cb) => {
+      // กันซ้ำแบบง่าย ๆ โดยเช็คก่อน insert
+      db.query(
+        'SELECT 1 FROM document_categories WHERE document_id = ? AND categorie_id = ? LIMIT 1',
+        [documentId, catId],
+        (selErr, selRows) => {
+          if (selErr) {
+            console.error('DB error (check relation):', selErr);
+            return cb();
+          }
+          if (selRows && selRows.length) return cb();
+          const sqlCat = 'INSERT INTO document_categories (document_id, categorie_id) VALUES (?, ?)';
+          db.query(sqlCat, [documentId, catId], (insErr) => {
+            if (insErr) console.error('DB error (insert relation):', insErr);
+            return cb();
+          });
+        }
+      );
+    };
+
+    const ensureRelationByName = (name, cb) => {
+      db.query('SELECT categorie_id FROM categorie WHERE name = ? LIMIT 1', [name], (selErr, rows) => {
+        if (selErr) {
+          console.error('DB error (select categorie by name):', selErr);
+          return cb();
+        }
+        if (rows && rows.length) return ensureRelationById(rows[0].categorie_id, cb);
+        db.query('INSERT INTO categorie (name) VALUES (?)', [name], (insErr, insRes) => {
+          if (insErr) {
+            console.error('DB error (insert categorie):', insErr);
+            return cb();
+          }
+          return ensureRelationById(insRes.insertId, cb);
+        });
+      });
+    };
+
+    const tasks = [];
+    categorieIds.forEach(id => tasks.push((cb) => ensureRelationById(id, cb)));
+    categoryNames.forEach(n => tasks.push((cb) => ensureRelationByName(n, cb)));
+
+    if (tasks.length === 0) return next();
+
+    let idx = 0;
+    const runNext = () => {
+      if (idx >= tasks.length) return next();
+      const fn = tasks[idx++];
+      fn(runNext);
+    };
+    runNext();
+  };
 
     insertCategoryRelation(() => {
       // 2️⃣ บันทึกข้อมูลไฟล์ (ข้อมูลไฟล์)
@@ -127,7 +172,7 @@ router.post("/", upload.single("file"), (req, res) => {
       VALUES (?, ?, ?, ?, ?, NOW())
     `;
     
-    const fileParams = [documentId, filePath, file.originalname, file.mimetype, section || "อื่นๆ"];
+    const fileParams = [documentId, filePath, file.originalname, file.mimetype, section || 'main'];
 
     console.log("=== FILE INSERT ===");
     console.log("SQL:", sqlFile);
