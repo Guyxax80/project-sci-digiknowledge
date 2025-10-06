@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Typography, Card, CardContent, Button } from "@mui/material";
-import { API_BASE_URL } from "../config";
+import { API_BASE_URL } from "../config.js";
 
 function Profile() {
   const [user, setUser] = useState(null);

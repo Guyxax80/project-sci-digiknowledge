@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Button, Card, CardContent, Typography, Table, TableBody, TableCell, TableHead, TableRow } from "@mui/material";
-import { API_BASE_URL } from "../config";
+import { API_BASE_URL } from "../config.js";
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState([]);

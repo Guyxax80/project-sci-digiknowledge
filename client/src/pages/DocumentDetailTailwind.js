@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useParams } from "react-router-dom";
-import { API_BASE_URL } from "../config";
+import { API_BASE_URL } from "../config.js";
 
 function DocumentDetailTailwind() {
   const { id } = useParams();

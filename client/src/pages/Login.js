@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, LogIn, AlertCircle, CheckCircle } from 'lucide-react';
-import { API_BASE_URL } from "../config";
+import { API_BASE_URL } from "../config.js";
 
 export default function LoginForm() {
   const navigate = useNavigate();
