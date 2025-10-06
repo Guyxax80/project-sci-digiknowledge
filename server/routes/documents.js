@@ -67,6 +67,43 @@ router.get('/recommended', (req, res) => {
   });
 });
 
+// GET /documents/by-user/:userId - เอกสารทั้งหมดที่ผู้ใช้อัปโหลด
+router.get('/by-user/:userId', (req, res) => {
+  const userId = req.params.userId;
+  const sql = `
+    SELECT 
+      d.document_id,
+      d.title,
+      d.keywords,
+      d.academic_year,
+      d.uploaded_at,
+      d.status,
+      (COALESCE(d.download_count, 0) + COALESCE(fd.file_downloads, 0)) AS download_count,
+      COALESCE(cat.category_names, '') AS category_names
+    FROM documents d
+    LEFT JOIN (
+      SELECT document_id, SUM(download_count) AS file_downloads
+      FROM document_files
+      GROUP BY document_id
+    ) fd ON fd.document_id = d.document_id
+    LEFT JOIN (
+      SELECT dc.document_id, GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names
+      FROM document_categories dc
+      JOIN categories c ON c.categorie_id = dc.categorie_id
+      GROUP BY dc.document_id
+    ) cat ON cat.document_id = d.document_id
+    WHERE d.user_id = ?
+    ORDER BY d.uploaded_at DESC
+  `;
+  db.query(sql, [userId], (err, rows) => {
+    if (err) {
+      console.error('Error fetching documents by user:', err);
+      return res.status(500).json({ message: 'เกิดข้อผิดพลาด' });
+    }
+    res.json(rows || []);
+  });
+});
+
 // GET /documents/:id - ดึงรายละเอียดเอกสารพร้อมไฟล์
 router.get('/:id', (req, res) => {
   const documentId = req.params.id;
