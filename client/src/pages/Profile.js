@@ -87,8 +87,38 @@ function Profile() {
                 <Typography variant="body2" color="text.secondary">ปีการศึกษา: {doc.academic_year || "-"}</Typography>
                 <Typography variant="body2" color="text.secondary">สถานะ: {doc.status || '-'}</Typography>
                 <Typography variant="body2" color="text.secondary">ดาวน์โหลด: {doc.download_count || 0} ครั้ง</Typography>
-                <div className="mt-2">
+                <div className="mt-2 flex gap-2">
                   <Button size="small" variant="outlined" onClick={() => navigate(`/document-detail/${doc.document_id}`)}>ดูรายละเอียด</Button>
+                  {doc.status === 'draft' && (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={async () => {
+                        try {
+                          const userId = user?.user_id;
+                          const res = await fetch(`http://localhost:3000/api/documents/${doc.document_id}/publish`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ user_id: userId })
+                          });
+                          const data = await res.json();
+                          if (!res.ok || !data.success) {
+                            alert(data.message || 'เผยแพร่ไม่สำเร็จ');
+                            return;
+                          }
+                          // refresh myDocs
+                          const r = await fetch(`http://localhost:3000/api/documents/by-user/${userId}`);
+                          const docs = await r.json();
+                          setMyDocs(Array.isArray(docs) ? docs : []);
+                        } catch (e) {
+                          console.error(e);
+                          alert('เกิดข้อผิดพลาด');
+                        }
+                      }}
+                    >
+                      เผยแพร่
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

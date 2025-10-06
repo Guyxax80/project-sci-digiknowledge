@@ -124,6 +124,35 @@ router.get('/by-user/:userId', (req, res) => {
   });
 });
 
+// POST /documents/:id/publish - เผยแพร่เอกสาร (เปลี่ยนสถานะ draft -> published)
+router.post('/:id/publish', (req, res) => {
+  const documentId = req.params.id;
+  const requesterUserId = req.body?.user_id; // ควรยืนยันตัวตนจริงจังด้วย token ในภายหลัง
+
+  // ตรวจสิทธิ์แบบง่าย: ต้องเป็นเจ้าของเอกสาร
+  db.query('SELECT user_id, status FROM documents WHERE document_id = ? LIMIT 1', [documentId], (selErr, rows) => {
+    if (selErr) {
+      console.error('Error selecting document for publish:', selErr);
+      return res.status(500).json({ message: 'เกิดข้อผิดพลาด' });
+    }
+    if (!rows || !rows.length) return res.status(404).json({ message: 'ไม่พบเอกสาร' });
+    const doc = rows[0];
+    if (requesterUserId && Number(requesterUserId) !== Number(doc.user_id)) {
+      return res.status(403).json({ message: 'ไม่มีสิทธิ์เผยแพร่เอกสารนี้' });
+    }
+    if (doc.status === 'published') {
+      return res.json({ success: true, message: 'เอกสารถูกเผยแพร่แล้ว' });
+    }
+    db.query('UPDATE documents SET status = ? WHERE document_id = ?', ['published', documentId], (updErr) => {
+      if (updErr) {
+        console.error('Error publishing document:', updErr);
+        return res.status(500).json({ message: 'เกิดข้อผิดพลาด' });
+      }
+      return res.json({ success: true, message: 'เผยแพร่สำเร็จ' });
+    });
+  });
+});
+
 // GET /documents/:id - ดึงรายละเอียดเอกสารพร้อมไฟล์
 router.get('/:id', (req, res) => {
   const documentId = req.params.id;
