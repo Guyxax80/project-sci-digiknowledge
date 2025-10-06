@@ -15,7 +15,7 @@ import {
 export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState({});
-  const [form, setForm] = useState({ username: "", password: "", role: "" });
+  const [form, setForm] = useState({ username: "", password: "", role: "", student_id: "" });
   const [editingUser, setEditingUser] = useState(null);
 
   useEffect(() => {
@@ -86,7 +86,7 @@ export default function AdminDashboard() {
       } else {
         await axios.post("http://localhost:3000/admin/users", form);
       }
-      setForm({ username: "", password: "", role: "" });
+      setForm({ username: "", password: "", role: "", student_id: "" });
       setEditingUser(null);
       fetchUsers();
     } catch (err) {
@@ -96,7 +96,7 @@ export default function AdminDashboard() {
 
   const handleEdit = (user) => {
     setEditingUser(user);
-    setForm({ username: user.username, password: "", role: user.role });
+    setForm({ username: user.username, password: "", role: user.role, student_id: user.student_id || "" });
   };
 
   return (
@@ -135,6 +135,13 @@ export default function AdminDashboard() {
             onChange={(e) => setForm({ ...form, role: e.target.value })}
             required
           >
+          <input
+            type="text"
+            placeholder="Student ID (สำหรับนักศึกษา)"
+            className="border p-2 rounded"
+            value={form.student_id}
+            onChange={(e) => setForm({ ...form, student_id: e.target.value })}
+          />
             <option value="">-- เลือกบทบาทผู้ใช้ --</option>
             <option value="student">นักศึกษา</option>
             <option value="teacher">อาจารย์</option>

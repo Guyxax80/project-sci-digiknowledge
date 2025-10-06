@@ -9,7 +9,7 @@ const q = util.promisify(db.query).bind(db);
 // 📌 ดึงผู้ใช้ทั้งหมด
 router.get("/users", (req, res) => {
   db.query(
-    "SELECT user_id, username, role, created_at FROM users",
+    "SELECT user_id, username, role, student_id, created_at FROM users",
     (err, result) => {
       if (err) return res.status(500).json({ error: "DB error" });
       res.json(result);
@@ -23,29 +23,72 @@ router.post("/users", (req, res) => {
   if (!username || !password || !role)
     return res.status(400).json({ error: "กรอกข้อมูลไม่ครบ" });
 
-  db.query(
-    "INSERT INTO users (username, student_id, password, role) VALUES (?, ?, ?, ?)",
-    [username, student_id || null, password, role],
-    (err, result) => {
-      if (err) return res.status(500).json({ error: "DB insert error" });
-      res.json({ message: "เพิ่มผู้ใช้สำเร็จ" });
-    }
-  );
+  const insertUser = () => {
+    db.query(
+      "INSERT INTO users (username, student_id, password, role) VALUES (?, ?, ?, ?)",
+      [username, student_id || null, password, role],
+      (err) => {
+        if (err) return res.status(500).json({ error: "DB insert error" });
+        res.json({ message: "เพิ่มผู้ใช้สำเร็จ" });
+      }
+    );
+  };
+
+  // หากกำหนด student_id หรือ role เป็น student ให้ตรวจสอบตาราง student_codes
+  if ((role === 'student' && !student_id)) {
+    return res.status(400).json({ error: "กรุณาระบุ Student ID สำหรับนักศึกษา" });
+  }
+  if (student_id) {
+    db.query(
+      "SELECT 1 FROM student_codes WHERE student_id = ? LIMIT 1",
+      [student_id],
+      (chkErr, rows) => {
+        if (chkErr) return res.status(500).json({ error: "DB error" });
+        if (!rows || !rows.length) {
+          return res.status(400).json({ error: "Student ID ไม่พบในระบบ" });
+        }
+        insertUser();
+      }
+    );
+  } else {
+    insertUser();
+  }
 });
 
 // 📌 แก้ไขผู้ใช้
 router.put("/users/:user_id", (req, res) => {
   const { user_id } = req.params;
-  const { username, role } = req.body;
+  const { username, role, student_id } = req.body;
 
-  db.query(
-    "UPDATE users SET username=?, role=? WHERE user_id=?",
-    [username, role, user_id],
-    (err, result) => {
-      if (err) return res.status(500).json({ error: "DB update error" });
-      res.json({ message: "อัปเดตผู้ใช้สำเร็จ" });
-    }
-  );
+  const updateUser = () => {
+    db.query(
+      "UPDATE users SET username=?, role=?, student_id=? WHERE user_id=?",
+      [username, role, student_id || null, user_id],
+      (err) => {
+        if (err) return res.status(500).json({ error: "DB update error" });
+        res.json({ message: "อัปเดตผู้ใช้สำเร็จ" });
+      }
+    );
+  };
+
+  if ((role === 'student' && !student_id)) {
+    return res.status(400).json({ error: "กรุณาระบุ Student ID สำหรับนักศึกษา" });
+  }
+  if (student_id) {
+    db.query(
+      "SELECT 1 FROM student_codes WHERE student_id = ? LIMIT 1",
+      [student_id],
+      (chkErr, rows) => {
+        if (chkErr) return res.status(500).json({ error: "DB error" });
+        if (!rows || !rows.length) {
+          return res.status(400).json({ error: "Student ID ไม่พบในระบบ" });
+        }
+        updateUser();
+      }
+    );
+  } else {
+    updateUser();
+  }
 });
 
 // 📌 ลบผู้ใช้
