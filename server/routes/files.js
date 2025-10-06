@@ -120,6 +120,41 @@ router.get('/download/:fileId', (req, res) => {
         return res.status(404).send('ไม่พบไฟล์บนเซิร์ฟเวอร์');
       }
 
+      // Log/download counters BEFORE sending file to guarantee counting
+      const userId = (req.user && req.user.id) ? req.user.id : null;
+      db.query(
+        'INSERT INTO downloads (user_id, document_id, downloaded_at) VALUES (?, ?, NOW())',
+        [userId, documentId],
+        (dlErr) => {
+          if (dlErr) console.warn('Log downloads failed (non-fatal):', dlErr.message || dlErr);
+        }
+      );
+
+      if (documentId) {
+        db.query(
+          'UPDATE documents SET download_count = COALESCE(download_count, 0) + 1 WHERE document_id = ?',
+          [documentId],
+          (updErr) => {
+            if (updErr) console.warn('Update documents.download_count failed (non-fatal):', updErr.message || updErr);
+          }
+        );
+      }
+
+      const createFileDownloadsSql = 'CREATE TABLE IF NOT EXISTS file_downloads (document_file_id INT PRIMARY KEY, download_count INT NOT NULL DEFAULT 0)';
+      db.query(createFileDownloadsSql, (crtErr) => {
+        if (crtErr) {
+          console.warn('Create file_downloads failed (non-fatal):', crtErr.message || crtErr);
+        } else {
+          db.query(
+            'INSERT INTO file_downloads (document_file_id, download_count) VALUES (?, 1) ON DUPLICATE KEY UPDATE download_count = download_count + 1',
+            [fileId],
+            (fdlErr) => {
+              if (fdlErr) console.warn('Update file_downloads failed (non-fatal):', fdlErr.message || fdlErr);
+            }
+          );
+        }
+      });
+
       const downloadName = file.original_name || path.basename(fullPath) || 'file';
       res.download(fullPath, downloadName, (downloadErr) => {
         if (downloadErr) {
@@ -128,49 +163,6 @@ router.get('/download/:fileId', (req, res) => {
             return res.status(500).send('เกิดข้อผิดพลาดในการดาวน์โหลดไฟล์');
           }
         }
-
-        // 1) เพิ่มสถิติลงตาราง downloads (ถ้ามี)
-        const userId = (req.user && req.user.id) ? req.user.id : null;
-        db.query(
-          'INSERT INTO downloads (user_id, document_id, downloaded_at) VALUES (?, ?, NOW())',
-          [userId, documentId],
-          (dlErr) => {
-            if (dlErr) {
-              // ตารางอาจไม่มีหรือคอลัมน์ไม่ตรง ข้ามไปอย่างเงียบๆเพื่อไม่รบกวนการดาวน์โหลด
-              console.warn('Log downloads failed (non-fatal):', dlErr.message || dlErr);
-            }
-          }
-        );
-
-        // 2) อัปเดต download_count ในตาราง documents
-        if (documentId) {
-          db.query(
-            'UPDATE documents SET download_count = COALESCE(download_count, 0) + 1 WHERE document_id = ?',
-            [documentId],
-            (updErr) => {
-              if (updErr) {
-                console.warn('Update documents.download_count failed (non-fatal):', updErr.message || updErr);
-              }
-            }
-          );
-        }
-
-        // 3) นับยอดดาวน์โหลดรายไฟล์ (สร้างตารางช่วยหากยังไม่มี)
-        const createFileDownloadsSql = 'CREATE TABLE IF NOT EXISTS file_downloads (document_file_id INT PRIMARY KEY, download_count INT NOT NULL DEFAULT 0)';
-        db.query(createFileDownloadsSql, (crtErr) => {
-          if (crtErr) {
-            return console.warn('Create file_downloads failed (non-fatal):', crtErr.message || crtErr);
-          }
-          db.query(
-            'INSERT INTO file_downloads (document_file_id, download_count) VALUES (?, 1) ON DUPLICATE KEY UPDATE download_count = download_count + 1',
-            [fileId],
-            (fdlErr) => {
-              if (fdlErr) {
-                console.warn('Update file_downloads failed (non-fatal):', fdlErr.message || fdlErr);
-              }
-            }
-          );
-        });
       });
     }
   );
