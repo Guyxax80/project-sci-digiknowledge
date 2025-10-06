@@ -132,17 +132,41 @@ router.get('/download/:fileId', (req, res) => {
           downloaded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`;
 
-      const insertDownloadsSql = 'INSERT INTO downloads (user_id, document_id, downloaded_at) VALUES (?, ?, NOW())';
+      const insertDownloads = (downloaderUserId) => {
+        db.query(
+          'INSERT INTO downloads (user_id, document_id, downloaded_at) VALUES (?, ?, NOW())',
+          [downloaderUserId, documentId],
+          (dlErr) => {
+            if (dlErr) {
+              console.warn('Log downloads failed (non-fatal):', dlErr.message || dlErr);
+            }
+          }
+        );
+      };
+
+      const resolveDownloaderIdAndInsert = () => {
+        if (safeUserId && safeUserId > 0) {
+          return insertDownloads(safeUserId);
+        }
+        // ไม่มีผู้ใช้ล็อกอิน: ใช้ผู้สร้างเอกสารเป็น fallback เพื่อไม่ให้ชน FK
+        db.query('SELECT user_id FROM documents WHERE document_id = ? LIMIT 1', [documentId], (e1, r1) => {
+          const fallbackOwnerId = (!e1 && r1 && r1.length) ? r1[0].user_id : null;
+          if (fallbackOwnerId) return insertDownloads(fallbackOwnerId);
+          // fallback สุดท้าย: เลือกผู้ใช้คนแรกในระบบ
+          db.query('SELECT user_id FROM users ORDER BY user_id ASC LIMIT 1', (e2, r2) => {
+            const anyUserId = (!e2 && r2 && r2.length) ? r2[0].user_id : null;
+            if (anyUserId) return insertDownloads(anyUserId);
+            // หากไม่มีผู้ใช้เลย ข้ามการบันทึก downloads เพื่อเลี่ยง FK
+            console.warn('Skip downloads insert: no valid user_id to satisfy FK');
+          });
+        });
+      };
 
       db.query(ensureDownloadsTableSql, (crtDlErr) => {
         if (crtDlErr) {
           console.warn('Ensure downloads table failed (non-fatal):', crtDlErr.message || crtDlErr);
         }
-        db.query(insertDownloadsSql, [safeUserId, documentId], (dlErr) => {
-          if (dlErr) {
-            console.warn('Log downloads failed (non-fatal):', dlErr.message || dlErr);
-          }
-        });
+        resolveDownloaderIdAndInsert();
       });
 
       if (documentId) {
