@@ -258,4 +258,63 @@ router.get("/backup", (req, res) => {
   });
 });
 
+// 📌 จัดการ student_codes
+// ดึงรายการรหัสนักศึกษา
+router.get("/student-codes", (req, res) => {
+  db.query(
+    "SELECT student_code_id, student_id FROM student_codes ORDER BY student_code_id DESC",
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: "DB error" });
+      return res.json(rows || []);
+    }
+  );
+});
+
+// เพิ่มรหัสนักศึกษา (รองรับหลายค่า คั่นด้วยบรรทัดใหม่หรือคอมมา)
+router.post("/student-codes", (req, res) => {
+  let { student_ids } = req.body;
+  if (!student_ids) return res.status(400).json({ error: "กรุณาระบุ Student ID" });
+
+  const normalize = (val) => {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') {
+      return val
+        .split(/[\n,]/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    }
+    return [];
+  };
+  const ids = normalize(student_ids);
+  if (ids.length === 0) return res.status(400).json({ error: "ไม่มี Student ID ที่เพิ่มได้" });
+
+  // ใช้ INSERT IGNORE เพื่อข้ามค่าซ้ำโดยไม่ error (ต้องมี UNIQUE ที่ student_id)
+  const placeholders = ids.map(() => "(?)").join(",");
+  db.query(
+    `INSERT IGNORE INTO student_codes (student_id) VALUES ${placeholders}`,
+    ids,
+    (err, result) => {
+      if (err) {
+        console.error("insert student_codes error:", err);
+        return res.status(500).json({ error: "เพิ่มรหัสนักศึกษาไม่สำเร็จ" });
+      }
+      // result.affectedRows = จำนวนที่เพิ่มจริง (ไม่รวมที่ถูก ignore)
+      return res.json({ success: true, inserted: result.affectedRows, totalSubmitted: ids.length });
+    }
+  );
+});
+
+// ลบรหัสนักศึกษา
+router.delete("/student-codes/:student_code_id", (req, res) => {
+  const { student_code_id } = req.params;
+  db.query(
+    "DELETE FROM student_codes WHERE student_code_id = ?",
+    [student_code_id],
+    (err) => {
+      if (err) return res.status(500).json({ error: "DB delete error" });
+      return res.json({ success: true });
+    }
+  );
+});
+
 module.exports = router;
