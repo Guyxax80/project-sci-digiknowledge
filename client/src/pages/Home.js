@@ -189,6 +189,9 @@ const Home = () => {
                       <Typography variant="body2" color="text.secondary" className="mb-2">
                         ปีการศึกษา: {doc.academic_year || "ไม่ระบุ"}
                       </Typography>
+                      <Typography variant="body2" color="text.secondary" className="mb-2">
+                        ดาวน์โหลด: {Number.isFinite(parseInt(doc.download_count)) ? parseInt(doc.download_count) : 0} ครั้ง
+                      </Typography>
                     </CardContent>
                     <CardActions>
                       <Button
