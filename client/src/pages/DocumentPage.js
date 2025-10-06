@@ -29,7 +29,10 @@ const DocumentPage = () => {
   };
 
   // ฟิลเตอร์เอกสารตาม searchText
-  const filteredDocs = documents.filter((doc) => {
+  const filteredDocs = documents
+    // กัน draft ออกเสมอสำหรับหน้าค้นหาเอกสารสาธารณะ
+    .filter((doc) => (String(doc.status || '').toLowerCase() === 'published'))
+    .filter((doc) => {
     const text = searchText.toLowerCase();
     const title = (doc.title || "").toLowerCase();
     const keywords = (doc.keywords || "").toLowerCase();
