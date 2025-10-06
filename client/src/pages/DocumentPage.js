@@ -30,8 +30,8 @@ const DocumentPage = () => {
 
   // ฟิลเตอร์เอกสารตาม searchText
   const filteredDocs = documents
-    // กัน draft ออกเสมอสำหรับหน้าค้นหาเอกสารสาธารณะ
-    .filter((doc) => (String(doc.status || '').toLowerCase() === 'published'))
+    // กัน draft ออกเสมอสำหรับหน้าค้นหาเอกสารสาธารณะ (ปล่อยว่าง/NULL แสดงได้)
+    .filter((doc) => String(doc.status || '').toLowerCase() !== 'draft')
     .filter((doc) => {
     const text = searchText.toLowerCase();
     const title = (doc.title || "").toLowerCase();
