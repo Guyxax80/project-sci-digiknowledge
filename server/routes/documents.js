@@ -18,10 +18,9 @@ router.get('/', (req, res) => {
     FROM documents d
     LEFT JOIN (
       SELECT dc.document_id,
-             GROUP_CONCAT(DISTINCT COALESCE(c1.name, c2.name) ORDER BY COALESCE(c1.name, c2.name) SEPARATOR ', ') AS category_names
+             GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names
       FROM document_categories dc
-      LEFT JOIN categories c1 ON c1.categorie_id = dc.categorie_id
-      LEFT JOIN categorie  c2 ON c2.categorie_id = dc.categorie_id
+      JOIN categories c ON c.categorie_id = dc.categorie_id
       GROUP BY dc.document_id
     ) cat ON cat.document_id = d.document_id
     WHERE COALESCE(LOWER(d.status), '') <> 'draft'
@@ -61,10 +60,9 @@ router.get('/recommended', (req, res) => {
     FROM documents d
     LEFT JOIN (
       SELECT dc.document_id,
-             GROUP_CONCAT(DISTINCT COALESCE(c1.name, c2.name) ORDER BY COALESCE(c1.name, c2.name) SEPARATOR ', ') AS category_names
+             GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names
       FROM document_categories dc
-      LEFT JOIN categories c1 ON c1.categorie_id = dc.categorie_id
-      LEFT JOIN categorie  c2 ON c2.categorie_id = dc.categorie_id
+      JOIN categories c ON c.categorie_id = dc.categorie_id
       GROUP BY dc.document_id
     ) cat ON cat.document_id = d.document_id
     WHERE COALESCE(LOWER(d.status), '') <> 'draft'
@@ -104,10 +102,9 @@ router.get('/by-user/:userId', (req, res) => {
     FROM documents d
     LEFT JOIN (
       SELECT dc.document_id,
-             GROUP_CONCAT(DISTINCT COALESCE(c1.name, c2.name) ORDER BY COALESCE(c1.name, c2.name) SEPARATOR ', ') AS category_names
+             GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names
       FROM document_categories dc
-      LEFT JOIN categories c1 ON c1.categorie_id = dc.categorie_id
-      LEFT JOIN categorie  c2 ON c2.categorie_id = dc.categorie_id
+      JOIN categories c ON c.categorie_id = dc.categorie_id
       GROUP BY dc.document_id
     ) cat ON cat.document_id = d.document_id
     WHERE d.user_id = ?
