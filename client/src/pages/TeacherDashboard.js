@@ -25,13 +25,13 @@ const TeacherDashboard = () => {
     <div>
       <Navbar />
 
-      <div className="p-6 mt-16">
+      <div className="p-4 md:p-6 mt-16">
         <Typography variant="h4" gutterBottom>
           แดชบอร์ดครู
         </Typography>
 
         {/* สถิติ */}
-        <div className="flex gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           <Card>
             <CardContent>
               <Typography variant="h6">📄 ผลงานรอตรวจ</Typography>
