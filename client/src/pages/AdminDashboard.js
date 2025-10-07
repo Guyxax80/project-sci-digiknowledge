@@ -102,14 +102,14 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-6">
       <Typography variant="h4" className="font-bold mb-4">
         Admin Dashboard
       </Typography>
 
       {/* ฟอร์ม เพิ่ม/แก้ไขผู้ใช้ */}
       <form
-        className="mb-6 space-y-4 bg-yellow-50 p-4 rounded-xl shadow"
+        className="mb-6 space-y-4 bg-brand-50 p-4 rounded-xl shadow"
         onSubmit={handleSubmit}
       >
         <div className="flex flex-col gap-2">
@@ -144,7 +144,7 @@ export default function AdminDashboard() {
           </select>
           {/* ไม่แก้ Student ID ตอนแก้ไขผู้ใช้ ตามคำขอ */}
         </div>
-        <div className="flex gap-2 mt-2">
+        <div className="flex flex-col sm:flex-row gap-2 mt-2">
           <Button type="submit" variant="contained" color="primary">
             {editingUser ? "อัปเดตผู้ใช้" : "เพิ่มผู้ใช้"}
           </Button>
@@ -168,7 +168,7 @@ export default function AdminDashboard() {
       <Card className="shadow-md">
         <CardContent>
           <Typography variant="h6" gutterBottom>จัดการรหัสนักศึกษา (student_codes)</Typography>
-          <div className="flex gap-2 mb-2">
+          <div className="flex flex-col md:flex-row gap-2 mb-2">
             <textarea
               className="border p-2 rounded w-full"
               rows={3}
@@ -191,6 +191,7 @@ export default function AdminDashboard() {
               }}
             >เพิ่มรหัส</Button>
           </div>
+          <div className="overflow-x-auto">
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -219,6 +220,7 @@ export default function AdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
@@ -233,6 +235,7 @@ export default function AdminDashboard() {
           <Typography variant="h6" gutterBottom>
             จัดการผู้ใช้
           </Typography>
+          <div className="overflow-x-auto">
           <Table>
             <TableHead>
               <TableRow>
@@ -263,6 +266,7 @@ export default function AdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

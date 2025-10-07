@@ -62,10 +62,10 @@ export default function Signup() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-green-200 to-green-400">
-      <div className="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-md border-4 border-green-400">
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-brand-50 to-brand-100">
+      <div className="bg-white/60 backdrop-blur p-6 rounded-3xl shadow-2xl w-full max-w-md border border-brand-100">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-full mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-brand-500 to-brand-600 rounded-full mb-4">
             <UserPlus className="w-8 h-8 text-white" />
           </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-2">สมัครสมาชิก</h2>
@@ -83,7 +83,7 @@ export default function Signup() {
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-6 bg-green-50/80 p-6 rounded-xl shadow-inner border-2 border-green-300"
+          className="space-y-6 bg-brand-50/60 p-6 rounded-xl shadow-inner border border-brand-200"
         >
           {/* Username */}
           <div>
@@ -92,8 +92,8 @@ export default function Signup() {
               type="text"
               value={formData.username}
               onChange={(e) => handleInputChange("username", e.target.value)}
-              className={`block w-full px-3 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                errors.username ? "border-red-300 focus:ring-red-500" : "border-gray-300"
+              className={`block w-full px-3 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+                errors.username ? "border-red-300 focus:ring-red-500" : "border-brand-200"
               }`}
               placeholder="กรอกชื่อผู้ใช้"
             />
@@ -111,8 +111,8 @@ export default function Signup() {
               type="password"
               value={formData.password}
               onChange={(e) => handleInputChange("password", e.target.value)}
-              className={`block w-full px-3 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                errors.password ? "border-red-300 focus:ring-red-500" : "border-gray-300"
+              className={`block w-full px-3 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+                errors.password ? "border-red-300 focus:ring-red-500" : "border-brand-200"
               }`}
               placeholder="กรอกรหัสผ่าน"
             />
@@ -130,7 +130,7 @@ export default function Signup() {
               type="text"
               value={formData.student_id}
               onChange={(e) => handleInputChange("student_id", e.target.value)}
-              className="block w-full px-3 py-3 border rounded-xl shadow-sm border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="block w-full px-3 py-3 border rounded-xl shadow-sm border-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-500"
               placeholder="รหัสนักศึกษา เช่น 367409221000"
             />
           </div>
@@ -142,7 +142,7 @@ export default function Signup() {
               type="text"
               value={formData.class_group}
               onChange={(e) => handleInputChange("class_group", e.target.value)}
-              className="block w-full px-3 py-3 border rounded-xl shadow-sm border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="block w-full px-3 py-3 border rounded-xl shadow-sm border-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-500"
               placeholder="กลุ่มชั้นเรียน เช่น ITS36721N , ITS36741N"
             />
           </div>
@@ -154,8 +154,8 @@ export default function Signup() {
               type="number"
               value={formData.level}
               onChange={(e) => handleInputChange("level", e.target.value)}
-              className={`block w-full px-3 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                errors.level ? "border-red-300 focus:ring-red-500" : "border-gray-300"
+              className={`block w-full px-3 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+                errors.level ? "border-red-300 focus:ring-red-500" : "border-brand-200"
               }`}
               placeholder="ชั้นปี เช่น 1, 2, 3, 4"
               min="1"
@@ -170,7 +170,7 @@ export default function Signup() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold py-3 px-4 rounded-xl shadow-lg transition-all duration-200 disabled:opacity-70"
+            className="w-full bg-gradient-to-r from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 text-white font-semibold py-3 px-4 rounded-xl shadow-lg transition-all duration-200 disabled:opacity-70"
           >
             {isLoading ? "กำลังสมัคร..." : "สมัครสมาชิก"}
           </button>

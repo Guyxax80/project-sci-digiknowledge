@@ -5,11 +5,29 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import './input.css'
 import './output.css'
+import { createTheme, ThemeProvider, CssBaseline } from '@mui/material';
+
+const theme = createTheme({
+  palette: {
+    mode: 'light',
+    primary: { main: '#3e73b7' },
+    secondary: { main: '#e36a39' },
+    background: { default: '#f4f7fb' },
+    text: { primary: '#111827' }
+  },
+  typography: {
+    fontFamily: 'Inter, Noto Sans Thai, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, sans-serif'
+  },
+  shape: { borderRadius: 12 }
+});
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <App />
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <App />
+    </ThemeProvider>
   </React.StrictMode>
 );
 

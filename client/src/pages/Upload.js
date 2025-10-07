@@ -128,8 +128,8 @@ const UploadDocument = () => {
   };
 
   return (
-    <div className="p-6 max-w-lg mx-auto border rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-4">อัปโหลดเอกสาร</h2>
+    <div className="p-4 md:p-6 max-w-2xl mx-auto border rounded-lg shadow-md bg-white/80">
+      <h2 className="text-2xl font-bold mb-4 text-brand-800">อัปโหลดเอกสาร</h2>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <input
           type="text"
@@ -141,7 +141,7 @@ const UploadDocument = () => {
         />
         <div>
           <p className="font-semibold mb-2">เลือกหมวดหมู่ (เลือกได้หลายรายการ)</p>
-          <div className="flex flex-col gap-2 max-h-40 overflow-auto border rounded p-2">
+          <div className="flex flex-col gap-2 max-h-60 overflow-auto border rounded p-2">
             {categories.map((cat) => {
               const idStr = String(cat.categorie_id);
               const checked = selectedCategoryIds.includes(idStr);
@@ -195,7 +195,7 @@ const UploadDocument = () => {
         <hr className="my-2" />
         <h3 className="text-xl font-bold">อัปโหลดไฟล์รายส่วน</h3>
 
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="flex flex-col">
             <span className="mb-1">ปก (cover)</span>
             <input type="file" onChange={(e) => setCoverFile(e.target.files[0])} />
@@ -244,7 +244,7 @@ const UploadDocument = () => {
             <span className="mb-1">ประวัติผู้จัดทำ (author_bio)</span>
             <input type="file" onChange={(e) => setAuthorBioFile(e.target.files[0])} />
           </label>
-          <label className="flex flex-col">
+          <label className="flex flex-col sm:col-span-2">
             <span className="mb-1">วิดีโอนำเสนอ (presentation_video)</span>
             <input type="file" accept="video/*" onChange={(e) => setPresentationVideoFile(e.target.files[0])} />
           </label>
@@ -262,7 +262,7 @@ const UploadDocument = () => {
 
         <button
           type="submit"
-          className="bg-blue-600 text-white px-4 py-2 rounded mt-2"
+          className="bg-brand-700 hover:bg-brand-800 text-white px-4 py-2 rounded mt-2"
         >
           อัปโหลดเอกสาร
         </button>
