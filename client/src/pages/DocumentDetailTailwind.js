@@ -102,9 +102,9 @@ function DocumentDetailTailwind() {
         {/* Left Column - รายละเอียดเอกสาร (เฉพาะ Categorie, Keywords, Academic Year) */}
         <div className="flex-2 bg-white p-6 rounded-lg shadow-md">
           <h2 className="text-2xl font-bold mb-4">{document.title}</h2>
-          <p><span className="font-semibold">Categorie:</span> {categories.length > 0 ? categories.map(c => c.name).join(", ") : "-"}</p>
-          <p><span className="font-semibold">Keywords:</span> {document.keywords || "-"}</p>
-          <p><span className="font-semibold">Academic Year:</span> {document.academic_year || "-"}</p>
+          <p><span className="font-semibold">หมวดหมู่:</span> {categories.length > 0 ? categories.map(c => c.name).join(", ") : "-"}</p>
+          <p><span className="font-semibold">คำค้น:</span> {document.keywords || "-"}</p>
+          <p><span className="font-semibold">ปีการศึกษา:</span> {document.academic_year || "-"}</p>
         </div>
 
         {/* Right Column - ไฟล์ดาวน์โหลด */}
