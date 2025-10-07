@@ -85,14 +85,14 @@ const Home = () => {
             : ""}
         </Typography>
 
-        {/* ================= Student & Teacher Actions ================= */}
-        {(role === "student" || role === "teacher") && (
+        {/* ================= Student Actions ================= */}
+        {(role === "student") && (
           <div className="mb-8">
             <Button
               variant="contained"
               color={role === "student" ? "primary" : "secondary"}
               onClick={() =>
-                role === "student" ? navigate("/upload") : navigate("/reviews")
+                role === "student" ? navigate("/upload") : navigate("/document")
               }
               sx={{ mb: 4 }}
             >
@@ -199,7 +199,7 @@ const Home = () => {
         {(role === "student" || role === "teacher") && (
           <div>
             <Typography variant="h5" gutterBottom className="mb-4">
-              🌟 ผลงานล่าสุด
+              🌟 ผลงานยอดนิยม
             </Typography>
             
             {popularDocs.length === 0 ? (
