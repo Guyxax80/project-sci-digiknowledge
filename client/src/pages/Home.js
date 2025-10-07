@@ -74,7 +74,7 @@ const Home = () => {
     <div>
 
       <div className="p-6 max-w-7xl mx-auto">
-        <Typography variant="h4" gutterBottom>
+        <Typography variant="h4" gutterBottom className="text-brand-800">
           ยินดีต้อนรับ{" "}
           {role === "student"
             ? "นักศึกษา"
@@ -198,7 +198,7 @@ const Home = () => {
         {/* ================= Recommended Documents ================= */}
         {(role === "student" || role === "teacher") && (
           <div>
-            <Typography variant="h5" gutterBottom className="mb-4">
+            <Typography variant="h5" gutterBottom className="mb-4 text-brand-700">
               🌟 ผลงานยอดนิยม
             </Typography>
             
@@ -211,10 +211,10 @@ const Home = () => {
                 {popularDocs.map((doc) => (
                   <Card
                     key={doc.document_id}
-                    className="shadow-lg hover:shadow-2xl transition rounded-xl"
+                    className="shadow-lg hover:shadow-2xl transition rounded-xl border border-brand-100/70"
                   >
                     <CardContent>
-                      <Typography variant="h6" gutterBottom className="line-clamp-2">
+                      <Typography variant="h6" gutterBottom className="line-clamp-2 text-brand-800">
                         {doc.title}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" className="mb-2">
