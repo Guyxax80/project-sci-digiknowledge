@@ -74,9 +74,7 @@ function Profile() {
       </Card>
 
       <Typography variant="h6" className="mb-3">ผลงานที่ฉันอัปโหลด</Typography>
-      {myDocs.length === 0 ? (
-        <Typography color="text.secondary">ยังไม่มีผลงานที่อัปโหลด</Typography>
-      ) : (
+      {myDocs.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {myDocs.map((doc) => (
             <Card key={doc.document_id} className="">
@@ -124,6 +122,9 @@ function Profile() {
             </Card>
           ))}
         </div>
+      )}
+      {myDocs.length === 0 && String(user.role || '').toLowerCase() === 'student' && (
+        <Typography color="text.secondary">ยังไม่มีผลงานที่อัปโหลด</Typography>
       )}
     </div>
   );
