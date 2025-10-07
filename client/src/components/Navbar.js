@@ -30,7 +30,7 @@ const Navbar = ({ role }) => {
           <Link to={token ? "/profile" : "/login"} className={`hover:underline ${!token ? "opacity-60 cursor-not-allowed" : ""}`} onClick={(e) => { if (!token) e.preventDefault(); }}>
             Profile
           </Link>
-          {!token ? (
+          {/*!token ? (
             <Link to="/login" className="hover:underline">
               Login
             </Link>
@@ -45,7 +45,7 @@ const Navbar = ({ role }) => {
             >
               Logout
             </button>
-          )}
+          )}*/}
         </div>
       </div>
     </nav>
