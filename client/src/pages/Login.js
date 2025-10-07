@@ -62,7 +62,7 @@ export default function LoginForm() {
   // Redirect ตาม role
   setTimeout(() => {
     setLoginSuccess(false);
-    if (data.role === "admin") navigate("/admin");
+    if (data.role === "admin") navigate("/home");
     else if (data.role === "student") navigate("/home");
     else if (data.role === "teacher") navigate("/home");
     else navigate("/");
