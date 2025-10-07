@@ -86,9 +86,9 @@ function DocumentDetailTailwind() {
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       {/* วิดีโอแนะนำ */}
       {videoFile && (
-        <div className="w-full">
+      <div className="w-full">
           <video
-            className="w-full h-96 rounded-lg shadow-md"
+            className="w-full aspect-video max-h-[70vh] rounded-lg shadow-md"
             controls
             src={`http://localhost:3000/files/video/${videoFile.document_file_id}`}
           >
@@ -100,7 +100,7 @@ function DocumentDetailTailwind() {
       {/* รายละเอียดเอกสาร + ไฟล์ดาวน์โหลด */}
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Left Column - รายละเอียดเอกสาร (เฉพาะ Categorie, Keywords, Academic Year) */}
-        <div className="flex-2 bg-white p-6 rounded-lg shadow-md">
+        <div className="flex-2 bg-white p-4 md:p-6 rounded-lg shadow-md">
           <h2 className="text-2xl font-bold mb-4">{document.title}</h2>
           <p><span className="font-semibold">หมวดหมู่:</span> {categories.length > 0 ? categories.map(c => c.name).join(", ") : "-"}</p>
           <p><span className="font-semibold">คำค้น:</span> {document.keywords || "-"}</p>
@@ -108,14 +108,14 @@ function DocumentDetailTailwind() {
         </div>
 
         {/* Right Column - ไฟล์ดาวน์โหลด */}
-        <div className="flex-1 bg-white p-6 rounded-lg shadow-md">
+        <div className="flex-1 bg-white p-4 md:p-6 rounded-lg shadow-md">
           <h3 className="text-xl font-semibold mb-4">ไฟล์ทั้งหมดของเรื่องนี้</h3>
           {downloadFiles.length === 0 ? (
             <p className="text-gray-500">ไม่มีไฟล์ให้ดาวน์โหลด</p>
           ) : (
             <ul className="space-y-2">
               {downloadFiles.map((file, index) => (
-                <li key={index} className="flex justify-between items-center bg-gray-50 p-2 rounded gap-2">
+                <li key={index} className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-gray-50 p-2 rounded gap-2">
                   <span className="truncate">
                     {file.section === 'main' ? 'ไฟล์หลัก' : file.section}: {file.original_name}
                   </span>
@@ -124,14 +124,14 @@ function DocumentDetailTailwind() {
                       href={`http://localhost:3000/files/download/${file.document_file_id}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-blue-600 hover:underline"
+                      className="text-brand-700 hover:underline"
                     >
                       ดาวน์โหลด
                     </a>
                     {canReplace() && (
                       <>
                         <button
-                          className="text-sm px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600"
+                          className="text-sm px-2 py-1 bg-accent-600 text-white rounded hover:bg-accent-700"
                           onClick={() => triggerReplace(file.section || 'main')}
                           disabled={replacingSection === (file.section || 'main')}
                         >

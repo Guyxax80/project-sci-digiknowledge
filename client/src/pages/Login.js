@@ -86,12 +86,12 @@ export default function LoginForm() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-yellow-200 to-yellow-400 ">
-      <div className="bg-yellow-200 p-6 rounded-3xl shadow-2xl w-full max-w-md flex flex-col items-center justify-center border-4 border-yellow-400">
-        <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100 w-full">
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-brand-50 to-brand-100 ">
+      <div className="bg-white/60 backdrop-blur p-6 rounded-3xl shadow-2xl w-full max-w-md flex flex-col items-center justify-center border border-brand-100">
+        <div className="bg-white/80 backdrop-blur rounded-2xl shadow-xl p-8 border border-brand-100 w-full">
           {/* Header */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full mb-4">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-brand-500 to-brand-600 rounded-full mb-4">
               <LogIn className="w-8 h-8 text-white" />
             </div>
             <h2 className="text-3xl font-bold text-gray-900 mb-2">เข้าสู่ระบบ</h2>
@@ -107,7 +107,7 @@ export default function LoginForm() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-6 bg-yellow-50/80 p-6 rounded-xl shadow-inner border-2 border-yellow-300">
+          <form onSubmit={handleSubmit} className="space-y-6 bg-brand-50/60 p-6 rounded-xl shadow-inner border border-brand-200">
             {/* Username Field */}
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
@@ -119,10 +119,10 @@ export default function LoginForm() {
                   type="text"
                   value={formData.username}
                   onChange={(e) => handleInputChange('username', e.target.value)}
-                  className={`block w-full pl-3 pr-3 py-3 border rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 ${
+                  className={`block w-full pl-3 pr-3 py-3 border rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors duration-200 ${
                     errors.username
                       ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-                      : 'border-gray-300'
+                      : 'border-brand-200'
                   }`}
                   placeholder="กรอกชื่อผู้ใช้"
                 />
@@ -153,10 +153,10 @@ export default function LoginForm() {
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
                   onChange={(e) => handleInputChange('password', e.target.value)}
-                  className={`block w-full pl-10 pr-10 py-3 border rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 ${
+                  className={`block w-full pl-10 pr-10 py-3 border rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors duration-200 ${
                     errors.password
                       ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-                      : 'border-gray-300'
+                      : 'border-brand-200'
                   }`}
                   placeholder="กรอกรหัสผ่าน"
                 />
@@ -183,7 +183,7 @@ export default function LoginForm() {
             <div className="flex items-center justify-center">
               <button
                 type="button"
-                className="text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200"
+                className="text-sm text-brand-700 hover:text-brand-800 font-medium transition-colors duration-200"
                 onClick={async () => {
                   const username = prompt('ระบุชื่อผู้ใช้เพื่อรีเซ็ตรหัสผ่าน');
                   if (!username) return;
@@ -221,7 +221,7 @@ export default function LoginForm() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-4 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
+              className="w-full bg-gradient-to-r from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 text-white font-semibold py-3 px-4 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
             >
               {isLoading ? (
                 <div className="flex items-center justify-center space-x-2">
@@ -243,7 +243,7 @@ export default function LoginForm() {
               ยังไม่มีบัญชีใช่ไหม?{' '}
               <button
                 onClick={() => navigate("/signup")}
-                className="text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200">
+                className="text-brand-700 hover:text-brand-800 font-medium transition-colors duration-200">
                 ลงทะเบียนที่นี่
               </button>
 
