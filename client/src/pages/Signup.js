@@ -131,25 +131,25 @@ export default function Signup() {
               value={formData.student_id}
               onChange={(e) => handleInputChange("student_id", e.target.value)}
               className="block w-full px-3 py-3 border rounded-xl shadow-sm border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500"
-              placeholder="เช่น 6501234567"
+              placeholder="รหัสนักศึกษา เช่น 367409221000"
             />
           </div>
 
           {/* Class Group */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">กลุ่มชั้นเรียน (class_group)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Class_Group</label>
             <input
               type="text"
               value={formData.class_group}
               onChange={(e) => handleInputChange("class_group", e.target.value)}
               className="block w-full px-3 py-3 border rounded-xl shadow-sm border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500"
-              placeholder="เช่น CS1, CS2"
+              placeholder="กลุ่มชั้นเรียน เช่น ITS36721N , ITS36741N"
             />
           </div>
 
           {/* Level */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">ชั้นปี (level)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Level</label>
             <input
               type="number"
               value={formData.level}
@@ -157,7 +157,7 @@ export default function Signup() {
               className={`block w-full px-3 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${
                 errors.level ? "border-red-300 focus:ring-red-500" : "border-gray-300"
               }`}
-              placeholder="เช่น 1, 2, 3, 4"
+              placeholder="ชั้นปี เช่น 1, 2, 3, 4"
               min="1"
             />
             {errors.level && (
