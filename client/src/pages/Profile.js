@@ -7,6 +7,7 @@ function Profile() {
   const [loading, setLoading] = useState(true);
   const [myDocs, setMyDocs] = useState([]);
   const navigate = useNavigate();
+  const effectiveRole = String((user && user.role) || localStorage.getItem("role") || "").trim().toLowerCase();
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -73,58 +74,62 @@ function Profile() {
         </CardContent>
       </Card>
 
-      <Typography variant="h6" className="mb-3">ผลงานที่ฉันอัปโหลด</Typography>
       {myDocs.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {myDocs.map((doc) => (
-            <Card key={doc.document_id} className="">
-              <CardContent>
-                <Typography variant="subtitle1" className="font-semibold">{doc.title}</Typography>
-                <Typography variant="body2" color="text.secondary">หมวดหมู่: {doc.category_names || "-"}</Typography>
-                <Typography variant="body2" color="text.secondary">คำค้นหา: {doc.keywords || "-"}</Typography>
-                <Typography variant="body2" color="text.secondary">ปีการศึกษา: {doc.academic_year || "-"}</Typography>
-                <Typography variant="body2" color="text.secondary">สถานะ: {doc.status || '-'}</Typography>
-                <Typography variant="body2" color="text.secondary">ดาวน์โหลด: {doc.download_count || 0} ครั้ง</Typography>
-                <div className="mt-2 flex gap-2">
-                  <Button size="small" variant="outlined" onClick={() => navigate(`/document-detail/${doc.document_id}`)}>ดูรายละเอียด</Button>
-                  {doc.status === 'draft' && (
-                    <Button
-                      size="small"
-                      variant="contained"
-                      onClick={async () => {
-                        try {
-                          const userId = user?.user_id;
-                          const res = await fetch(`http://localhost:3000/api/documents/${doc.document_id}/publish`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ user_id: userId })
-                          });
-                          const data = await res.json();
-                          if (!res.ok || !data.success) {
-                            alert(data.message || 'เผยแพร่ไม่สำเร็จ');
-                            return;
+        <>
+          <Typography variant="h6" className="mb-3">ผลงานที่ฉันอัปโหลด</Typography>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {myDocs.map((doc) => (
+              <Card key={doc.document_id} className="">
+                <CardContent>
+                  <Typography variant="subtitle1" className="font-semibold">{doc.title}</Typography>
+                  <Typography variant="body2" color="text.secondary">หมวดหมู่: {doc.category_names || "-"}</Typography>
+                  <Typography variant="body2" color="text.secondary">คำค้นหา: {doc.keywords || "-"}</Typography>
+                  <Typography variant="body2" color="text.secondary">ปีการศึกษา: {doc.academic_year || "-"}</Typography>
+                  <Typography variant="body2" color="text.secondary">สถานะ: {doc.status || '-'}</Typography>
+                  <Typography variant="body2" color="text.secondary">ดาวน์โหลด: {doc.download_count || 0} ครั้ง</Typography>
+                  <div className="mt-2 flex gap-2">
+                    <Button size="small" variant="outlined" onClick={() => navigate(`/document-detail/${doc.document_id}`)}>ดูรายละเอียด</Button>
+                    {doc.status === 'draft' && (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={async () => {
+                          try {
+                            const userId = user?.user_id;
+                            const res = await fetch(`http://localhost:3000/api/documents/${doc.document_id}/publish`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ user_id: userId })
+                            });
+                            const data = await res.json();
+                            if (!res.ok || !data.success) {
+                              alert(data.message || 'เผยแพร่ไม่สำเร็จ');
+                              return;
+                            }
+                            const r = await fetch(`http://localhost:3000/api/documents/by-user/${userId}`);
+                            const docs = await r.json();
+                            setMyDocs(Array.isArray(docs) ? docs : []);
+                          } catch (e) {
+                            console.error(e);
+                            alert('เกิดข้อผิดพลาด');
                           }
-                          // refresh myDocs
-                          const r = await fetch(`http://localhost:3000/api/documents/by-user/${userId}`);
-                          const docs = await r.json();
-                          setMyDocs(Array.isArray(docs) ? docs : []);
-                        } catch (e) {
-                          console.error(e);
-                          alert('เกิดข้อผิดพลาด');
-                        }
-                      }}
-                    >
-                      เผยแพร่
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                        }}
+                      >
+                        เผยแพร่
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
-      {myDocs.length === 0 && String(user.role || '').toLowerCase() === 'student' && (
-        <Typography color="text.secondary">ยังไม่มีผลงานที่อัปโหลด</Typography>
+      {myDocs.length === 0 && effectiveRole === 'student' && (
+        <>
+          <Typography variant="h6" className="mb-3">ผลงานที่ฉันอัปโหลด</Typography>
+          <Typography color="text.secondary">ยังไม่มีผลงานที่อัปโหลด</Typography>
+        </>
       )}
     </div>
   );
