@@ -109,7 +109,7 @@ function DocumentDetailTailwind() {
 
         {/* Right Column - ไฟล์ดาวน์โหลด */}
         <div className="flex-1 bg-white p-4 md:p-6 rounded-lg shadow-md">
-          <h3 className="text-xl font-semibold mb-4">ไฟล์ทั้งหมดของเรื่องนี้</h3>
+          <h3 className="text-xl font-semibold mb-4">ไฟล์ทั้งหมดของเอกสารนี้</h3>
           {downloadFiles.length === 0 ? (
             <p className="text-gray-500">ไม่มีไฟล์ให้ดาวน์โหลด</p>
           ) : (
