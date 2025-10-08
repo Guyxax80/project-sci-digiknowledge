@@ -22,7 +22,7 @@ const UploadDocument = () => {
   const [chapter3File, setChapter3File] = useState(null);
   const [chapter4File, setChapter4File] = useState(null);
   const [chapter5File, setChapter5File] = useState(null);
-  const [referenceFile, setReferenceFile] = useState(null);
+  const [bibliographyFile, setBibliographyFile] = useState(null);
   const [appendixFile, setAppendixFile] = useState(null);
   const [authorBioFile, setAuthorBioFile] = useState(null);
   const [presentationVideoFile, setPresentationVideoFile] = useState(null);
@@ -86,7 +86,7 @@ const UploadDocument = () => {
         if (chapter3File) sections.append("chapter3", chapter3File);
         if (chapter4File) sections.append("chapter4", chapter4File);
         if (chapter5File) sections.append("chapter5", chapter5File);
-        if (referenceFile) sections.append("reference", referenceFile);
+        if (bibliographyFile) sections.append("bibliography", bibliographyFile);
         if (appendixFile) sections.append("appendix", appendixFile);
         if (authorBioFile) sections.append("author_bio", authorBioFile);
         if (presentationVideoFile) sections.append("presentation_video", presentationVideoFile);
@@ -116,7 +116,7 @@ const UploadDocument = () => {
       setChapter3File(null);
       setChapter4File(null);
       setChapter5File(null);
-      setReferenceFile(null);
+      setBibliographyFile(null);
       setAppendixFile(null);
       setAuthorBioFile(null);
       setPresentationVideoFile(null);
@@ -233,8 +233,8 @@ const UploadDocument = () => {
             <input type="file" onChange={(e) => setChapter5File(e.target.files[0])} />
           </label>
           <label className="flex flex-col">
-            <span className="mb-1">บรรณานุกรม (reference)</span>
-            <input type="file" onChange={(e) => setReferenceFile(e.target.files[0])} />
+            <span className="mb-1">บรรณานุกรม (bibliography)</span>
+            <input type="file" onChange={(e) => setBibliographyFile(e.target.files[0])} />
           </label>
           <label className="flex flex-col">
             <span className="mb-1">ภาคผนวก (appendix)</span>
