@@ -39,9 +39,11 @@ const DocumentPage = () => {
     const keywords = (doc.keywords || "").toLowerCase();
     const academic = (doc.academic_year || "").toString().toLowerCase();
     const status = (doc.status || "").toLowerCase();
+    const categories = (doc.category_names || "").toLowerCase();
     return (
       title.includes(text) ||
       keywords.includes(text) ||
+      categories.includes(text) ||
       academic.includes(text) ||
       status.includes(text)
     );
