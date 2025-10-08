@@ -27,6 +27,7 @@ const sectionFields = [
   { name: 'chapter4', maxCount: 1 },
   { name: 'chapter5', maxCount: 1 },
   { name: 'reference', maxCount: 1 },
+  { name: 'bibliography', maxCount: 1 },
   { name: 'appendix', maxCount: 1 },
   { name: 'author_bio', maxCount: 1 },
   { name: 'presentation_video', maxCount: 1 },
