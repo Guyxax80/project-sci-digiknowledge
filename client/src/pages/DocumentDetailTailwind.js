@@ -13,6 +13,32 @@ function DocumentDetailTailwind() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const getThaiSectionLabel = (sectionRaw) => {
+    if (!sectionRaw) return '';
+    const section = String(sectionRaw).toLowerCase();
+    const sectionToThaiMap = {
+      cover: 'ปก',
+      'front-cover': 'ปก',
+      frontcover: 'ปก',
+      intro: 'บทนำ',
+      introduction: 'บทนำ',
+      toc: 'สารบัญ',
+      'table-of-contents': 'สารบัญ',
+      table_of_contents: 'สารบัญ',
+      abstract: 'บทคัดย่อ',
+      acknowledgement: 'กิตติกรรมประกาศ'
+    };
+    if (sectionToThaiMap[section]) return sectionToThaiMap[section];
+    const chapterMatch = section.match(/chapter[\s\-_]*(\d+)/);
+    if (chapterMatch) {
+      const chapterNumber = Number(chapterMatch[1]);
+      if (!Number.isNaN(chapterNumber) && chapterNumber >= 1 && chapterNumber <= 99) {
+        return `บทที่ ${chapterNumber}`;
+      }
+    }
+    return '';
+  };
+
   useEffect(() => {
     const fetchDocument = async () => {
       if (!id) {
@@ -117,7 +143,7 @@ function DocumentDetailTailwind() {
               {downloadFiles.map((file, index) => (
                 <li key={index} className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-gray-50 p-2 rounded gap-2">
                   <span className="truncate">
-                    {file.section === 'main' ? 'ไฟล์หลัก' : file.section}: {file.original_name}
+                    {(file.section || 'main') === 'main' ? 'ไฟล์หลัก' : `${file.section}${getThaiSectionLabel(file.section) ? ` (${getThaiSectionLabel(file.section)})` : ''}`}: {file.original_name}
                   </span>
                   <div className="flex items-center gap-2">
                     <a
