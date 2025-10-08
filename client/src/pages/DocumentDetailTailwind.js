@@ -26,14 +26,32 @@ function DocumentDetailTailwind() {
       'table-of-contents': 'สารบัญ',
       table_of_contents: 'สารบัญ',
       abstract: 'บทคัดย่อ',
-      acknowledgement: 'กิตติกรรมประกาศ'
+      acknowledgement: 'กิตติกรรมประกาศ',
+      acknowledgements: 'กิตติกรรมประกาศ',
+      acknowledgments: 'กิตติกรรมประกาศ',
+      references: 'บรรณานุกรม',
+      reference: 'บรรณานุกรม',
+      bibliography: 'บรรณานุกรม',
+      'works-cited': 'บรรณานุกรม',
+      works_cited: 'บรรณานุกรม',
+      appendix: 'ภาคผนวก',
+      appendices: 'ภาคผนวก',
+      annex: 'ภาคผนวก',
+      annexes: 'ภาคผนวก',
+      'author-bio': 'ประวัติผู้จัดทำปริญญานิพนธ์',
+      author_bio: 'ประวัติผู้จัดทำปริญญานิพนธ์',
+      author: 'ประวัติผู้จัดทำปริญญานิพนิพนธ์',
+      biography: 'ประวัติผู้จัดทำปริญญานิพนธ์',
+      bio: 'ประวัติผู้จัดทำปริญญานิพนธ์',
+      contributor: 'ประวัติผู้จัดทำปริญญานิพนธ์',
+      contributors: 'ประวัติผู้จัดทำปริญญานิพนธ์'
     };
     if (sectionToThaiMap[section]) return sectionToThaiMap[section];
     const chapterMatch = section.match(/chapter[\s\-_]*(\d+)/);
     if (chapterMatch) {
       const chapterNumber = Number(chapterMatch[1]);
       if (!Number.isNaN(chapterNumber) && chapterNumber >= 1 && chapterNumber <= 99) {
-        return `บทที่ ${chapterNumber}`;
+        return `บทที่${chapterNumber}`;
       }
     }
     return '';
