@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Upload from "./pages/Upload";
 import Navbar from "./components/Navbar";
 import Login from "./pages/Login";
-import AdminDashboard from "./pages/AdminDashboard";
+import AdminCRUD from "./pages/AdminDashboard";
 import Home from "./pages/Home";
 import DocumentPage from "./pages/DocumentPage";
 import './output.css'
@@ -18,7 +18,7 @@ function App() {
         <Route path="/upload" element={<Upload />} />
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/admin" element={<AdminCRUD />} />
         <Route path="/home" element={<Home />} />
         <Route path="/document" element={<DocumentPage />} />
         <Route path="/signup" element={<Signup />} />

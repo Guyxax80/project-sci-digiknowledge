@@ -5,20 +5,21 @@ const { exec } = require("child_process");
 const path = require("path");
 const util = require("util");
 const q = util.promisify(db.query).bind(db);
-
+const connection = require("../db");
+  
 // 📌 ดึงผู้ใช้ทั้งหมด
-router.get("/users", (req, res) => {
-  db.query(
-    "SELECT user_id, username, role, student_id, created_at FROM users",
-    (err, result) => {
-      if (err) return res.status(500).json({ error: "DB error" });
-      res.json(result);
-    }
-  );
+router.get("/users", async (req, res) => {
+  try {
+    const result = await q("SELECT user_id, username, role, student_id, created_at FROM users");
+    res.json(result);
+  } catch (err) {
+    console.error("เกิดข้อผิดพลาด:", err);
+    res.status(500).json({ error: "DB error" });
+  }
 });
 
 // 📌 เพิ่มผู้ใช้
-router.post("/users", (req, res) => {
+router.post("/users", async (req, res) => {
   const { username, password, role, student_id } = req.body;
   if (!username || !password || !role)
     return res.status(400).json({ error: "กรอกข้อมูลไม่ครบ" });
@@ -118,13 +119,21 @@ router.put("/users/:user_id", (req, res) => {
 });
 
 // 📌 ลบผู้ใช้
-router.delete("/users/:user_id", (req, res) => {
+router.delete("/users/:user_id", async (req, res) => {
   const { user_id } = req.params;
 
-  db.query("DELETE FROM users WHERE user_id=?", [user_id], (err, result) => {
-    if (err) return res.status(500).json({ error: "DB delete error" });
-    res.json({ message: "ลบผู้ใช้สำเร็จ" });
-  });
+  try {
+    // ตั้งค่า user_id ของผลงานทั้งหมดเป็น NULL ก่อน
+    await connection.query("UPDATE documents SET user_id = NULL WHERE user_id = ?", [user_id]);
+
+    // จากนั้นลบผู้ใช้
+    await connection.query("DELETE FROM users WHERE user_id = ?", [user_id]);
+
+    res.json({ message: "ลบผู้ใช้สำเร็จ (ผลงานยังอยู่)" });
+  } catch (err) {
+    console.error("เกิดข้อผิดพลาด:", err);
+    res.status(500).json({ error: "ไม่สามารถลบผู้ใช้ได้" });
+  }
 });
 
 // 📌 ดึงสถิติ

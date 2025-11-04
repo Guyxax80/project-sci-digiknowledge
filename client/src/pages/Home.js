@@ -2,6 +2,11 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Button, Card, CardContent, Typography, CardActions } from "@mui/material";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Legend , Cell
+} from "recharts";
+
 
 const Home = () => {
   const navigate = useNavigate();
@@ -67,6 +72,11 @@ const Home = () => {
         .get("http://localhost:3000/api/admin/stats")
         .then((res) => setStats(res.data))
         .catch((err) => console.error(err));
+
+        fetch("http://localhost:3000/api/documents/uploads/7days")
+      .then(res => res.json())
+      .then(data => setStats((prev) => ({ ...prev, uploadsLast7Days: data })))
+      .catch(console.error);
     }
   }, [role]);
 
@@ -102,113 +112,144 @@ const Home = () => {
         )}
 
         {/* ================= Admin Stats ================= */}
-        {role === "admin" && (
-          <div className="space-y-6 mb-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
-                <CardContent>
-                  <Typography variant="h6">👥 ผู้ใช้งานทั้งหมด</Typography>
-                  <Typography variant="h4">{stats.users}</Typography>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6">📚 ผลงานทั้งหมด</Typography>
-                  <Typography variant="h4">{stats.documents}</Typography>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6">⬇️ ดาวน์โหลดรวม</Typography>
-                  <Typography variant="h4">{stats.downloads}</Typography>
-                </CardContent>
-              </Card>
-            </div>
+{role === "admin" && (
+  <div className="space-y-8 mb-12">
+    <Typography variant="h5" gutterBottom className="text-brand-800">
+      📊 แดชบอร์ดผู้ดูแลระบบ
+    </Typography>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>อัปโหลด 7 วันล่าสุด</Typography>
-                  <div className="space-y-2">
-                    {stats.uploadsLast7Days.length === 0 ? (
-                      <Typography color="text.secondary">ไม่มีข้อมูล</Typography>
-                    ) : (
-                      stats.uploadsLast7Days.map((r, idx) => (
-                        <div key={idx} className="flex justify-between text-sm">
-                          <span>{new Date(r.day).toLocaleDateString('th-TH')}</span>
-                          <span className="font-semibold">{r.count}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+    {/* KPI CARDS */}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 shadow-md">
+        <CardContent>
+          <Typography variant="h6">👥 ผู้ใช้งานทั้งหมด</Typography>
+          <Typography variant="h4" className="font-bold text-indigo-700">{stats.users}</Typography>
+        </CardContent>
+      </Card>
+      <Card className="bg-gradient-to-br from-purple-50 to-purple-100 shadow-md">
+        <CardContent>
+          <Typography variant="h6">📚 ผลงานทั้งหมด</Typography>
+          <Typography variant="h4" className="font-bold text-purple-700">{stats.documents}</Typography>
+        </CardContent>
+      </Card>
+      <Card className="bg-gradient-to-br from-pink-50 to-pink-100 shadow-md">
+        <CardContent>
+          <Typography variant="h6">⬇️ ดาวน์โหลดรวม</Typography>
+          <Typography variant="h4" className="font-bold text-pink-700">{stats.downloads}</Typography>
+        </CardContent>
+      </Card>
+      <Card className="bg-gradient-to-br from-green-50 to-green-100 shadow-md">
+        <CardContent>
+          <Typography variant="h6">📅 อัปโหลดใน 7 วันล่าสุด</Typography>
+          <Typography variant="h4" className="font-bold text-green-700">
+            {stats.uploadsLast7Days?.reduce((a, b) => a + (b.count || 0), 0) || 0}
+          </Typography>
+        </CardContent>
+      </Card>
+    </div>
 
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>หมวดหมู่ยอดนิยม</Typography>
-                  <div className="space-y-2">
-                    {stats.topCategories.length === 0 ? (
-                      <Typography color="text.secondary">ไม่มีข้อมูล</Typography>
-                    ) : (
-                      stats.topCategories.map((r, idx) => (
-                        <div key={idx} className="flex justify-between text-sm">
-                          <span>{r.category}</span>
-                          <span className="font-semibold">{r.count}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+    {/* CHARTS SECTION */}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* BAR CHART - Uploads */}
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>📈 การอัปโหลดใน 7 วันที่ผ่านมา</Typography>
+          {stats.uploadsLast7Days?.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={stats.uploadsLast7Days}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="day" tickFormatter={(d) => new Date(d).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' })}/>
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="#8884d8" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Typography color="text.secondary">ไม่มีข้อมูลการอัปโหลด</Typography>
+          )}
+        </CardContent>
+      </Card>
 
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>เอกสารยอดดาวน์โหลด</Typography>
-                <div className="space-y-2">
-                  {!stats.topDocuments || stats.topDocuments.length === 0 ? (
-                    <Typography color="text.secondary">ไม่มีข้อมูล</Typography>
-                  ) : (
-                    stats.topDocuments.map((d) => (
-                      <button
-                        key={d.document_id}
-                        className="w-full flex justify-between text-left text-sm hover:bg-gray-50 p-1 rounded"
-                        onClick={async () => {
-                          try {
-                            const res = await fetch(`http://localhost:3000/api/admin/documents/${d.document_id}/file-downloads`);
-                            const files = await res.json();
-                            const list = files && files.length
-                              ? files.map(f => `${f.section || 'main'} - ${(f.original_name || 'file')} : ${f.download_count}`).join('\n')
-                              : 'ไม่มีไฟล์ที่มีการดาวน์โหลด';
-                            alert(`ไฟล์ของ: ${d.title}\n\n${list}`);
-                          } catch (e) {
-                            alert('โหลดข้อมูลไฟล์ไม่สำเร็จ');
-                          }
-                        }}
-                        title={d.title}
-                      >
-                        <span className="truncate max-w-[70%]">{d.title}</span>
-                        <span className="font-semibold">{d.download_count}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+      {/* PIE CHART - Categories */}
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>🥇 หมวดหมู่ยอดนิยม</Typography>
+          {stats.topCategories?.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+  <Pie
+    data={stats.topCategories}
+    dataKey="count"
+    nameKey="category"
+    outerRadius={100}
+    label
+  >
+    {stats.topCategories.map((entry, index) => (
+      <Cell
+        key={`cell-${index}`}
+        fill={[
+          "#8884d8", // ม่วง
+          "#82ca9d", // เขียว
+          "#ffc658", // เหลือง
+          "#ff7f50", // ส้ม
+          "#0088FE", // ฟ้า
+          "#d45087", // ชมพู
+          "#a0d911", // เขียวอ่อน
+          "#00C49F", // เขียวมรกต
+        ][index % 8]} // ใช้สีวนไปเรื่อยๆ
+      />
+    ))}
+  </Pie>
+  <Tooltip />
+  <Legend />
+</PieChart>
 
-            <div>
-              <Button
-                variant="contained"
-                color="primary"
-                component="a"
-                href="http://localhost:3001/admin"
+            </ResponsiveContainer>
+          ) : (
+            <Typography color="text.secondary">ไม่มีข้อมูลหมวดหมู่</Typography>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+
+    {/* TOP DOCUMENTS */}
+    <Card>
+      <CardContent>
+        <Typography variant="h6" gutterBottom>🏆 เอกสารยอดดาวน์โหลด</Typography>
+        <div className="space-y-2">
+          {!stats.topDocuments || stats.topDocuments.length === 0 ? (
+            <Typography color="text.secondary">ไม่มีข้อมูล</Typography>
+          ) : (
+            stats.topDocuments.map((d) => (
+              <button
+                key={d.document_id}
+                className="w-full flex justify-between text-left text-sm hover:bg-gray-50 p-1 rounded"
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`http://localhost:3000/api/admin/documents/${d.document_id}/file-downloads`);
+                    const files = await res.json();
+                    const list = files && files.length
+                      ? files.map(f => `${f.section || 'main'} - ${(f.original_name || 'file')} : ${f.download_count}`).join('\n')
+                      : 'ไม่มีไฟล์ที่มีการดาวน์โหลด';
+                    alert(`ไฟล์ของ: ${d.title}\n\n${list}`);
+                  } catch (e) {
+                    alert('โหลดข้อมูลไฟล์ไม่สำเร็จ');
+                  }
+                }}
               >
-                จัดการผู้ใช้งาน
-              </Button>
-            </div>
-          </div>
-        )}
+                <span className="truncate max-w-[70%]">{d.title}</span>
+                <span className="font-semibold">{d.download_count}</span>
+              </button>
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
+
+
+  </div>
+)}
+
 
         {/* ================= Recommended Documents ================= */}
         {(role === "student" || role === "teacher") && (

@@ -1,10 +1,23 @@
 import React, { useEffect, useState } from "react";
+import {
+  Tabs,
+  Tab,
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+} from "@mui/material";
 import axios from "axios";
-import { Button, Card, CardContent, Typography, Table, TableBody, TableCell, TableHead, TableRow } from "@mui/material";
 
 export default function AdminDashboard() {
+  const [tab, setTab] = useState(0);
   const [users, setUsers] = useState([]);
-  const [stats, setStats] = useState({});
   const [form, setForm] = useState({ username: "", password: "", role: "", student_id: "" });
   const [editingUser, setEditingUser] = useState(null);
   const [studentCodes, setStudentCodes] = useState([]);
@@ -12,11 +25,21 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchUsers();
-    fetchStats();
     fetchStudentCodes();
   }, []);
 
-  // ดึงข้อมูลผู้ใช้งาน
+  useEffect(() => {
+  if (editingUser) {
+    setForm({
+      username: editingUser.username,
+      password: "",
+      role: editingUser.role,
+      student_id: editingUser.student_id || "",
+    });
+  }
+}, [editingUser]);
+
+  // ✅ ดึงข้อมูลผู้ใช้
   const fetchUsers = async () => {
     try {
       const res = await axios.get("http://localhost:3000/admin/users");
@@ -26,16 +49,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // ดึงสถิติ (อาจไม่ใช้งานแล้ว ถ้าต้องการซ่อนการ์ด)
-  const fetchStats = async () => {
-    try {
-      const res = await axios.get("http://localhost:3000/admin/stats");
-      setStats(res.data || {});
-    } catch (err) {
-      console.error("โหลดสถิติล้มเหลว", err);
-    }
-  };
-
+  // ✅ ดึง Student Codes
   const fetchStudentCodes = async () => {
     try {
       const res = await axios.get("http://localhost:3000/admin/student-codes");
@@ -45,46 +59,15 @@ export default function AdminDashboard() {
     }
   };
 
-  // ลบผู้ใช้
-  const deleteUser = async (user_id) => {
-    if (!window.confirm("ยืนยันการลบผู้ใช้นี้?")) return;
-    try {
-      await axios.delete(`http://localhost:3000/admin/users/${user_id}`);
-      fetchUsers();
-    } catch (err) {
-      console.error("ลบผู้ใช้ล้มเหลว", err);
-    }
-  };
-
-  // สำรองฐานข้อมูล
-  const backupDatabase = async () => {
-    try {
-      const res = await axios.get("http://localhost:3000/admin/backup", {
-        responseType: "blob",
-      });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", "backup.sql");
-      document.body.appendChild(link);
-      link.click();
-    } catch (err) {
-      console.error("สำรองฐานข้อมูลล้มเหลว", err);
-    }
-  };
-
-  // เพิ่ม/แก้ไขผู้ใช้
+  // ✅ เพิ่ม / แก้ไข ผู้ใช้
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
       if (editingUser) {
-        await axios.put(
-          `http://localhost:3000/admin/users/${editingUser.user_id}`,
-          {
-            username: form.username,
-            role: form.role,
-          }
-        );
+        await axios.put(`http://localhost:3000/admin/users/${editingUser.user_id}`, {
+          username: form.username,
+          role: form.role,
+        });
       } else {
         await axios.post("http://localhost:3000/admin/users", form);
       }
@@ -96,179 +79,237 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleEdit = (user) => {
-    setEditingUser(user);
-    setForm({ username: user.username, password: "", role: user.role, student_id: user.student_id || "" });
+  // ✅ ลบผู้ใช้
+  const deleteUser = async (user_id) => {
+    if (!window.confirm("ยืนยันการลบผู้ใช้นี้?")) return;
+    try {
+      await axios.delete(`http://localhost:3000/admin/users/${user_id}`);
+      fetchUsers();
+    } catch (err) {
+      console.error("ลบผู้ใช้ล้มเหลว", err);
+    }
   };
 
+  // ✅ สำรองฐานข้อมูล
+  const backupDatabase = async () => {
+    try {
+      const res = await axios.get("http://localhost:3000/admin/backup", { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "backup.sql");
+      document.body.appendChild(link);
+      link.click();
+    } catch (err) {
+      console.error("สำรองฐานข้อมูลล้มเหลว", err);
+    }
+  };
+
+  // ✅ เพิ่ม Student Code
+  const addStudentCodes = async () => {
+    try {
+      const payload = { student_ids: newCodesText };
+      await axios.post("http://localhost:3000/admin/student-codes", payload);
+      setNewCodesText("");
+      fetchStudentCodes();
+    } catch (err) {
+      console.error("เพิ่ม student codes ล้มเหลว", err);
+      alert("เพิ่มรหัสนักศึกษาไม่สำเร็จ");
+    }
+  };
+
+  // ✅ ลบ Student Code
+  const deleteStudentCode = async (id) => {
+    if (!window.confirm("ยืนยันการลบ?")) return;
+    try {
+      await axios.delete(`http://localhost:3000/admin/student-codes/${id}`);
+      fetchStudentCodes();
+    } catch (err) {
+      console.error("ลบ student code ล้มเหลว", err);
+    }
+  };
+
+  // ✅ เริ่มแสดงหน้า
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      <Typography variant="h4" className="font-bold mb-4">
+    <Box p={4}>
+      {/*<Typography variant="h4" fontWeight="bold" gutterBottom>
         Admin Dashboard
-      </Typography>
+      </Typography> */}
 
-      {/* ฟอร์ม เพิ่ม/แก้ไขผู้ใช้ */}
-      <form
-        className="mb-6 space-y-4 bg-brand-50 p-4 rounded-xl shadow"
-        onSubmit={handleSubmit}
+      {/* แถบแท็บ */}
+      <Tabs
+        value={tab}
+        onChange={(e, newValue) => setTab(newValue)}
+        textColor="primary"
+        indicatorColor="primary"
       >
-        <div className="flex flex-col gap-2">
-          <input
-            type="text"
-            placeholder="Username"
-            className="border p-2 rounded"
-            value={form.username}
-            onChange={(e) => setForm({ ...form, username: e.target.value })}
-            required
-          />
-          {!editingUser && (
-            <input
-              type="password"
-              placeholder="Password"
-              className="border p-2 rounded"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              required
-            />
-          )}
-          <select
-            className="border p-2 w-full"
-            value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value })}
-            required
-          >
-            <option value="">-- เลือกบทบาทผู้ใช้ --</option>
-            <option value="student">นักศึกษา</option>
-            <option value="teacher">อาจารย์</option>
-            <option value="admin">แอดมิน</option>
-          </select>
-          {/* ไม่แก้ Student ID ตอนแก้ไขผู้ใช้ ตามคำขอ */}
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 mt-2">
-          <Button type="submit" variant="contained" color="primary">
-            {editingUser ? "อัปเดตผู้ใช้" : "เพิ่มผู้ใช้"}
-          </Button>
-          {editingUser && (
-            <Button
-              type="button"
-              variant="contained"
-              color="secondary"
-              onClick={() => {
-                setEditingUser(null);
-                setForm({ username: "", password: "", role: "" });
-              }}
-            >
-              ยกเลิก
+        <Tab label="จัดการผู้ใช้" />
+        <Tab label="จัดการรหัสนักศึกษา" />
+        <Tab label="สำรองฐานข้อมูล" />
+      </Tabs>
+
+      <Box mt={3}>
+        {/* ============== TAB 1: ผู้ใช้ ============== */}
+        {tab === 0 && (
+          <Card className="shadow-md">
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                จัดการผู้ใช้
+              </Typography>
+
+              {/* ฟอร์มเพิ่ม/แก้ไข */}
+              <form className="mb-6 space-y-4 bg-gray-50 p-4 rounded-xl shadow" onSubmit={handleSubmit}>
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="text"
+                    placeholder="Username"
+                    className="border p-2 rounded"
+                    value={form.username}
+                    onChange={(e) => setForm({ ...form, username: e.target.value })}
+                    required
+                  />
+                  {!editingUser && (
+                    <input
+                      type="password"
+                      placeholder="Password"
+                      className="border p-2 rounded"
+                      value={form.password}
+                      onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      required
+                    />
+                  )}
+                  <select
+                    className="border p-2 w-full"
+                    value={form.role}
+                    onChange={(e) => setForm({ ...form, role: e.target.value })}
+                    required
+                  >
+                    <option value="">-- เลือกบทบาทผู้ใช้ --</option>
+                    <option value="student">นักศึกษา</option>
+                    <option value="teacher">อาจารย์</option>
+                    <option value="admin">แอดมิน</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 mt-2">
+                  <Button type="submit" variant="contained" color="primary">
+                    {editingUser ? "อัปเดตผู้ใช้" : "เพิ่มผู้ใช้"}
+                  </Button>
+                  {editingUser && (
+                    <Button
+                      type="button"
+                      variant="contained"
+                      color="secondary"
+                      onClick={() => {
+                        setEditingUser(null);
+                        setForm({ username: "", password: "", role: "" });
+                      }}
+                    >
+                      ยกเลิก
+                    </Button>
+                  )}
+                </div>
+              </form>
+
+              {/* ตารางผู้ใช้ */}
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>ชื่อผู้ใช้</TableCell>
+                      <TableCell>บทบาท</TableCell>
+                      <TableCell>จัดการ</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {users.map((u) => (
+                      <TableRow key={u.user_id}>
+                        <TableCell>
+                          <div>{u.username}</div>
+                          {u.student_id ? (
+                            <div className="text-xs text-gray-500">{u.student_id}</div>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>{u.role}</TableCell>
+                        <TableCell>
+                          <Button color="warning" onClick={() => setEditingUser(u)}>
+                            แก้ไข
+                          </Button>
+                          <Button color="error" onClick={() => deleteUser(u.user_id)}>
+                            ลบ
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ============== TAB 2: Student Codes ============== */}
+        {tab === 1 && (
+          <Card className="shadow-md">
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                จัดการรหัสนักศึกษา (student_codes)
+              </Typography>
+
+              <div className="flex flex-col md:flex-row gap-2 mb-2">
+                <textarea
+                  className="border p-2 rounded w-full"
+                  rows={3}
+                  placeholder="วาง Student ID ได้หลายบรรทัด หรือคั่นด้วย ,"
+                  value={newCodesText}
+                  onChange={(e) => setNewCodesText(e.target.value)}
+                />
+                <Button variant="contained" onClick={addStudentCodes}>
+                  เพิ่มรหัส
+                </Button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>ID</TableCell>
+                      <TableCell>Student ID</TableCell>
+                      <TableCell></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {studentCodes.map((s) => (
+                      <TableRow key={s.student_code_id}>
+                        <TableCell>{s.student_code_id}</TableCell>
+                        <TableCell>{s.student_id}</TableCell>
+                        <TableCell>
+                          <Button color="error" onClick={() => deleteStudentCode(s.student_code_id)}>
+                            ลบ
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ============== TAB 3: Backup ============== */}
+        {tab === 2 && (
+          <Box textAlign="center" mt={8}>
+            <Typography variant="h6" gutterBottom>
+              สำรองฐานข้อมูลทั้งหมด
+            </Typography>
+            <Button variant="contained" color="primary" size="large" onClick={backupDatabase}>
+              ดาวน์โหลดไฟล์สำรอง (backup.sql)
             </Button>
-          )}
-        </div>
-      </form>
-
-      {/* จัดการ Student Codes */}
-      <Card className="shadow-md">
-        <CardContent>
-          <Typography variant="h6" gutterBottom>จัดการรหัสนักศึกษา (student_codes)</Typography>
-          <div className="flex flex-col md:flex-row gap-2 mb-2">
-            <textarea
-              className="border p-2 rounded w-full"
-              rows={3}
-              placeholder={"วาง Student ID ได้หลายบรรทัด หรือคั่นด้วย ,"}
-              value={newCodesText}
-              onChange={(e) => setNewCodesText(e.target.value)}
-            />
-            <Button
-              variant="contained"
-              onClick={async () => {
-                try {
-                  const payload = { student_ids: newCodesText };
-                  await axios.post("http://localhost:3000/admin/student-codes", payload);
-                  setNewCodesText("");
-                  fetchStudentCodes();
-                } catch (err) {
-                  console.error("เพิ่ม student codes ล้มเหลว", err);
-                  alert("เพิ่มรหัสนักศึกษาไม่สำเร็จ");
-                }
-              }}
-            >เพิ่มรหัส</Button>
-          </div>
-          <div className="overflow-x-auto">
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>ID</TableCell>
-                <TableCell>Student ID</TableCell>
-                <TableCell></TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {studentCodes.map((s) => (
-                <TableRow key={s.student_code_id}>
-                  <TableCell>{s.student_code_id}</TableCell>
-                  <TableCell>{s.student_id}</TableCell>
-                  <TableCell>
-                    <Button color="error" onClick={async () => {
-                      try {
-                        await axios.delete(`http://localhost:3000/admin/student-codes/${s.student_code_id}`);
-                        fetchStudentCodes();
-                      } catch (err) {
-                        console.error("ลบ student code ล้มเหลว", err);
-                        alert("ลบไม่สำเร็จ");
-                      }
-                    }}>ลบ</Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ปุ่มสำรองฐานข้อมูล */}
-      <Button variant="contained" color="primary" onClick={backupDatabase}>
-        สำรองฐานข้อมูล
-      </Button>
-
-      {/* ตารางผู้ใช้ */}
-      <Card className="shadow-md mt-6">
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            จัดการผู้ใช้
-          </Typography>
-          <div className="overflow-x-auto">
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>ชื่อผู้ใช้</TableCell>
-                <TableCell>บทบาท</TableCell>
-                <TableCell>จัดการ</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {users.map((u) => (
-                <TableRow key={u.user_id}>
-                  <TableCell>
-                    <div>{u.username}</div>
-                    {u.student_id ? (
-                      <div className="text-xs text-gray-500">{u.student_id}</div>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>{u.role}</TableCell>
-                  <TableCell>
-                    <Button color="warning" onClick={() => handleEdit(u)}>
-                      แก้ไข
-                    </Button>
-                    <Button color="error" onClick={() => deleteUser(u.user_id)}>
-                      ลบ
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          </Box>
+        )}
+      </Box>
+    </Box>
   );
 }
+
