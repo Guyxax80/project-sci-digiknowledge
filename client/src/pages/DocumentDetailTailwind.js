@@ -28,7 +28,7 @@ function DocumentDetailTailwind() {
   const [viewingPdf, setViewingPdf] = useState(null);
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
-  const [pdfLoading, setPdfLoading] = useState(false);
+  //const [pdfLoading, setPdfLoading] = useState(false);
 
   const getThaiSectionLabel = (sectionRaw) => {
     if (!sectionRaw) return '';
@@ -149,7 +149,7 @@ function DocumentDetailTailwind() {
     setViewingPdf(file);
     setPageNumber(1);
     setNumPages(null);
-    setPdfLoading(true);
+    //setPdfLoading(true);
   };
 
   const closePdfViewer = () => {
@@ -160,7 +160,7 @@ function DocumentDetailTailwind() {
 
   const onDocumentLoadSuccess = ({ numPages }) => {
     setNumPages(numPages);
-    setPdfLoading(false);
+   //setPdfLoading(false);
   };
 
   const onDocumentLoadError = (error) => {
@@ -170,7 +170,7 @@ function DocumentDetailTailwind() {
       name: error.name,
       stack: error.stack
     });
-    setPdfLoading(false);
+    //setPdfLoading(false);
     alert(`ไม่สามารถโหลดไฟล์ PDF ได้: ${error.message || 'Unknown error'}`);
   };
 
