@@ -1,56 +1,57 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const uploadRouter = require('./routes/upload');
+
+const uploadRoute = require('./routes/upload');
 const documentRoute = require('./routes/documents');
 const adminRoutes = require('./routes/admin');
 const downloadRoute = require('./routes/download');
-const loginRoute = require('./routes/login');   // เปลี่ยนชื่อให้ตรง
+const loginRoute = require('./routes/login');
 const signupRoute = require("./routes/signup");
 const authRoute = require("./routes/auth");
 const filesRoute = require('./routes/files');
 const sectionFilesRoute = require('./routes/sectionFiles');
-const uploadRoute = require("./routes/upload");
 const categoriesRoute = require('./routes/categories');
+const dbTestRoute = require('./routes/dbTest');
 
-// ...ส่วนอื่น ๆ ของ server.js
 
 const app = express();
-app.use(cors());
+
+app.use(cors({
+  origin: [
+    "http://localhost:3001",
+    "https://project-sci-digiknowledge1.onrender.com"
+  ],
+  credentials: true
+}));
+
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use("/api/upload-files", uploadRouter);
 
-// Route สำหรับอัปโหลดไฟล์
+// API Routes
 app.use('/api/upload', uploadRoute);
-
-app.use('/admin', adminRoutes);
-app.use('/api/admin', adminRoutes);
-
-// Route สำหรับดึงเอกสารทั้งหมด
 app.use('/api/documents', documentRoute);
-
-// Route สำหรับ login
-app.use('/api/login', loginRoute);  // ✅ ใช้ loginRoute และกำหนด path เป็น /api/login
-
-// Route สำหรับ download
-app.use('/download', downloadRoute);
-
-// Route สำหรับ signup
-app.use("/api/signup", signupRoute);
-
-app.use("/api/auth", authRoute);
-
-app.use('/files', filesRoute);
-app.use('/api', sectionFilesRoute);
+app.use('/api/login', loginRoute);
+app.use('/api/signup', signupRoute);
+app.use('/api/auth', authRoute);
+app.use('/api/admin', adminRoutes);
 app.use('/api/categories', categoriesRoute);
+app.use('/api', sectionFilesRoute);
+app.use('/files', filesRoute);
+app.use('/download', downloadRoute);
+app.use('/api/db-test', dbTestRoute);
 
 app.get('/', (req, res) => {
   res.send('Welcome to the API server');
 });
 
-const PORT = 3000;
+console.log("dbTestRoute loaded");
+
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server is running on http://localhost:${PORT}`);
+  console.log(`🚀 Server is running on port ${PORT}`);
 });

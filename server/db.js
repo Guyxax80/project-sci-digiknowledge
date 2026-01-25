@@ -1,19 +1,13 @@
-const mysql = require('mysql');
+const mysql = require('mysql2');
 
-const connection = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',
-  password: '',
-  database: 'sci_digiknowledge',
-  charset: 'utf8mb4'
-});
+const connection = mysql.createConnection(process.env.DATABASE_URL);
 
-connection.connect((err) => {
+connection.connect(err => {
   if (err) {
-    console.error('เชื่อมต่อฐานข้อมูลล้มเหลว:', err);
+    console.error('เชื่อมต่อฐานข้อมูล Railway ล้มเหลว:', err);
     return;
   }
-  console.log('เชื่อมต่อฐานข้อมูลสำเร็จ!');
+  console.log('✅ เชื่อมต่อฐานข้อมูล Railway สำเร็จ!');
 });
 
 module.exports = connection;

@@ -100,6 +100,72 @@ router.get('/video/:fileId', (req, res) => {
   );
 });
 
+// Route ดูไฟล์ PDF โดยตรง (สำหรับ PDF Viewer)
+// GET /files/view/:fileId
+router.get('/view/:fileId', (req, res) => {
+  const fileId = req.params.fileId;
+  console.log('PDF View request for fileId:', fileId);
+
+  db.query(
+    'SELECT file_path, file_type, original_name FROM document_files WHERE document_file_id = ?',
+    [fileId],
+    (err, results) => {
+      if (err) {
+        console.error('Database error in /files/view:', err);
+        return res.status(500).json({ error: 'เกิดข้อผิดพลาดในการดึงไฟล์' });
+      }
+      if (!results.length) {
+        console.log('File not found in database for fileId:', fileId);
+        return res.status(404).json({ error: 'ไม่พบไฟล์' });
+      }
+
+      const file = results[0];
+      console.log('File found:', { file_path: file.file_path, file_type: file.file_type, original_name: file.original_name });
+      
+      // Normalize path
+      const storedPath = String(file.file_path || '').replace(/\\/g, '/').replace(/^\.\/?/, '').replace(/^uploads\//, '');
+      const baseName = path.basename(storedPath);
+      const uploadsRoot = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
+      let fullPath = path.join(uploadsRoot, baseName);
+
+      if (!fs.existsSync(fullPath)) {
+        const altPath = path.join(__dirname, '..', storedPath);
+        if (fs.existsSync(altPath)) {
+          fullPath = altPath;
+        }
+      }
+
+      console.log('Resolved file path:', fullPath);
+      console.log('File exists:', fs.existsSync(fullPath));
+
+      if (!fs.existsSync(fullPath)) {
+        return res.status(404).json({ error: 'ไม่พบไฟล์บนเซิร์ฟเวอร์', path: fullPath });
+      }
+
+      // ตั้งค่า Content-Type สำหรับ PDF และ CORS headers
+      const contentType = file.file_type || mime.lookup(fullPath) || 'application/pdf';
+      console.log('Content-Type:', contentType);
+      
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.original_name || 'file.pdf')}"`);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET');
+      res.setHeader('Access-Control-Allow-Headers', 'Range');
+      res.setHeader('Accept-Ranges', 'bytes');
+      
+      // ส่งไฟล์
+      const fileStream = fs.createReadStream(fullPath);
+      fileStream.on('error', (streamErr) => {
+        console.error('File stream error:', streamErr);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'เกิดข้อผิดพลาดในการอ่านไฟล์' });
+        }
+      });
+      fileStream.pipe(res);
+    }
+  );
+});
+
 // Route ดาวน์โหลดไฟล์
 // GET /files/download/:fileId
 router.get('/download/:fileId', (req, res) => {
