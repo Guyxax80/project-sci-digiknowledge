@@ -22,7 +22,8 @@ const app = express();
 app.use(cors({
   origin: [
     "http://localhost:3001",
-    "https://project-sci-digiknowledge1.onrender.com"
+    "https://project-sci-digiknowledge1.onrender.com",
+    "https://project-sci-digiknowledge.vercel.app/"
   ],
   credentials: true
 }));
