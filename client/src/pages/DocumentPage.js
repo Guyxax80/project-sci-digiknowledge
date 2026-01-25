@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import api from "../services/api";
 
 const DocumentPage = () => {
   const navigate = useNavigate();
@@ -11,8 +11,8 @@ const DocumentPage = () => {
   
 
   useEffect(() => {
-    axios
-      .get("http://localhost:3000/api/documents")
+    api
+      .get("/api/documents")
       .then((res) => {
         setDocuments(res.data);
         setLoading(false);

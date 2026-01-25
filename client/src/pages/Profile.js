@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Typography, Card, CardContent, Button } from "@mui/material";
+import api from "../services/api";
 
 function Profile() {
   const [user, setUser] = useState(null);
@@ -16,17 +17,17 @@ function Profile() {
       return;
     }
 
-    fetch("http://localhost:3000/api/auth/me", {
-      headers: {
-        Authorization: "Bearer " + token,
-      },
-    })
+    api.get("/api/auth/me", {
+    headers: {
+    Authorization: `Bearer ${token}`,
+  },
+})
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
           setUser(data.user);
           // ดึงเอกสารของผู้ใช้
-          fetch(`http://localhost:3000/api/documents/by-user/${data.user.user_id}`)
+          api.get(`/api/documents/by-user/${data.user.user_id}`)
             .then((r) => r.json())
             .then((docs) => setMyDocs(Array.isArray(docs) ? docs : []))
             .catch((e) => console.error("Error fetching my documents:", e))
@@ -96,17 +97,15 @@ function Profile() {
                         onClick={async () => {
                           try {
                             const userId = user?.user_id;
-                            const res = await fetch(`http://localhost:3000/api/documents/${doc.document_id}/publish`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ user_id: userId })
-                            });
+                            const res = await api.post(`/api/documents/${doc.document_id}/publish`, {
+                            user_id: userId
+                          });
                             const data = await res.json();
                             if (!res.ok || !data.success) {
                               alert(data.message || 'เผยแพร่ไม่สำเร็จ');
                               return;
                             }
-                            const r = await fetch(`http://localhost:3000/api/documents/by-user/${userId}`);
+                            const r = await api.get(`/api/documents/by-user/${userId}`);
                             const docs = await r.json();
                             setMyDocs(Array.isArray(docs) ? docs : []);
                           } catch (e) {

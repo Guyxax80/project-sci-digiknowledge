@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import { Button, Card, CardContent, Typography } from "@mui/material";
 import Navbar from "../components/Navbar";
+import api from "../services/api";
 
 const TeacherDashboard = () => {
   const navigate = useNavigate();
@@ -11,12 +11,12 @@ const TeacherDashboard = () => {
 
   useEffect(() => {
     // โหลดผลงานนักศึกษาที่ครูต้องตรวจสอบ
-    axios.get("http://localhost:3000/api/teacher/documents")
+    api.get("/api/teacher/documents")
       .then(res => setStudentDocs(res.data))
       .catch(err => console.error(err));
 
     // โหลดสถิติสำหรับครู (เช่น จำนวนผลงานรอตรวจ)
-    axios.get("http://localhost:3000/api/teacher/stats")
+    api.get("/api/teacher/stats")
       .then(res => setStats(res.data))
       .catch(err => console.error(err));
   }, []);

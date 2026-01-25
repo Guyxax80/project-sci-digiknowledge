@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import axios from "axios";
 import { useParams } from "react-router-dom";
 import { Document, Page, pdfjs } from "react-pdf";
+import api from "../services/api";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
@@ -82,12 +82,12 @@ function DocumentDetailTailwind() {
         return;
       }
       try {
-        const docRes = await axios.get(`http://localhost:3000/api/documents/${id}`);
+        const docRes = await api.get(`/api/documents/${id}`);
         setDocument(docRes.data.document);
         setVideoFile(docRes.data.videoFile);
         setDownloadFiles(docRes.data.downloadFiles);
         try {
-          const catRes = await axios.get(`http://localhost:3000/api/documents/${id}/categories`);
+          const catRes = await api.get(`/api/documents/${id}/categories`);
           setCategories(catRes.data || []);
         } catch (_) {
           // fallback หาก endpoint ไม่มี ใช้ categories ที่แนบมากับ document (ถ้ามี)
@@ -122,12 +122,9 @@ function DocumentDetailTailwind() {
     try {
       const form = new FormData();
       form.append('file', file);
-      await fetch(`http://localhost:3000/api/documents/${document.document_id}/sections/${section}`, {
-        method: 'PUT',
-        body: form
-      });
+      await api.put(`/api/documents/${document.document_id}/sections/${section}`, form);
       // refresh details
-      const docRes = await axios.get(`http://localhost:3000/api/documents/${id}`);
+      const docRes = await api.get(`/api/documents/${id}`);
       setDocument(docRes.data.document);
       setVideoFile(docRes.data.videoFile);
       setDownloadFiles(docRes.data.downloadFiles);
@@ -191,13 +188,13 @@ function DocumentDetailTailwind() {
       {/* วิดีโอแนะนำ */}
       {videoFile && (
       <div className="w-full">
-          <video
-            className="w-full aspect-video max-h-[70vh] rounded-lg shadow-md"
-            controls
-            src={`http://localhost:3000/files/video/${videoFile.document_file_id}`}
-          >
-            Your browser does not support the video tag.
-          </video>
+        <video
+          className="w-full aspect-video max-h-[70vh] rounded-lg shadow-md"
+          controls
+          src={`${process.env.REACT_APP_API_URL}/files/video/${videoFile.document_file_id}`}
+        >
+          Your browser does not support the video tag.
+        </video>
         </div>
       )}
 
@@ -233,7 +230,7 @@ function DocumentDetailTailwind() {
                       </button>
                     )}
                     <a
-                      href={`http://localhost:3000/files/download/${file.document_file_id}`}
+                      href={`${process.env.REACT_APP_API_URL}/files/download/${file.document_file_id}`}
                       target="_blank"
                       rel="noreferrer"
                       className="text-brand-700 hover:underline"
@@ -306,7 +303,7 @@ function DocumentDetailTailwind() {
             {/* PDF Content */}
             <div className="flex-1 overflow-auto p-4 flex justify-center bg-gray-100">
               <Document
-                file={`http://localhost:3000/files/view/${viewingPdf.document_file_id}`}
+                file={`${process.env.REACT_APP_API_URL}/files/view/${viewingPdf.document_file_id}`}
                 onLoadSuccess={onDocumentLoadSuccess}
                 onLoadError={onDocumentLoadError}
                 loading={

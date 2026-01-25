@@ -13,7 +13,7 @@ import {
   TableHead,
   TableRow,
 } from "@mui/material";
-import axios from "axios";
+import api from "../services/api";
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState(0);
@@ -42,7 +42,7 @@ export default function AdminDashboard() {
   // ✅ ดึงข้อมูลผู้ใช้
   const fetchUsers = async () => {
     try {
-      const res = await axios.get("http://localhost:3000/admin/users");
+      const res = await api.get("/admin/users");
       setUsers(res.data);
     } catch (err) {
       console.error("โหลดข้อมูลผู้ใช้ล้มเหลว", err);
@@ -52,7 +52,7 @@ export default function AdminDashboard() {
   // ✅ ดึง Student Codes
   const fetchStudentCodes = async () => {
     try {
-      const res = await axios.get("http://localhost:3000/admin/student-codes");
+      const res = await api.get("/admin/student-codes");
       setStudentCodes(res.data || []);
     } catch (err) {
       console.error("โหลด student codes ล้มเหลว", err);
@@ -64,12 +64,12 @@ export default function AdminDashboard() {
     e.preventDefault();
     try {
       if (editingUser) {
-        await axios.put(`http://localhost:3000/admin/users/${editingUser.user_id}`, {
+        await api.put(`/admin/users/${editingUser.user_id}`, {
           username: form.username,
           role: form.role,
         });
       } else {
-        await axios.post("http://localhost:3000/admin/users", form);
+        await api.post("/admin/users", form);
       }
       setForm({ username: "", password: "", role: "", student_id: "" });
       setEditingUser(null);
@@ -83,7 +83,7 @@ export default function AdminDashboard() {
   const deleteUser = async (user_id) => {
     if (!window.confirm("ยืนยันการลบผู้ใช้นี้?")) return;
     try {
-      await axios.delete(`http://localhost:3000/admin/users/${user_id}`);
+      await api.delete(`/admin/users/${user_id}`);
       fetchUsers();
     } catch (err) {
       console.error("ลบผู้ใช้ล้มเหลว", err);
@@ -93,7 +93,7 @@ export default function AdminDashboard() {
   // ✅ สำรองฐานข้อมูล
   const backupDatabase = async () => {
     try {
-      const res = await axios.get("http://localhost:3000/admin/backup", { responseType: "blob" });
+      const res = await api.get("/admin/backup", { responseType: "blob" });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
       link.href = url;
@@ -109,7 +109,7 @@ export default function AdminDashboard() {
   const addStudentCodes = async () => {
     try {
       const payload = { student_ids: newCodesText };
-      await axios.post("http://localhost:3000/admin/student-codes", payload);
+      await api.post("/admin/student-codes", payload);
       setNewCodesText("");
       fetchStudentCodes();
     } catch (err) {
@@ -122,7 +122,7 @@ export default function AdminDashboard() {
   const deleteStudentCode = async (id) => {
     if (!window.confirm("ยืนยันการลบ?")) return;
     try {
-      await axios.delete(`http://localhost:3000/admin/student-codes/${id}`);
+      await api.delete(`/admin/student-codes/${id}`);
       fetchStudentCodes();
     } catch (err) {
       console.error("ลบ student code ล้มเหลว", err);

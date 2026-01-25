@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, LogIn, AlertCircle, CheckCircle } from 'lucide-react';
+import api from "../services/api";
 
 export default function LoginForm() {
   const navigate = useNavigate();
@@ -37,16 +38,11 @@ export default function LoginForm() {
     setIsLoading(true);
 
     try {
-      const res = await fetch("http://localhost:3000/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: formData.username,
-          password: formData.password,
-        }),
+      const res = await api.post("/api/login", {
+        username: formData.username,
+        password: formData.password,
       });
-
-      const data = await res.json();
+      const data = res.data;
       setIsLoading(false);
 
       if (data.success) {
@@ -188,23 +184,19 @@ export default function LoginForm() {
                   const username = prompt('ระบุชื่อผู้ใช้เพื่อรีเซ็ตรหัสผ่าน');
                   if (!username) return;
                   try {
-                    const res = await fetch('http://localhost:3000/api/auth/forgot-password', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ username })
-                    });
-                    const data = await res.json();
+                   const res = await api.post("/api/auth/forgot-password", { username });
+                    const data = res.data;
                     if (!res.ok || !data.success) return alert(data.message || 'ส่งรหัสรีเซ็ตไม่สำเร็จ');
                     const code = prompt(`กรอกรหัส OTP ที่ได้รับ (เดโม: ${data.code})`);
                     if (!code) return;
                     const newPass = prompt('กรอกรหัสผ่านใหม่');
                     if (!newPass) return;
-                    const res2 = await fetch('http://localhost:3000/api/auth/reset-password', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ username, code, new_password: newPass })
+                    const res2 = await api.post("/api/auth/reset-password", {
+                      username,
+                      code,
+                      new_password: newPass,
                     });
-                    const data2 = await res2.json();
+                    const data2 = res2.data;
                     if (!res2.ok || !data2.success) return alert(data2.message || 'รีเซ็ตไม่สำเร็จ');
                     alert('รีเซ็ตรหัสผ่านสำเร็จ ลองเข้าสู่ระบบใหม่');
                   } catch (e) {

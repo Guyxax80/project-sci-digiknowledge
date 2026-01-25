@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import { Button, Card, CardContent, Typography, CardActions } from "@mui/material";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Legend , Cell
 } from "recharts";
+import api from "../services/api";
 
 
 const Home = () => {
@@ -20,14 +20,14 @@ const Home = () => {
     if (role === "student" || role === "teacher") {
       // ทดสอบ API ก่อน
       console.log("Testing API connection...");
-      axios
-        .get("http://localhost:3000/api/documents/test")
+      api
+        .get("/api/documents/test")
         .then((res) => {
           console.log("Test API response:", res.data);
           
           // ถ้า API ทำงานได้ ให้ดึงข้อมูลจริง
           console.log("Fetching recommended documents...");
-          return axios.get("http://localhost:3000/api/documents/recommended");
+          return api.get("/api/documents/recommended");
         })
         .then(async (res) => {
           console.log("Recommended documents response:", res.data);
@@ -39,8 +39,8 @@ const Home = () => {
           try {
             const detailResults = await Promise.all(
               docs.map((doc) =>
-                axios
-                  .get(`http://localhost:3000/api/documents/${doc.document_id}`)
+                api
+                  .get(`/api/documents/${doc.document_id}`)
                   .then((dres) => ({ id: doc.document_id, detail: dres.data, fallback: doc }))
                   .catch(() => ({ id: doc.document_id, detail: null, fallback: doc }))
               )
@@ -68,14 +68,14 @@ const Home = () => {
     }
 
     if (role === "admin") {
-      axios
-        .get("http://localhost:3000/api/admin/stats")
+      api
+        .get("/api/admin/stats")
         .then((res) => setStats(res.data))
         .catch((err) => console.error(err));
 
-        fetch("http://localhost:3000/api/documents/uploads/7days")
-      .then(res => res.json())
-      .then(data => setStats((prev) => ({ ...prev, uploadsLast7Days: data })))
+        api
+      .get("/api/documents/uploads/7days")
+      .then(res => setStats((prev) => ({ ...prev, uploadsLast7Days: res.data })))
       .catch(console.error);
     }
   }, [role]);
@@ -226,8 +226,8 @@ const Home = () => {
                 className="w-full flex justify-between text-left text-sm hover:bg-gray-50 p-1 rounded"
                 onClick={async () => {
                   try {
-                    const res = await fetch(`http://localhost:3000/api/admin/documents/${d.document_id}/file-downloads`);
-                    const files = await res.json();
+                    const res = await api.get(`/api/admin/documents/${d.document_id}/file-downloads`);
+                    const files = res.data;
                     const list = files && files.length
                       ? files.map(f => `${f.section || 'main'} - ${(f.original_name || 'file')} : ${f.download_count}`).join('\n')
                       : 'ไม่มีไฟล์ที่มีการดาวน์โหลด';
