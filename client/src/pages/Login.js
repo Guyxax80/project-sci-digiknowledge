@@ -186,7 +186,9 @@ export default function LoginForm() {
                   try {
                    const res = await api.post("/api/auth/forgot-password", { username });
                     const data = res.data;
-                    if (!res.ok || !data.success) return alert(data.message || 'ส่งรหัสรีเซ็ตไม่สำเร็จ');
+                    if (!data.success) {
+                      return alert(data.message || "ส่งรหัสรีเซ็ตไม่สำเร็จ");
+                    }
                     const code = prompt(`กรอกรหัส OTP ที่ได้รับ (เดโม: ${data.code})`);
                     if (!code) return;
                     const newPass = prompt('กรอกรหัสผ่านใหม่');
@@ -197,7 +199,9 @@ export default function LoginForm() {
                       new_password: newPass,
                     });
                     const data2 = res2.data;
-                    if (!res2.ok || !data2.success) return alert(data2.message || 'รีเซ็ตไม่สำเร็จ');
+                    if (!data2.success) {
+                      return alert(data2.message || "รีเซ็ตรหัสผ่านไม่สำเร็จ");
+                    }
                     alert('รีเซ็ตรหัสผ่านสำเร็จ ลองเข้าสู่ระบบใหม่');
                   } catch (e) {
                     console.error(e);
