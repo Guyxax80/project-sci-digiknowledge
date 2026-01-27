@@ -5,9 +5,16 @@ const db = require("../db"); // mysql connection
 
 const router = express.Router();
 
+const fs = require("fs");
+
+const uploadDir = path.join(__dirname, "../uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 // Multer config
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/"),
+  destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
     // ใช้ชื่อไฟล์แบบง่ายๆ เพื่อหลีกเลี่ยงปัญหา encoding
     const ext = path.extname(file.originalname);
@@ -28,7 +35,25 @@ const upload = multer({
   }
 });
 
-router.post("/", upload.single("file"), (req, res) => {
+// 🔽 middleware เลือก multer mode (มีไฟล์ / ไม่มีไฟล์)
+const uploadMiddleware = (req, res, next) => {
+  const contentType = req.headers["content-type"] || "";
+
+  if (contentType.includes("multipart/form-data")) {
+    return upload.single("file")(req, res, (err) => {
+      if (err) {
+        console.error("Multer error:", err);
+        return res.status(400).json({ message: err.message });
+      }
+      next();
+    });
+  }
+
+  next();
+};
+// POST /api/upload
+
+router.post("/", uploadMiddleware, (req, res) => {
   const { title, keywords, academic_year, user_id, status } = req.body;
   // หมวดหมู่ที่ส่งมาได้หลายรูปแบบ: categorie_id (เดี่ยว), categorie_ids[] (หลายค่า), category/categorie_name (ชื่อเดี่ยว), category_names[] (หลายชื่อ)
   const singleCategorieId = req.body.categorie_id;
@@ -61,7 +86,25 @@ router.post("/", upload.single("file"), (req, res) => {
     (user_id, title, keywords, academic_year, status, uploaded_at)
     VALUES (?, ?, ?, ?, ?, NOW())
   `;
-  const docParams = [user_id, title, keywords, academic_year, status || "draft"];
+  const normalizeStatus = (s) => {
+  if (!s) return "draft";
+  if (s === "published") return "pending"; // แปลงตรงนี้
+  return s;
+};
+
+const safeStatus = normalizeStatus(status);
+
+const docParams = [
+  user_id,
+  title,
+  keywords,
+  academic_year,
+  safeStatus
+];
+
+console.log("RAW status:", status);
+console.log("SAFE status:", safeStatus);
+
 
   console.log("=== DOCUMENT INSERT ===");
   console.log("SQL:", sqlDoc);
@@ -132,43 +175,29 @@ router.post("/", upload.single("file"), (req, res) => {
     };
 
     const ensureRelationByName = (name, cb) => {
-      // ลองทั้งสองตารางและสองชื่อคอลัมน์
-      const selectQueries = [
-        { sql: 'SELECT categorie_id AS id FROM categories WHERE name = ? LIMIT 1', table: 'categories' },
-        { sql: 'SELECT category_id AS id FROM categories WHERE name = ? LIMIT 1', table: 'categories' },
-        { sql: 'SELECT categorie_id AS id FROM categorie WHERE name = ? LIMIT 1', table: 'categorie' },
-        { sql: 'SELECT category_id AS id FROM categorie WHERE name = ? LIMIT 1', table: 'categorie' }
-      ];
+  db.query(
+    'SELECT categorie_id FROM categories WHERE name = ? LIMIT 1',
+    [name],
+    (selErr, rows) => {
+      if (!selErr && rows.length) {
+        return ensureRelationById(rows[0].categorie_id, cb);
+      }
 
-      const trySelect = (i = 0) => {
-        if (i >= selectQueries.length) return tryInsert(0);
-        const q = selectQueries[i];
-        db.query(q.sql, [name], (selErr, rows) => {
-          if (!selErr && rows && rows.length) {
-            return ensureRelationById(rows[0].id, cb);
+      // ถ้าไม่เจอ → insert
+      db.query(
+        'INSERT INTO categories (name) VALUES (?)',
+        [name],
+        (insErr, insRes) => {
+          if (insErr) {
+            console.error("Insert category error:", insErr);
+            return cb();
           }
-          return trySelect(i + 1);
-        });
-      };
-
-      const insertQueries = [
-        { sql: 'INSERT INTO categories (name) VALUES (?)', table: 'categories' },
-        { sql: 'INSERT INTO categorie (name) VALUES (?)', table: 'categorie' }
-      ];
-
-      const tryInsert = (i = 0) => {
-        if (i >= insertQueries.length) return cb();
-        const q = insertQueries[i];
-        db.query(q.sql, [name], (insErr, insRes) => {
-          if (!insErr && insRes && insRes.insertId) {
-            return ensureRelationById(insRes.insertId, cb);
-          }
-          return tryInsert(i + 1);
-        });
-      };
-
-      trySelect(0);
-    };
+          return ensureRelationById(insRes.insertId, cb);
+        }
+      );
+    }
+  );
+};
 
     const tasks = [];
     categorieIds.forEach(id => tasks.push((cb) => ensureRelationById(id, cb)));

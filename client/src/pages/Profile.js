@@ -19,27 +19,30 @@ function Profile() {
 
     api.get("/api/auth/me", {
     headers: {
-    Authorization: `Bearer ${token}`,
-  },
-})
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setUser(data.user);
-          // ดึงเอกสารของผู้ใช้
-          api.get(`/api/documents/by-user/${data.user.user_id}`)
-            .then((r) => r.json())
-            .then((docs) => setMyDocs(Array.isArray(docs) ? docs : []))
-            .catch((e) => console.error("Error fetching my documents:", e))
-            .finally(() => setLoading(false));
-          return;
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Error fetching profile:", err);
-        setLoading(false);
-      });
+      Authorization: `Bearer ${token}`,
+    },
+  })
+  .then((res) => {
+    const data = res.data;
+
+    if (data.success) {
+      setUser(data.user);
+
+      api.get(`/api/documents/by-user/${data.user.user_id}`)
+        .then((r) => setMyDocs(Array.isArray(r.data) ? r.data : []))
+        .catch((e) => console.error("Error fetching my documents:", e))
+        .finally(() => setLoading(false));
+
+      return;
+    }
+
+    setLoading(false);
+  })
+  .catch((err) => {
+    console.error("Error fetching profile:", err);
+    setLoading(false);
+  });
+
   }, []);
 
   const handleLogout = () => {
