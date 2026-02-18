@@ -1,65 +1,37 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const db = require("../db");
-const bcrypt = require("bcrypt");
-const util = require("util");
+const db = require('../db');
+const bcrypt = require('bcrypt');
 
-// Promisify db.query for async/await usage
-const query = util.promisify(db.query).bind(db);
-
-router.post("/", async (req, res) => {
+router.post('/', async (req, res) => {
   const { username, student_id, password, class_group, level } = req.body;
-
-  if (!username || !password) {
-    return res.status(400).json({ success: false, message: "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน" });
-  }
+  if (!username || !password) return res.status(400).json({ success: false, message: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน' });
 
   try {
-    // ตรวจสอบ username ซ้ำ
-    const existingUsers = await query("SELECT * FROM users WHERE username = ?", [username]);
-    if (existingUsers.length > 0) {
-      return res.status(400).json({ success: false, message: "ชื่อผู้ใช้นี้ถูกใช้แล้ว" });
-    }
-
-    // Debug: แสดงรหัสผ่านก่อนเข้ารหัส
-    console.log("รหัสผ่านเดิม:", password);
+    const existing = await db.query('SELECT user_id FROM users WHERE username = $1 LIMIT 1', [username]);
+    if (existing.rows.length > 0) return res.status(400).json({ success: false, message: 'ชื่อผู้ใช้นี้ถูกใช้แล้ว' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    console.log("รหัสผ่านที่เข้ารหัส:", hashedPassword);
-
-    let role = "teacher";
+    let role = 'teacher';
     let validStudentId = null;
 
     if (student_id) {
-      const studentRows = await query("SELECT * FROM student_codes WHERE student_id = ?", [student_id]);
-      if (studentRows.length > 0) {
-        role = "student";
+      const studentRows = await db.query('SELECT student_id FROM student_codes WHERE student_id = $1 LIMIT 1', [student_id]);
+      if (studentRows.rows.length > 0) {
+        role = 'student';
         validStudentId = student_id;
       }
     }
 
-    // บันทึกลงฐานข้อมูล (พยายามรวม class_group และ level ถ้ามีคอลัมน์)
-    try {
-      await query(
-        "INSERT INTO users (username, student_id, password, role, class_group, level) VALUES (?, ?, ?, ?, ?, ?)",
-        [username, validStudentId, hashedPassword, role, class_group || null, level || null]
-      );
-    } catch (e) {
-      // กรณีตารางยังไม่มีคอลัมน์ class_group/level ให้ fallback ไป query เดิม
-      if (e && e.code === 'ER_BAD_FIELD_ERROR') {
-        await query(
-          "INSERT INTO users (username, student_id, password, role) VALUES (?, ?, ?, ?)",
-          [username, validStudentId, hashedPassword, role]
-        );
-      } else {
-        throw e;
-      }
-    }
+    await db.query(
+      'INSERT INTO users (username, student_id, password, role, class_group, level) VALUES ($1, $2, $3, $4, $5, $6)',
+      [username, validStudentId, hashedPassword, role, class_group || null, level || null],
+    );
 
-    res.json({ success: true, message: "สมัครสมาชิกสำเร็จ", role });
+    res.json({ success: true, message: 'สมัครสมาชิกสำเร็จ', role });
   } catch (err) {
-    console.error("Signup error:", err.sqlMessage || err);
-    res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดในการสมัครสมาชิก" });
+    console.error('Signup error:', err);
+    res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการสมัครสมาชิก' });
   }
 });
 

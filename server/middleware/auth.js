@@ -1,19 +1,19 @@
-// middleware/auth.js
-const jwt = require("jsonwebtoken");
-const JWT_SECRET = "yoursecretkey"; // ใช้เดียวกับ login
+const jwt = require('jsonwebtoken');
 
-module.exports = function(req, res, next) {
+module.exports = function auth(req, res, next) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) return res.status(500).json({ success: false, message: 'JWT_SECRET not configured' });
+
   const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ success: false, message: "กรุณา login" });
+  if (!authHeader) return res.status(401).json({ success: false, message: 'กรุณา login' });
 
-  const token = authHeader.split(" ")[1]; // Bearer token
-  if (!token) return res.status(401).json({ success: false, message: "กรุณา login" });
+  const token = authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ success: false, message: 'กรุณา login' });
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // ใส่ข้อมูล user ลง req.user
+    req.user = jwt.verify(token, secret);
     next();
-  } catch (err) {
-    return res.status(401).json({ success: false, message: "Token ไม่ถูกต้อง" });
+  } catch (_err) {
+    res.status(401).json({ success: false, message: 'Token ไม่ถูกต้อง' });
   }
 };

@@ -1,48 +1,37 @@
-// routes/download.js
 const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 const mime = require('mime-types');
-const db = require('../db');  // เชื่อมฐานข้อมูล
+const db = require('../db');
 
-router.get('/:fileId', (req, res) => {
-  const fileId = req.params.fileId;
-  db.query('SELECT document_id, file_path, original_name FROM document_files WHERE document_file_id = ?', [fileId], (err, results) => {
-    if (err || results.length === 0) return res.status(404).send('File not found');
-    const { file_path, original_name } = results[0];
+const resolveLocalPath = (storedPath) => {
+  const normalized = String(storedPath || '').replace(/\\/g, '/').replace(/^\.\/?/, '');
+  const uploadsRoot = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
+  const byName = path.join(uploadsRoot, path.basename(normalized));
+  if (fs.existsSync(byName)) return byName;
+  const relative = path.join(__dirname, '..', normalized);
+  if (fs.existsSync(relative)) return relative;
+  return null;
+};
 
-    // Normalize stored path and reduce to basename to ensure we resolve under uploads
-    const storedPath = String(file_path || '').replace(/\\/g, '/').replace(/^\.\/?/, '');
-    const baseName = path.basename(storedPath);
-    const uploadsRoot = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
-    let resolvedPath = path.join(uploadsRoot, baseName);
+router.get('/:fileId', async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT file_path, original_name FROM document_files WHERE document_file_id = $1', [req.params.fileId]);
+    if (!rows.length) return res.status(404).send('File not found');
+    const file = rows[0];
 
-    // Fallback: try storedPath relative to project if default not found
-    if (!fs.existsSync(resolvedPath)) {
-      const altPath = path.join(__dirname, '..', storedPath);
-      if (fs.existsSync(altPath)) {
-        resolvedPath = altPath;
-      }
-    }
+    if (String(file.file_path).startsWith('http')) return res.redirect(file.file_path);
+    const resolvedPath = resolveLocalPath(file.file_path);
+    if (!resolvedPath) return res.status(404).send('File not found on server');
 
-    // Final existence check
-    if (!fs.existsSync(resolvedPath)) {
-      console.error('Resolved path not found:', resolvedPath);
-      return res.status(404).send('File not found on server');
-    }
-
-    // Set content type for better behavior when opened in browser
     const contentType = mime.lookup(resolvedPath) || 'application/octet-stream';
     res.set('Content-Type', contentType);
-
-    res.download(resolvedPath, original_name || path.basename(resolvedPath), (err) => {
-      if (err) {
-        console.error('Error downloading file:', err);
-        res.status(500).send('Error downloading file');
-      }
-    });
-  });
+    res.download(resolvedPath, file.original_name || path.basename(resolvedPath));
+  } catch (err) {
+    console.error('Error downloading file:', err);
+    res.status(500).send('Error downloading file');
+  }
 });
 
 module.exports = router;
