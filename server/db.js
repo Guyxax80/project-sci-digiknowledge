@@ -1,13 +1,10 @@
-const mysql = require('mysql2');
+const { Pool } = require("pg");
 
-const connection = mysql.createConnection(process.env.DATABASE_URL);
-
-connection.connect(err => {
-  if (err) {
-    console.error('เชื่อมต่อฐานข้อมูล Railway ล้มเหลว:', err);
-    return;
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
   }
-  console.log('✅ เชื่อมต่อฐานข้อมูล Railway สำเร็จ!');
 });
 
-module.exports = connection;
+module.exports = pool;

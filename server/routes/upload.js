@@ -1,250 +1,77 @@
 const express = require("express");
 const multer = require("multer");
-const path = require("path");
-const db = require("../db"); // mysql connection
+const db = require("../db");
+const cloudinary = require("../cloudinary");
 
 const router = express.Router();
 
-const fs = require("fs");
-
-const uploadDir = path.join(__dirname, "../uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Multer config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    // ใช้ชื่อไฟล์แบบง่ายๆ เพื่อหลีกเลี่ยงปัญหา encoding
-    const ext = path.extname(file.originalname);
-    const uniqueName = Date.now() + ext;
-    cb(null, uniqueName);
-  }
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 200 * 1024 * 1024 } // 200MB
 });
 
-const upload = multer({ 
-  storage,
-  fileFilter: (req, file, cb) => {
-    // เก็บชื่อไฟล์เดิมไว้ใน req object
-    req.originalFileName = file.originalname;
-    cb(null, true);
-  },
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB
-  }
-});
+router.post("/", upload.single("file"), async (req, res) => {
+  try {
+    const { title, keywords, academic_year, user_id, status } = req.body;
+    const file = req.file;
 
-// 🔽 middleware เลือก multer mode (มีไฟล์ / ไม่มีไฟล์)
-const uploadMiddleware = (req, res, next) => {
-  const contentType = req.headers["content-type"] || "";
+    const safeStatus = status === "published" ? "pending" : (status || "draft");
 
-  if (contentType.includes("multipart/form-data")) {
-    return upload.single("file")(req, res, (err) => {
-      if (err) {
-        console.error("Multer error:", err);
-        return res.status(400).json({ message: err.message });
-      }
-      next();
-    });
-  }
+    // 1️⃣ INSERT DOCUMENT
+    const docSql = `
+      INSERT INTO documents
+      (user_id, title, keywords, academic_year, status)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING document_id
+    `;
 
-  next();
-};
-// POST /api/upload
+    const { rows } = await db.query(docSql, [
+      user_id,
+      title,
+      keywords,
+      academic_year,
+      safeStatus
+    ]);
 
-router.post("/", uploadMiddleware, (req, res) => {
-  const { title, keywords, academic_year, user_id, status } = req.body;
-  // หมวดหมู่ที่ส่งมาได้หลายรูปแบบ: categorie_id (เดี่ยว), categorie_ids[] (หลายค่า), category/categorie_name (ชื่อเดี่ยว), category_names[] (หลายชื่อ)
-  const singleCategorieId = req.body.categorie_id;
-  const rawCategorieIds = req.body.categorie_ids || req.body["categorie_ids[]"]; // อาจเป็น array หรือ string
-  const singleCategoryName = (req.body.category || req.body.categorie_name || "").trim();
-  const rawCategoryNames = req.body.category_names || req.body["category_names[]"]; // อาจเป็น array หรือ string
-  // ค่า section สำหรับไฟล์หลัก ใช้ 'main' เป็นค่าเริ่มต้น ไม่ผูกกับหมวดหมู่
-  const section = (req.body.section || 'main').toString();
-  const file = req.file;
+    const documentId = rows[0].document_id;
 
-  // Debug: ดูข้อมูลที่รับมา
-  console.log("=== UPLOAD DEBUG ===");
-  console.log("Title:", title);
-  console.log("Keywords:", keywords);
-  console.log("Academic Year:", academic_year);
-  console.log("User ID:", user_id);
-  console.log("Status:", status);
-  console.log("Section:", section);
-  console.log("File:", file ? "Present" : "Missing");
-  console.log("All body data:", req.body);
-  console.log("===================");
-
-  // หมายเหตุ: อนุญาตให้สร้างเอกสารได้แม้ไม่มีไฟล์หลัก (ไปอัปโหลดไฟล์รายส่วนภายหลัง)
-  // ถ้ามีไฟล์ จึงค่อยเตรียม path
-  const filePath = file ? ("/uploads/" + file.filename) : null;
-
-  // 1️⃣ บันทึกข้อมูลเอกสาร (ข้อมูลที่กรอก)
-  const sqlDoc = `
-    INSERT INTO documents
-    (user_id, title, keywords, academic_year, status, uploaded_at)
-    VALUES (?, ?, ?, ?, ?, NOW())
-  `;
-  const normalizeStatus = (s) => {
-  if (!s) return "draft";
-  if (s === "published") return "pending"; // แปลงตรงนี้
-  return s;
-};
-
-const safeStatus = normalizeStatus(status);
-
-const docParams = [
-  user_id,
-  title,
-  keywords,
-  academic_year,
-  safeStatus
-];
-
-console.log("RAW status:", status);
-console.log("SAFE status:", safeStatus);
-
-
-  console.log("=== DOCUMENT INSERT ===");
-  console.log("SQL:", sqlDoc);
-  console.log("Params:", docParams);
-  console.log("======================");
-
-  db.query(sqlDoc, docParams, (err, docResult) => {
-    if (err) {
-      console.error("DB error (documents):", err);
-      return res.status(500).json({ message: "เกิดข้อผิดพลาดในการบันทึกเอกสาร" });
-    }
-
-    const documentId = docResult.insertId;
-    console.log("Document inserted successfully, ID:", documentId);
-
-  // 1.5 บันทึกความสัมพันธ์หมวดหมู่ (รองรับหลายค่า ทั้ง id และชื่อ)
-  const insertCategoryRelation = (next) => {
-    const parseToArray = (raw) => {
-      if (!raw) return [];
-      if (Array.isArray(raw)) return raw.filter(Boolean);
-      if (typeof raw === 'string') {
-        const trimmed = raw.trim();
-        if (!trimmed) return [];
-        try {
-          const parsed = JSON.parse(trimmed);
-          return Array.isArray(parsed) ? parsed : [trimmed];
-        } catch (_) {
-          // รองรับคั่นด้วย comma
-          if (trimmed.includes(',')) return trimmed.split(',').map(s => s.trim()).filter(Boolean);
-          return [trimmed];
-        }
-      }
-      return [];
-    };
-
-    const categorieIds = [
-      ...(singleCategorieId ? [singleCategorieId] : []),
-      ...parseToArray(rawCategorieIds)
-    ]
-      .map(v => String(v).trim())
-      .filter(Boolean);
-
-    const categoryNames = [
-      ...(singleCategoryName ? [singleCategoryName] : []),
-      ...parseToArray(rawCategoryNames)
-    ]
-      .map(v => String(v).trim())
-      .filter(Boolean);
-
-    const ensureRelationById = (catId, cb) => {
-      // กันซ้ำแบบง่าย ๆ โดยเช็คก่อน insert
-      db.query(
-        'SELECT 1 FROM document_categories WHERE document_id = ? AND categorie_id = ? LIMIT 1',
-        [documentId, catId],
-        (selErr, selRows) => {
-          if (selErr) {
-            console.error('DB error (check relation):', selErr);
-            return cb();
+    // 2️⃣ ถ้ามีไฟล์ → อัปขึ้น Cloudinary
+    if (file) {
+      const uploadResult = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            resource_type: "auto",
+            folder: "documents"
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
           }
-          if (selRows && selRows.length) return cb();
-          const sqlCat = 'INSERT IGNORE INTO document_categories (document_id, categorie_id) VALUES (?, ?)';
-          db.query(sqlCat, [documentId, catId], (insErr) => {
-            if (insErr) console.error('DB error (insert relation):', insErr);
-            return cb();
-          });
-        }
-      );
-    };
-
-    const ensureRelationByName = (name, cb) => {
-  db.query(
-    'SELECT categorie_id FROM categories WHERE name = ? LIMIT 1',
-    [name],
-    (selErr, rows) => {
-      if (!selErr && rows.length) {
-        return ensureRelationById(rows[0].categorie_id, cb);
-      }
-
-      // ถ้าไม่เจอ → insert
-      db.query(
-        'INSERT INTO categories (name) VALUES (?)',
-        [name],
-        (insErr, insRes) => {
-          if (insErr) {
-            console.error("Insert category error:", insErr);
-            return cb();
-          }
-          return ensureRelationById(insRes.insertId, cb);
-        }
-      );
-    }
-  );
-};
-
-    const tasks = [];
-    categorieIds.forEach(id => tasks.push((cb) => ensureRelationById(id, cb)));
-    categoryNames.forEach(n => tasks.push((cb) => ensureRelationByName(n, cb)));
-
-    if (tasks.length === 0) return next();
-
-    let idx = 0;
-    const runNext = () => {
-      if (idx >= tasks.length) return next();
-      const fn = tasks[idx++];
-      fn(runNext);
-    };
-    runNext();
-  };
-
-    insertCategoryRelation(() => {
-      // กรณีไม่มีไฟล์หลัก ให้จบที่นี่
-      if (!file) {
-        console.log("No main file provided; skipping file insert");
-        return res.json({ message: "สร้างเอกสารสำเร็จ", documentId });
-      }
-
-      // 2️⃣ บันทึกข้อมูลไฟล์ (ข้อมูลไฟล์)
-      const sqlFile = `
-        INSERT INTO document_files
-        (document_id, file_path, original_name, file_type, section, uploaded_at)
-        VALUES (?, ?, ?, ?, ?, NOW())
-      `;
-      const fileParams = [documentId, filePath, file.originalname, file.mimetype, section || 'main'];
-
-      console.log("=== FILE INSERT ===");
-      console.log("SQL:", sqlFile);
-      console.log("Params:", fileParams);
-      console.log("==================");
-
-      db.query(sqlFile, fileParams, (err2) => {
-        if (err2) {
-          console.error("DB error (document_files):", err2);
-          return res.status(500).json({ message: "เกิดข้อผิดพลาดในการบันทึกไฟล์" });
-        }
-
-        console.log("File inserted successfully");
-        res.json({ message: "อัปโหลดสำเร็จ", documentId });
+        );
+        stream.end(file.buffer);
       });
-    });
-  });
+
+      const fileSql = `
+        INSERT INTO document_files
+        (document_id, file_path, original_name, file_type, section)
+        VALUES ($1, $2, $3, $4, $5)
+      `;
+
+      await db.query(fileSql, [
+        documentId,
+        uploadResult.secure_url,
+        file.originalname,
+        file.mimetype,
+        "main"
+      ]);
+    }
+
+    res.json({ message: "อัปโหลดสำเร็จ", documentId });
+
+  } catch (err) {
+    console.error("Upload error:", err);
+    res.status(500).json({ message: "เกิดข้อผิดพลาด" });
+  }
 });
 
 module.exports = router;
