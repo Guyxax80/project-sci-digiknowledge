@@ -4,6 +4,7 @@ const db = require('../db');
 const path = require('path');
 const fs = require('fs');
 const mime = require('mime-types');
+const auth = require('../middleware/auth');
 
 const recentDownloadMarks = new Map();
 const shouldCountDownloadOnce = (fileId, ip) => {
@@ -52,7 +53,7 @@ router.get('/video/:fileId', async (req, res) => {
 
     res.writeHead(200, { 'Content-Length': fileSize, 'Content-Type': contentType, 'Accept-Ranges': 'bytes' });
     fs.createReadStream(fullPath).pipe(res);
-  } catch (err) {
+   } catch (err) {
     console.error(err);
     res.status(500).send('เกิดข้อผิดพลาดในการดึงไฟล์วิดีโอ');
   }
@@ -77,7 +78,7 @@ router.get('/view/:fileId', async (req, res) => {
   }
 });
 
-router.get('/download/:fileId', async (req, res) => {
+router.get('/download/:fileId', auth, async (req, res) => {
   try {
     const { rows } = await db.query('SELECT document_id, file_path, original_name FROM document_files WHERE document_file_id = $1', [req.params.fileId]);
     if (!rows.length) return res.status(404).send('ไม่พบไฟล์');

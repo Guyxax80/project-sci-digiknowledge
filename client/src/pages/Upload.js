@@ -44,8 +44,6 @@ const UploadDocument = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title) return alert("กรุณากรอกชื่อเอกสาร");
-    const storedUserId = localStorage.getItem("userId");
-    if (!storedUserId) return alert("กรุณา login ก่อนอัปโหลด");
 
     try {
       // ส่ง multipart ไปสร้างเอกสาร (ไม่ต้องมีไฟล์หลัก)
@@ -53,7 +51,6 @@ const UploadDocument = () => {
       formData.append("title", title);
       formData.append("keywords", keywords);
       formData.append("academic_year", academicYear);
-      formData.append("user_id", storedUserId);
       formData.append("status", isDraft ? "draft" : "published");
       // ส่งหมวดหมู่หลายค่าเป็น JSON เดียว เพื่อง่ายต่อการ parse ฝั่ง server
       formData.append("categorie_ids", JSON.stringify(selectedCategoryIds));
@@ -62,7 +59,6 @@ const UploadDocument = () => {
       console.log("Title:", title);
       console.log("Keywords:", keywords);
       console.log("Academic Year:", academicYear);
-      console.log("User ID:", storedUserId);
       console.log("Status:", isDraft ? "draft" : "published");
       console.log("Categorie IDs:", selectedCategoryIds);
       console.log("====================");
@@ -123,7 +119,7 @@ const UploadDocument = () => {
 
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาด");
+      alert(err?.response?.data?.message || "เกิดข้อผิดพลาด");
     }
   };
 

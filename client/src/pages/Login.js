@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, Lock, LogIn, AlertCircle, CheckCircle } from 'lucide-react';
 import api from "../services/api";
 
 export default function LoginForm() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -46,24 +47,23 @@ export default function LoginForm() {
       setIsLoading(false);
 
       if (data.success) {
-  setLoginSuccess(true);
+        setLoginSuccess(true);
 
-  // บันทึก role + token
-  localStorage.setItem("role", data.role);
-  if (data.token) localStorage.setItem("token", data.token);
+        localStorage.setItem("role", data.role || "user");
+        if (data.token) localStorage.setItem("token", data.token);
+        if (data.userId) localStorage.setItem("userId", data.userId);
 
-  // ✅ เก็บ userId ด้วย
-  if (data.userId) localStorage.setItem("userId", data.userId);
-
-  // Redirect ตาม role
-  setTimeout(() => {
-    setLoginSuccess(false);
-    if (data.role === "admin") navigate("/home");
-    else if (data.role === "student") navigate("/home");
-    else if (data.role === "teacher") navigate("/home");
-    else navigate("/");
-  }, 1200);
-} else {
+        const redirect = searchParams.get("redirect") || "/";
+        setTimeout(() => {
+          setLoginSuccess(false);
+          if (redirect.startsWith("/upload") && (data.role || "").toLowerCase() !== "student") {
+            alert("บัญชีนี้ไม่มีสิทธิ์อัปโหลดเอกสาร");
+            navigate("/");
+            return;
+          }
+          navigate(redirect);
+        }, 1200);
+      } else {
         setErrors({ password: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
       }
       } catch (err) {

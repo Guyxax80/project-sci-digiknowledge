@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
 router.post('/', async (req, res) => {
   const { username, student_id, password, class_group, level } = req.body || {};
@@ -19,12 +20,9 @@ router.post('/', async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // ✅ default: ผู้ใช้ธรรมดา
     let role = 'user';
     let validStudentId = null;
 
-    // ✅ ถ้ามี student_id และตรวจเจอใน student_codes → เป็น student
     if (student_id && String(student_id).trim()) {
       const check = await db.query(
         'SELECT student_id FROM public.student_codes WHERE student_id = $1 LIMIT 1',
@@ -34,24 +32,41 @@ router.post('/', async (req, res) => {
       if (check.rows.length > 0) {
         role = 'student';
         validStudentId = student_id;
-      } else {
-        // ถ้าอยาก “บังคับ” ว่ากรอกแล้วต้องถูก ไม่งั้นสมัครไม่ได้ → เปิดบรรทัดนี้
-        // return res.status(400).json({ success: false, message: 'Student ID ไม่ถูกต้องหรือไม่อยู่ในระบบ' });
-
-        // ถ้าไม่บังคับ ก็ปล่อยให้สมัครเป็น user ได้ แต่ไม่มีสิทธิ์อัปโหลด
-        validStudentId = null;
       }
     }
 
-    await db.query(
+    const inserted = await db.query(
       `INSERT INTO public.users (username, student_id, password, role, class_group, level)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING user_id, username, role`,
       [username, validStudentId, hashedPassword, role, class_group || null, level || null]
     );
 
-    return res.json({ success: true, message: 'สมัครสมาชิกสำเร็จ', role });
+    const createdUser = inserted.rows[0];
+    let token = null;
+    if (process.env.JWT_SECRET) {
+      token = jwt.sign(
+        { user_id: createdUser.user_id, username: createdUser.username, role: createdUser.role },
+        process.env.JWT_SECRET,
+        { expiresIn: '1h' }
+      );
+    }
+
+    return res.json({
+      success: true,
+      message: 'สมัครสมาชิกสำเร็จ',
+      role: createdUser.role,
+      userId: createdUser.user_id,
+      token,
+    });
   } catch (err) {
     console.error('Signup error:', err);
+    if (String(err.message || '').includes('invalid input value for enum')) {
+      return res.status(500).json({
+        success: false,
+        message: "ฐานข้อมูลยังไม่มี role 'user' ใน user_role_enum กรุณารัน migration ก่อน",
+      });
+    }
     return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการสมัครสมาชิก' });
   }
 });

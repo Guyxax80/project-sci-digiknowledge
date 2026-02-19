@@ -4,6 +4,8 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db');
 const cloudinary = require('../config/cloudinary');
+const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
 
 const router = express.Router();
 
@@ -28,7 +30,7 @@ let supportsCloudinaryPublicIdCache;
 
 async function supportsCloudinaryPublicId() {
   if (typeof supportsCloudinaryPublicIdCache === 'boolean') return supportsCloudinaryPublicIdCache;
-  const { rows } = await db.query(
+  const { rows } = await db.query(   
     "SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'document_files' AND column_name = 'cloudinary_public_id' LIMIT 1",
   );
   supportsCloudinaryPublicIdCache = rows.length > 0;
@@ -37,7 +39,7 @@ async function supportsCloudinaryPublicId() {
 
 async function persistFile(documentId, sectionName, file) {
   if (sectionName === 'presentation_video') {
-    if (!file.mimetype.startsWith('video/')) throw new Error('ไฟล์วิดีโอต้องเป็น mimetype video/*');
+     if (!file.mimetype.startsWith('video/')) throw new Error('ไฟล์วิดีโอต้องเป็น mimetype video/*');
     const result = await cloudinary.uploader.upload(file.path, { resource_type: 'video', folder: 'documents/videos' });
     fs.unlink(file.path, () => {});
     if (await supportsCloudinaryPublicId()) {
@@ -62,11 +64,15 @@ async function persistFile(documentId, sectionName, file) {
   );
 }
 
-router.post('/documents/:documentId/sections', upload.fields(sectionFields), async (req, res) => {
+router.post('/documents/:documentId/sections', auth, requireRole('student'), upload.fields(sectionFields), async (req, res) => {
   const documentId = Number(req.params.documentId);
   if (!req.files || !Object.keys(req.files).length) return res.status(400).json({ message: 'ไม่มีไฟล์ที่อัปโหลด' });
 
   try {
+    const ownerCheck = await db.query('SELECT user_id FROM documents WHERE document_id = $1 LIMIT 1', [documentId]);
+    if (!ownerCheck.rows.length) return res.status(404).json({ message: 'ไม่พบเอกสาร' });
+    if (Number(ownerCheck.rows[0].user_id) !== Number(req.user.user_id)) return res.status(403).json({ message: 'ไม่มีสิทธิ์แก้ไขเอกสารนี้' });
+
     for (const [sectionName, fileArray] of Object.entries(req.files)) {
       await persistFile(documentId, sectionName, fileArray[0]);
     }
@@ -77,14 +83,15 @@ router.post('/documents/:documentId/sections', upload.fields(sectionFields), asy
   }
 });
 
-router.put('/documents/:documentId/sections/:section', upload.single('file'), async (req, res) => {
+router.put('/documents/:documentId/sections/:section', auth, requireRole('student'), upload.single('file'), async (req, res) => {
   const documentId = Number(req.params.documentId);
   const sectionName = req.params.section;
   if (!req.file) return res.status(400).json({ message: 'กรุณาเลือกไฟล์' });
 
   try {
-    const doc = await db.query('SELECT status FROM documents WHERE document_id = $1 LIMIT 1', [documentId]);
+    const doc = await db.query('SELECT user_id, status FROM documents WHERE document_id = $1 LIMIT 1', [documentId]);
     if (!doc.rows.length) return res.status(404).json({ message: 'ไม่พบเอกสาร' });
+    if (Number(doc.rows[0].user_id) !== Number(req.user.user_id)) return res.status(403).json({ message: 'ไม่มีสิทธิ์แก้ไขเอกสารนี้' });
     if (String(doc.rows[0].status || '').toLowerCase() !== 'draft') return res.status(403).json({ message: 'อนุญาตเฉพาะ draft' });
 
     await db.query('DELETE FROM document_files WHERE document_id = $1 AND section = $2', [documentId, sectionName]);

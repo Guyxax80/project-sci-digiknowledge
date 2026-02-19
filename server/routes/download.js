@@ -3,6 +3,7 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 const mime = require('mime-types');
+const auth = require('../middleware/auth');
 const db = require('../db');
 
 const resolveLocalPath = (storedPath) => {
@@ -15,7 +16,7 @@ const resolveLocalPath = (storedPath) => {
   return null;
 };
 
-router.get('/:fileId', async (req, res) => {
+router.get('/:fileId', auth, async (req, res) => {
   try {
     const { rows } = await db.query('SELECT file_path, original_name FROM document_files WHERE document_file_id = $1', [req.params.fileId]);
     if (!rows.length) return res.status(404).send('File not found');

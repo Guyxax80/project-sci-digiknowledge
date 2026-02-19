@@ -2,6 +2,8 @@ const express = require('express');
 const multer = require('multer');
 const db = require('../db');
 const cloudinary = require('../config/cloudinary');
+const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
 
 const router = express.Router();
 
@@ -53,7 +55,7 @@ async function assertStudentCanUpload(userId) {
     [userId]
   );
 
-  if (!rows.length) {
+if (!rows.length) {
     const e = new Error('ไม่พบผู้ใช้');
     e.status = 401;
     throw e;
@@ -78,19 +80,19 @@ async function assertStudentCanUpload(userId) {
   return u; // เผื่อใช้ต่อ
 }
 
-router.post('/', upload.single('file'), async (req, res) => {
+router.post('/', auth, requireRole('student'), upload.single('file'), async (req, res) => {
   try {
-    const { title, keywords, academic_year, user_id, status } = req.body;
+    const { title, keywords, academic_year, status } = req.body;
     if (!title?.trim()) return res.status(400).json({ message: 'กรุณากรอกชื่อเอกสาร' });
 
     // ✅ เช็คสิทธิ์อัปโหลด
-    await assertStudentCanUpload(user_id);
+    const authUser = await assertStudentCanUpload(req.user.user_id);
 
     const safeStatus = normalizeStatus(status);
 
     const docResult = await db.query(
       'INSERT INTO public.documents (user_id, title, keywords, academic_year, status) VALUES ($1, $2, $3, $4, $5) RETURNING document_id',
-      [user_id, title, keywords || null, academic_year || null, safeStatus],
+      [authUser.user_id, title, keywords || null, academic_year || null, safeStatus],
     );
 
     const documentId = docResult.rows[0].document_id;

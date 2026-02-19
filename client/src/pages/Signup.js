@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { UserPlus, AlertCircle, CheckCircle } from "lucide-react";
 import api from "../services/api";
 
 export default function Signup() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [formData, setFormData] = useState({
     username: "",
     student_id: "",
@@ -39,9 +40,19 @@ export default function Signup() {
 
       if (data.success) {
         setSignupSuccess(true);
+        localStorage.setItem("role", data.role || "user");
+        if (data.token) localStorage.setItem("token", data.token);
+        if (data.userId) localStorage.setItem("userId", data.userId);
+
+        const redirect = searchParams.get("redirect") || "/";
         setTimeout(() => {
-          navigate("/login");
-        }, 1500);
+          if (redirect.startsWith("/upload") && (data.role || "").toLowerCase() !== "student") {
+            alert("สมัครสำเร็จ แต่บัญชีนี้ไม่มีสิทธิ์อัปโหลดเอกสาร");
+            navigate("/");
+            return;
+          }
+          navigate(redirect);
+        }, 1200);
       } else {
         setErrors({ username: data.message || "สมัครไม่สำเร็จ" });
       }
@@ -72,7 +83,7 @@ export default function Signup() {
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center space-x-3">
             <CheckCircle className="w-5 h-5 text-green-600" />
             <span className="text-green-800 font-medium">
-              สมัครสมาชิกสำเร็จ! กำลังพาไปที่หน้าเข้าสู่ระบบ...
+              สมัครสมาชิกสำเร็จ! กำลังพาไปยังหน้าที่คุณต้องการ...
             </span>
           </div>
         )}

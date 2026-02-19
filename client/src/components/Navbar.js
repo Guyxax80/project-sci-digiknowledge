@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { getRole, isLoggedIn } from "../utils/auth";
 //import Button from "@mui/material/Button"; // ✅ อย่าลืม import ปุ่มจาก MUI
 
 const Navbar = ({ role }) => {
-  const token = (localStorage.getItem("token") || "").trim();
-  const effectiveRole = (role || localStorage.getItem("role") || "").trim().toLowerCase();
+  const token = isLoggedIn();
+  const effectiveRole = (role || getRole() || "").trim().toLowerCase();
   const location = useLocation();
 
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -40,13 +41,8 @@ const Navbar = ({ role }) => {
         {/* เมนู Desktop */}
         <div className="hidden md:flex flex-row items-center space-x-6">
           <Link
-            to={token ? "/home" : "/login"}
-            className={`hover:text-accent-200 transition-colors ${
-              !token ? "opacity-60 cursor-not-allowed" : ""
-            }`}
-            onClick={(e) => {
-              if (!token) e.preventDefault();
-            }}
+            to="/"
+            className="hover:text-accent-200 transition-colors"
           >
             หน้าแรก
           </Link>
@@ -58,13 +54,8 @@ const Navbar = ({ role }) => {
           )}
 
           <Link
-            to={token ? "/document" : "/login"}
-            className={`hover:text-accent-200 transition-colors ${
-              !token ? "opacity-60 cursor-not-allowed" : ""
-            }`}
-            onClick={(e) => {
-              if (!token) e.preventDefault();
-            }}
+            to="/document"
+            className="hover:text-accent-200 transition-colors"
           >
             เอกสารทั้งหมด
           </Link>
@@ -81,13 +72,8 @@ const Navbar = ({ role }) => {
           )}
           
           <Link
-            to={token ? "/profile" : "/login"}
-            className={`hover:text-accent-200 transition-colors ${
-              !token ? "opacity-60 cursor-not-allowed" : ""
-            }`}
-            onClick={(e) => {
-              if (!token) e.preventDefault();
-            }}
+            to={token ? "/profile" : "/signup?redirect=%2Fprofile"}
+            className="hover:text-accent-200 transition-colors"
           >
             Profile
           </Link>
@@ -100,9 +86,9 @@ const Navbar = ({ role }) => {
           <div className="md:hidden absolute top-full left-0 w-full bg-brand-700/95 backdrop-blur border-b border-white/10">
             <div className="px-4 py-3 space-y-2">
               <Link
-                to={token ? "/home" : "/login"}
+                to="/"
                 onClick={() => setMobileOpen(false)}
-                className={`block py-2 ${!token ? "opacity-60" : ""}`}
+                className="block py-2"
               >
                 หน้าแรก
               </Link>
@@ -118,15 +104,15 @@ const Navbar = ({ role }) => {
               )}
 
               <Link
-                to={token ? "/document" : "/login"}
+                to="/document"
                 onClick={() => setMobileOpen(false)}
-                className={`block py-2 ${!token ? "opacity-60" : ""}`}
+                className="block py-2"
               >
                 เอกสารทั้งหมด
               </Link>
 
               <Link
-                to={token ? "/profile" : "/login"}
+                to={token ? "/profile" : "/signup?redirect=%2Fprofile"}
                 onClick={() => setMobileOpen(false)}
                 className={`block py-2 ${!token ? "opacity-60" : ""}`}
               >
@@ -136,7 +122,7 @@ const Navbar = ({ role }) => {
               {/* ✅ ปุ่มสำหรับ mobile เฉพาะ admin */}
               {effectiveRole === "admin" && token && (
                 <Link
-                to={token ? "/admin" : "/login"}
+                to={token ? "/admin" : "/signup?redirect=%2Fadmin"}
                 onClick={() => setMobileOpen(false)}
                 className={`block py-2 ${!token ? "opacity-60" : ""}`}
               >
