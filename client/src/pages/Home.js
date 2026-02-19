@@ -12,7 +12,7 @@ const Home = () => {
   const navigate = useNavigate();
   const [role] = useState(localStorage.getItem("role")?.trim().toLowerCase() || "");
   const [popularDocs, setPopularDocs] = useState([]);
-  const [stats, setStats] = useState({ users: 0, documents: 0, downloads: 0, uploadsLast7Days: [], topCategories: [], usersByRole: [] });
+  const [stats] = useState({ users: 0, documents: 0, downloads: 0, uploadsLast7Days: [], topCategories: [], usersByRole: [] });
   const [docCategoryNames, setDocCategoryNames] = useState({});
 
   useEffect(() => {
