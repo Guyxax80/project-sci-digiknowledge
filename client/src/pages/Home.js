@@ -16,69 +16,72 @@ const Home = () => {
   const [docCategoryNames, setDocCategoryNames] = useState({});
 
   useEffect(() => {
+  let cancelled = false;
+
+  const run = async () => {
     console.log("Role:", role);
-    if (role === "student" || role === "teacher") {
-      // ทดสอบ API ก่อน
+    if (!(role === "student" || role === "teacher")) return;
+
+    try {
       console.log("Testing API connection...");
-      api
-        .get("/api/documents/test")
-        .then((res) => {
-          console.log("Test API response:", res.data);
-          
-          // ถ้า API ทำงานได้ ให้ดึงข้อมูลจริง
-          console.log("Fetching recommended documents...");
-          return api.get("/api/documents/recommended");
-        })
-        .then(async (res) => {
-          console.log("Recommended documents response:", res.data);
-          console.log("Response length:", res.data.length);
-          const docs = res.data || [];
-          setPopularDocs(docs);
+      const testRes = await api.get("/api/documents/test");
+      console.log("Test API response:", testRes.data);
 
-          // เติมชื่อหมวดหมู่ให้การ์ด (พยายามใช้ /api/documents/:id ถ้าใช้ไม่ได้ ใช้ category_names)
-          try {
-            const detailResults = await Promise.all(
-              docs.map((doc) =>
-                api
-                  .get(`/api/documents/${doc.document_id}`)
-                  .then((dres) => ({ id: doc.document_id, detail: dres.data, fallback: doc }))
-                  .catch(() => ({ id: doc.document_id, detail: null, fallback: doc }))
-              )
-            );
-            const map = {};
-            detailResults.forEach(({ id, detail, fallback }) => {
-              let names = "-";
-              const cats = detail?.categories;
-              if (Array.isArray(cats) && cats.length) {
-                names = cats.map((c) => c.name).join(", ");
-              } else if (fallback && typeof fallback.category_names === 'string' && fallback.category_names.length) {
-                names = fallback.category_names;
-              }
-              map[id] = names;
-            });
-            setDocCategoryNames(map);
-          } catch (e) {
-            console.warn("Unable to enrich categories for recommended docs", e);
+      console.log("Fetching recommended documents...");
+      let recRes;
+      try {
+        recRes = await api.get("/api/documents/recommended");
+      } catch (e) {
+        console.warn("recommended failed, fallback to /api/documents", e?.response?.data || e.message);
+        recRes = await api.get("/api/documents");
+      }
+
+      const docs = Array.isArray(recRes.data) ? recRes.data : [];
+      console.log("Docs length:", docs.length);
+
+      if (cancelled) return;
+      setPopularDocs(docs);
+
+      // เติมชื่อหมวดหมู่ให้การ์ด
+      try {
+        const detailResults = await Promise.all(
+          docs.map((doc) =>
+            api
+              .get(`/api/documents/${doc.document_id}`)
+              .then((dres) => ({ id: doc.document_id, detail: dres.data, fallback: doc }))
+              .catch(() => ({ id: doc.document_id, detail: null, fallback: doc }))
+          )
+        );
+
+        const map = {};
+        detailResults.forEach(({ id, detail, fallback }) => {
+          let names = "-";
+          const cats = detail?.categories;
+          if (Array.isArray(cats) && cats.length) {
+            names = cats.map((c) => c.name).join(", ");
+          } else if (fallback?.category_names) {
+            names = fallback.category_names;
           }
-        })
-        .catch((err) => {
-          console.error("Error fetching recommended documents:", err);
-          console.error("Error details:", err.response?.data);
+          map[id] = names;
         });
-    }
 
-    if (role === "admin") {
-      api
-        .get("/api/admin/stats")
-        .then((res) => setStats(res.data))
-        .catch((err) => console.error(err));
-
-        api
-      .get("/api/documents/uploads/7days")
-      .then(res => setStats((prev) => ({ ...prev, uploadsLast7Days: res.data })))
-      .catch(console.error);
+        if (!cancelled) setDocCategoryNames(map);
+      } catch (e) {
+        console.warn("Unable to enrich categories for recommended docs", e);
+      }
+    } catch (err) {
+      console.error("Home load error:", err);
+      console.error("Error details:", err?.response?.data);
+      if (!cancelled) setPopularDocs([]); // กันหน้าแตก
     }
-  }, [role]);
+  };
+
+  run();
+
+  return () => {
+    cancelled = true;
+  };
+}, [role]);
 
   return (
     <div>

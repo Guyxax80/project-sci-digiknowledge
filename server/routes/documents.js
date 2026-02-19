@@ -13,11 +13,12 @@ const baseListSql = `
     d.document_id, d.title, d.keywords, d.academic_year, d.uploaded_at, d.status, d.user_id,
     COALESCE(d.download_count, 0) AS download_count,
     COALESCE(cat.category_names, '') AS category_names
-  FROM documents d
+  FROM public.documents d
   LEFT JOIN (
-    SELECT dc.document_id, STRING_AGG(DISTINCT c.name, ', ' ORDER BY c.name) AS category_names
-    FROM document_categories dc
-    JOIN categories c ON c.categorie_id = dc.categorie_id
+    SELECT dc.document_id,
+           STRING_AGG(DISTINCT c.name, ', ' ORDER BY c.name) AS category_names
+    FROM public.document_categories dc
+    JOIN public.categories c ON c.categorie_id = dc.categorie_id
     GROUP BY dc.document_id
   ) cat ON cat.document_id = d.document_id
 `;
@@ -27,8 +28,8 @@ router.get('/', async (_req, res) => {
     const { rows } = await db.query(`${baseListSql} WHERE COALESCE(LOWER(d.status), '') <> 'draft' ORDER BY d.uploaded_at DESC`);
     res.json(rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'ไม่สามารถดึงข้อมูลได้' });
+    console.error("GET /api/documents/recommended:", err.code, err.message);
+    res.status(500).json({ error: "ไม่สามารถดึงข้อมูลได้" });
   }
 });
 
