@@ -25,7 +25,7 @@ const baseListSql = `
 
 router.get('/', async (_req, res) => {
   try {
-    const { rows } = await db.query(`${baseListSql} WHERE COALESCE(LOWER(d.status), '') <> 'draft' ORDER BY d.uploaded_at DESC`);
+    const { rows } = await db.query(`${baseListSql} WHERE COALESCE(LOWER(d.status::text), '') <> 'draft' ORDER BY d.uploaded_at DESC`);
     res.json(rows);
   } catch (err) {
     console.error("GET /api/documents/recommended:", err.code, err.message);
@@ -37,7 +37,7 @@ router.get('/test', (_req, res) => res.json({ message: 'API is working', timesta
 
 router.get('/recommended', async (_req, res) => {
   try {
-    const { rows } = await db.query(`${baseListSql} WHERE COALESCE(LOWER(d.status), '') <> 'draft' ORDER BY download_count DESC, d.uploaded_at DESC LIMIT 6`);
+    const { rows } = await db.query(`${baseListSql} WHERE COALESCE(LOWER(d.status::text), '') <> 'draft' ORDER BY download_count DESC, d.uploaded_at DESC LIMIT 6`);
     res.json(rows);
   } catch (err) {
     console.error(err);
