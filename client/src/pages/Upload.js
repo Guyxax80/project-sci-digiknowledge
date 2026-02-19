@@ -3,11 +3,15 @@ import api from "../services/api";
 
 const UploadDocument = () => {
   const [title, setTitle] = useState("");
-  const [categories, setCategories] = useState([]);
+ // const [categories, setCategories] = useState([]);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState([]);
   const [keywords, setKeywords] = useState("");
   const [academicYear, setAcademicYear] = useState("");
   const [academicYearDate, setAcademicYearDate] = useState("");
+  const FIXED_CATEGORIES = [
+  { id: "1", name: "Hardware" },
+  { id: "2", name: "Software" },
+];
   // ไม่ต้องอัปโหลดไฟล์หลัก
   const [isDraft, setIsDraft] = useState(false);
   // ดึง userId จาก localStorage (ต้องมีตอนล็อกอิน)
@@ -28,7 +32,7 @@ const UploadDocument = () => {
   const [presentationVideoFile, setPresentationVideoFile] = useState(null);
 
   // โหลดรายการหมวดหมู่จาก API
-  useEffect(() => {
+ {/* useEffect(() => {
     const loadCategories = async () => {
       try {
         const res = await api.get("/api/categories");
@@ -39,11 +43,13 @@ const UploadDocument = () => {
       }
     };
     loadCategories();
-  }, []);
+  }, []);} */}
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title) return alert("กรุณากรอกชื่อเอกสาร");
+    const storedUserId = localStorage.getItem("userId");
+    if (!storedUserId) return alert("กรุณา login ก่อนอัปโหลด");
 
     try {
       // ส่ง multipart ไปสร้างเอกสาร (ไม่ต้องมีไฟล์หลัก)
@@ -51,6 +57,7 @@ const UploadDocument = () => {
       formData.append("title", title);
       formData.append("keywords", keywords);
       formData.append("academic_year", academicYear);
+      formData.append("user_id", storedUserId);
       formData.append("status", isDraft ? "draft" : "published");
       // ส่งหมวดหมู่หลายค่าเป็น JSON เดียว เพื่อง่ายต่อการ parse ฝั่ง server
       formData.append("categorie_ids", JSON.stringify(selectedCategoryIds));
@@ -59,6 +66,7 @@ const UploadDocument = () => {
       console.log("Title:", title);
       console.log("Keywords:", keywords);
       console.log("Academic Year:", academicYear);
+      console.log("User ID:", storedUserId);
       console.log("Status:", isDraft ? "draft" : "published");
       console.log("Categorie IDs:", selectedCategoryIds);
       console.log("====================");
@@ -86,6 +94,7 @@ const UploadDocument = () => {
         if (appendixFile) sections.append("appendix", appendixFile);
         if (authorBioFile) sections.append("author_bio", authorBioFile);
         if (presentationVideoFile) sections.append("presentation_video", presentationVideoFile);
+        if (selectedCategoryIds.length === 0) return alert("กรุณาเลือกหมวดหมู่ (Hardware/Software)");
 
         if ([...sections.keys()].length > 0) {
           await api.post(`/api/documents/${documentId}/sections`, sections, {
@@ -119,7 +128,7 @@ const UploadDocument = () => {
 
     } catch (err) {
       console.error(err);
-      alert(err?.response?.data?.message || "เกิดข้อผิดพลาด");
+      alert("เกิดข้อผิดพลาด");
     }
   };
 
@@ -136,31 +145,24 @@ const UploadDocument = () => {
           required
         />
         <div>
-          <p className="font-semibold mb-2">เลือกหมวดหมู่ (เลือกได้หลายรายการ)</p>
-          <div className="flex flex-col gap-2 max-h-60 overflow-auto border rounded p-2">
-            {categories.map((cat) => {
-              const idStr = String(cat.categorie_id);
-              const checked = selectedCategoryIds.includes(idStr);
+          <p className="font-semibold mb-2">เลือกหมวดหมู่ </p>
+
+          <div className="flex flex-col gap-2 border rounded p-3">
+            {FIXED_CATEGORIES.map((cat) => {
+              const checked = selectedCategoryIds.includes(cat.id);
+
               return (
-                <label key={idStr} className="inline-flex items-center gap-2">
+                <label key={cat.id} className="inline-flex items-center gap-2">
                   <input
-                    type="checkbox"
+                    type="radio"
+                    name="category"
                     checked={checked}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedCategoryIds((prev) => [...prev, idStr]);
-                      } else {
-                        setSelectedCategoryIds((prev) => prev.filter((x) => x !== idStr));
-                      }
-                    }}
+                    onChange={() => setSelectedCategoryIds([cat.id])}
                   />
                   <span>{cat.name}</span>
                 </label>
               );
             })}
-            {categories.length === 0 && (
-              <span className="text-sm text-gray-500">ไม่มีหมวดหมู่</span>
-            )}
           </div>
         </div>
         <input

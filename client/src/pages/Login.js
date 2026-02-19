@@ -15,12 +15,6 @@ export default function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
 
-  const getSafeRedirect = () => {
-    const redirectRaw = searchParams.get("redirect") || "/";
-    if (!redirectRaw.startsWith("/")) return "/";
-    return redirectRaw;
-  };
-
   const validateForm = () => {
     const newErrors = {};
 
@@ -59,13 +53,12 @@ export default function LoginForm() {
         if (data.token) localStorage.setItem("token", data.token);
         if (data.userId) localStorage.setItem("userId", data.userId);
 
-        const redirect = getSafeRedirect();
+        const redirect = searchParams.get("redirect") || "/";
         setTimeout(() => {
           setLoginSuccess(false);
           if (redirect.startsWith("/upload") && (data.role || "").toLowerCase() !== "student") {
-            navigate("/", {
-              state: { message: "บัญชีนี้ไม่มีสิทธิ์เข้าใช้งานหน้าอัปโหลด" },
-            });
+            alert("บัญชีนี้ไม่มีสิทธิ์อัปโหลดเอกสาร");
+            navigate("/");
             return;
           }
           navigate(redirect);
@@ -222,7 +215,7 @@ export default function LoginForm() {
               </button>
             </div>
 
-                        {/* Submit Button */}
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={isLoading}
@@ -247,7 +240,7 @@ export default function LoginForm() {
             <p className="text-sm text-gray-600">
               ยังไม่มีบัญชีใช่ไหม?{' '}
               <button
-                onClick={() => navigate(`/signup?redirect=${encodeURIComponent(getSafeRedirect())}`)}
+                onClick={() => navigate("/signup")}
                 className="text-brand-700 hover:text-brand-800 font-medium transition-colors duration-200">
                 ลงทะเบียนที่นี่
               </button>
