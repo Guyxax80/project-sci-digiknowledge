@@ -60,10 +60,12 @@ router.post("/", async (req, res) => {
       token,
       userId: user.user_id,
     });
-  } catch (error) {
-    console.error("Login error:", error);
-    return res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดในระบบ" });
-  }
+  } catch (err) {
+  console.error("Login error:", err);
+  console.log("Server response:", err?.response?.data); // ✅ ดูสาเหตุจริง
+  setIsLoading(false);
+  setErrors({ password: err?.response?.data?.message || "เกิดข้อผิดพลาด กรุณาลองใหม่" });
+}
 });
 
 module.exports = router;
