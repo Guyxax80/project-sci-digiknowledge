@@ -66,11 +66,12 @@ export default function LoginForm() {
 } else {
         setErrors({ password: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
       }
-    } catch (err) {
-      console.error("Login error:", err);
-      setIsLoading(false);
-      setErrors({ password: "เกิดข้อผิดพลาด กรุณาลองใหม่" });
-    }
+      } catch (err) {
+        console.error("Login error:", err);
+        console.log("Server response:", err?.response?.data); // ✅ ดูข้อความจาก backend
+        setIsLoading(false);
+        setErrors({ password: err?.response?.data?.message || "เกิดข้อผิดพลาด กรุณาลองใหม่" });
+      }
   };
 
   const handleInputChange = (field, value) => {
