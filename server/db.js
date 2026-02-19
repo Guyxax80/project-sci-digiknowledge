@@ -1,10 +1,14 @@
 const { Pool } = require('pg');
 
 const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  console.warn('[db] DATABASE_URL is not set. Database queries will fail until it is configured.');
+if (connectionString) {
+  try {
+    const u = new URL(connectionString);
+    console.log("[db] host:", u.host, "user:", u.username, "db:", u.pathname);
+  } catch {
+    console.log("[db] DATABASE_URL present but not a valid URL");
+  }
 }
-
 const pool = new Pool({
   connectionString,
   ssl: {
