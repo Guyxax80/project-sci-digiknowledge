@@ -17,6 +17,12 @@ export default function Signup() {
   const [isLoading, setIsLoading] = useState(false);
   const [signupSuccess, setSignupSuccess] = useState(false);
 
+  const getSafeRedirect = () => {
+    const redirectRaw = searchParams.get("redirect") || "/";
+    if (!redirectRaw.startsWith("/")) return "/";
+    return redirectRaw;
+  };
+
   const validateForm = () => {
     const newErrors = {};
     if (!formData.username.trim()) newErrors.username = "กรุณากรอกชื่อผู้ใช้";
@@ -44,11 +50,12 @@ export default function Signup() {
         if (data.token) localStorage.setItem("token", data.token);
         if (data.userId) localStorage.setItem("userId", data.userId);
 
-        const redirect = searchParams.get("redirect") || "/";
+        const redirect = getSafeRedirect();
         setTimeout(() => {
           if (redirect.startsWith("/upload") && (data.role || "").toLowerCase() !== "student") {
-            alert("สมัครสำเร็จ แต่บัญชีนี้ไม่มีสิทธิ์อัปโหลดเอกสาร");
-            navigate("/");
+            navigate("/", {
+              state: { message: "สมัครสำเร็จ แต่บัญชีนี้ไม่มีสิทธิ์เข้าใช้งานหน้าอัปโหลด" },
+            });
             return;
           }
           navigate(redirect);
@@ -162,7 +169,7 @@ export default function Signup() {
               value={formData.level}
               onChange={(e) => handleInputChange("level", e.target.value)}
               className={`block w-full px-3 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 ${
-                errors.level ? "border-red-300 focus:ring-red-500" : "border-brand-200"
+                              errors.level ? "border-red-300 focus:ring-red-500" : "border-brand-200"
               }`}
               placeholder="ชั้นปี เช่น 1, 2, 3, 4"
               min="1"
@@ -187,7 +194,7 @@ export default function Signup() {
           <p className="text-sm text-gray-600">
             มีบัญชีแล้วใช่ไหม?{" "}
             <button
-              onClick={() => navigate("/login")}
+              onClick={() => navigate(`/login?redirect=${encodeURIComponent(getSafeRedirect())}`)}
               className="text-green-600 hover:text-green-800 font-medium"
             >
               เข้าสู่ระบบ

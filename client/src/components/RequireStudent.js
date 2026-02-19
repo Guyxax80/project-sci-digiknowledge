@@ -1,25 +1,29 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { getToken, getRole } from "../utils/auth";
+import { getToken, isStudent } from "../utils/auth";
 
 export default function RequireStudent({ children }) {
   const token = getToken();
-  const role = getRole();
   const location = useLocation();
 
   if (!token) {
+    const currentPath = `${location.pathname}${location.search || ""}${location.hash || ""}`;
     return (
       <Navigate
-        to={`/signup?redirect=${encodeURIComponent(location.pathname)}`}
+        to={`/signup?redirect=${encodeURIComponent(currentPath || "/")}`}
         replace
       />
     );
   }
 
-  if (role !== "student") {
-    // จะใช้ toast ก็ได้ แต่ขอแบบสั้น ๆ ก่อน
-    alert("ต้องเป็นสถานะ student เท่านั้นจึงจะอัปโหลดได้");
-    return <Navigate to="/" replace />;
+  if (!isStudent()) {
+    return (
+      <Navigate
+        to="/"
+        replace
+        state={{ message: "บัญชีนี้ไม่ใช่นักศึกษา จึงไม่สามารถเข้าใช้งานหน้าอัปโหลดได้" }}
+      />
+    );
   }
 
   return children;

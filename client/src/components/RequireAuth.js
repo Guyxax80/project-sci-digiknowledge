@@ -7,9 +7,10 @@ export default function RequireAuth({ children }) {
   const location = useLocation();
 
   if (!token) {
+    const currentPath = `${location.pathname}${location.search || ""}${location.hash || ""}`;
     return (
       <Navigate
-        to={`/signup?redirect=${encodeURIComponent(location.pathname)}`}
+        to={`/signup?redirect=${encodeURIComponent(currentPath || "/")}`}
         replace
       />
     );

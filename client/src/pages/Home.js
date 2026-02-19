@@ -1,50 +1,32 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { Button, Card, CardActions, CardContent, Chip, Typography } from "@mui/material";
-import { BookOpenText, CalendarDays, Download, FileImage, FileText, PlayCircle, Tag } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Button, Card, CardContent, Typography, CardActions } from "@mui/material";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Legend, Cell
 } from "recharts";
 import api from "../services/api";
 
-const COLORS = ["#7C83FD", "#7DD3FC", "#A7F3D0", "#FDBA74", "#F9A8D4", "#C4B5FD", "#86EFAC", "#FDE68A"];
+const COLORS = [
+  "#8884d8", "#82ca9d", "#ffc658", "#ff7f50",
+  "#0088FE", "#d45087", "#a0d911", "#00C49F",
+];
 
-const getRoleFromStorage = () => (localStorage.getItem("role") || "").trim().toLowerCase();
-
-const detectFileKinds = (files = []) => {
-  const kinds = new Set();
-  files.forEach((file) => {
-    const name = String(file?.original_name || "").toLowerCase();
-    const section = String(file?.section || "").toLowerCase();
-    if (name.endsWith(".pdf") || section.includes("chapter") || section === "main") kinds.add("pdf");
-    if (name.match(/\.(png|jpg|jpeg|webp)$/)) kinds.add("image");
-    if (section === "presentation_video" || name.match(/\.(mp4|mov|avi|mkv)$/)) kinds.add("video");
-  });
-  return Array.from(kinds);
-};
-
-const fileKindUi = {
-  pdf: { label: "PDF", icon: FileText },
-  image: { label: "Image", icon: FileImage },
-  video: { label: "Video", icon: PlayCircle },
+const getRoleFromStorage = () => {
+  const raw = localStorage.getItem("role");
+  return (raw || "").trim().toLowerCase();
 };
 
 const Home = () => {
   const navigate = useNavigate();
-  const location = useLocation();
+
+  // ✅ ให้ role อัปเดตได้ (ไม่ล็อกไว้ครั้งเดียว)
   const [role, setRole] = useState(getRoleFromStorage());
+
   const [popularDocs, setPopularDocs] = useState([]);
-  const [docMetaMap, setDocMetaMap] = useState({});
+  const [docCategoryNames, setDocCategoryNames] = useState({});
+
+  // ✅ ใส่ setStats ด้วย
   const [stats, setStats] = useState({
     users: 0,
     documents: 0,
@@ -55,13 +37,17 @@ const Home = () => {
     topDocuments: [],
   });
 
+  // ถ้า role ใน localStorage เปลี่ยน (เช่น login/logout) ให้หน้า Home อัปเดต
   useEffect(() => {
     const onStorage = () => setRole(getRoleFromStorage());
     window.addEventListener("storage", onStorage);
+
+    // เผื่อกรณี set localStorage ใน tab เดียวกันแล้วไม่ยิง storage event
     const id = setInterval(() => {
-      const latest = getRoleFromStorage();
-      setRole((prev) => (prev === latest ? prev : latest));
-    }, 700);
+      const r = getRoleFromStorage();
+      setRole(prev => (prev === r ? prev : r));
+    }, 800);
+
     return () => {
       window.removeEventListener("storage", onStorage);
       clearInterval(id);
@@ -71,63 +57,64 @@ const Home = () => {
   const isStudent = role === "student";
   const isTeacher = role === "teacher";
   const isAdmin = role === "admin";
-  const isUser = role === "user";
-  const isLoggedIn = useMemo(() => isStudent || isTeacher || isAdmin || isUser, [isStudent, isTeacher, isAdmin, isUser]);
+  const isLoggedIn = useMemo(() => isStudent || isTeacher || isAdmin, [isStudent, isTeacher, isAdmin]);
 
-  useEffect(() => {
-    if (location.state?.message) {
-      alert(location.state.message);
-      navigate(location.pathname, { replace: true, state: {} });
-    }
-  }, [location, navigate]);
-
+  // =========================
+  // 1) โหลดเอกสารยอดนิยม / แนะนำ
+  // =========================
   useEffect(() => {
     let cancelled = false;
 
     const fetchDocs = async () => {
       try {
+        // ✅ ถ้า login เป็น student/teacher → recommended ก่อน
+        // ✅ ถ้า guest/admin → ใช้ documents ธรรมดา (ให้เห็นรายการได้)
         let res;
+
         if (isStudent || isTeacher) {
           try {
             res = await api.get("/api/documents/recommended");
-          } catch {
+          } catch (e) {
+            console.warn("recommended failed, fallback /api/documents", e?.response?.data || e.message);
             res = await api.get("/api/documents");
           }
         } else {
+          // guest หรือ admin ให้ดู list ได้
           res = await api.get("/api/documents");
         }
 
         const docs = Array.isArray(res.data) ? res.data : [];
         if (cancelled) return;
+
         setPopularDocs(docs);
 
-        const detailResults = await Promise.all(
-          docs.map((doc) =>
-            api
-              .get(`/api/documents/${doc.document_id}`)
-              .then((dres) => ({ id: doc.document_id, detail: dres.data, fallback: doc }))
-              .catch(() => ({ id: doc.document_id, detail: null, fallback: doc }))
-          )
-        );
+        // เติมชื่อหมวดหมู่ให้การ์ด
+        try {
+          const detailResults = await Promise.all(
+            docs.map((doc) =>
+              api
+                .get(`/api/documents/${doc.document_id}`)
+                .then((dres) => ({ id: doc.document_id, detail: dres.data, fallback: doc }))
+                .catch(() => ({ id: doc.document_id, detail: null, fallback: doc }))
+            )
+          );
 
-        const nextMap = {};
-        detailResults.forEach(({ id, detail, fallback }) => {
-          const categories = Array.isArray(detail?.categories)
-            ? detail.categories.map((c) => c.name)
-            : String(fallback?.category_names || "")
-                .split(",")
-                .map((x) => x.trim())
-                .filter(Boolean);
+          const map = {};
+          detailResults.forEach(({ id, detail, fallback }) => {
+            let names = "-";
+            const cats = detail?.categories;
+            if (Array.isArray(cats) && cats.length) {
+              names = cats.map((c) => c.name).join(", ");
+            } else if (fallback?.category_names) {
+              names = fallback.category_names;
+            }
+            map[id] = names;
+          });
 
-          const files = Array.isArray(detail?.downloadFiles) ? detail.downloadFiles : [];
-          nextMap[id] = {
-            categories,
-            fileKinds: detectFileKinds(files),
-            coverName: files.find((f) => String(f.section || "").toLowerCase() === "cover")?.original_name || null,
-          };
-        });
-
-        if (!cancelled) setDocMetaMap(nextMap);
+          if (!cancelled) setDocCategoryNames(map);
+        } catch (e) {
+          console.warn("Unable to enrich categories", e);
+        }
       } catch (err) {
         console.error("Home docs load error:", err?.response?.data || err.message);
         if (!cancelled) setPopularDocs([]);
@@ -135,162 +122,267 @@ const Home = () => {
     };
 
     fetchDocs();
-    return () => {
-      cancelled = true;
-    };
-  }, [isStudent, isTeacher]);
+    return () => { cancelled = true; };
+  }, [isStudent, isTeacher, isAdmin]);
 
+  // =========================
+  // 2) โหลดสถิติสำหรับ Admin
+  // =========================
   useEffect(() => {
-    if (!isAdmin) return;
     let cancelled = false;
 
     const fetchAdminStats = async () => {
+      if (!isAdmin) return;
+
       try {
-        const res = await api.get("/api/admin/stats").catch(() => api.get("/api/admin/dashboard"));
-        if (!cancelled && res?.data) {
-          setStats({
-            users: res.data.users ?? 0,
-            documents: res.data.documents ?? 0,
-            downloads: res.data.downloads ?? 0,
-            uploadsLast7Days: Array.isArray(res.data.uploadsLast7Days) ? res.data.uploadsLast7Days : [],
-            topCategories: Array.isArray(res.data.topCategories) ? res.data.topCategories : [],
-            usersByRole: Array.isArray(res.data.usersByRole) ? res.data.usersByRole : [],
-            topDocuments: Array.isArray(res.data.topDocuments) ? res.data.topDocuments : [],
-          });
+        // ✅ เปลี่ยน endpoint ตรงนี้ให้ตรงกับของคุณถ้าชื่อไม่ใช่ /api/admin/stats
+        let res;
+        try {
+          res = await api.get("/api/admin/stats");
+        } catch (e) {
+          console.warn("admin stats endpoint not found, try fallback", e?.response?.data || e.message);
+          // fallback เผื่อคุณตั้งชื่อไว้แบบอื่น
+          res = await api.get("/api/admin/dashboard").catch(() => null);
         }
+
+        if (!res || !res.data) {
+          console.warn("No admin stats data returned");
+          return;
+        }
+
+        const d = res.data;
+
+        const next = {
+          users: d.users ?? 0,
+          documents: d.documents ?? 0,
+          downloads: d.downloads ?? 0,
+          uploadsLast7Days: Array.isArray(d.uploadsLast7Days) ? d.uploadsLast7Days : [],
+          topCategories: Array.isArray(d.topCategories) ? d.topCategories : [],
+          usersByRole: Array.isArray(d.usersByRole) ? d.usersByRole : [],
+          topDocuments: Array.isArray(d.topDocuments) ? d.topDocuments : [],
+        };
+
+        if (!cancelled) setStats(next);
       } catch (err) {
-        console.error("fetch admin stats error", err?.response?.data || err.message);
+        console.error("Admin stats load error:", err?.response?.data || err.message);
       }
     };
 
     fetchAdminStats();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [isAdmin]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-sky-50/40 to-white text-slate-800">
-      <div className="max-w-7xl mx-auto px-4 md:px-6 py-8 md:py-10 space-y-8">
-        <section className="rounded-3xl border border-slate-200 bg-white/80 backdrop-blur px-6 py-7 shadow-sm">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-800">Digital Knowledge Library</h1>
-              <p className="text-slate-500 mt-2">ค้นหา อ่านรายละเอียด และดาวน์โหลดงานวิชาการได้อย่างเป็นระเบียบและน่าเชื่อถือ</p>
-            </div>
-            <Chip
-              icon={<BookOpenText size={16} />}
-              label={isLoggedIn ? `Signed in as ${role || "member"}` : "Public Access"}
-              color="primary"
-              variant="outlined"
-            />
+    <div>
+      <div className="p-6 max-w-7xl mx-auto">
+        <Typography variant="h4" gutterBottom className="text-brand-800">
+          ยินดีต้อนรับ{" "}
+          {isStudent ? "นักศึกษา" : isTeacher ? "อาจารย์" : isAdmin ? "ผู้ดูแลระบบ" : "ผู้เยี่ยมชม"}
+        </Typography>
+
+        {/* ===== Guest CTA ===== */}
+        {!isLoggedIn && (
+          <div className="mb-6 flex flex-wrap gap-2">
+            <Button variant="contained" onClick={() => navigate("/login")}>
+              เข้าสู่ระบบ
+            </Button>
+            <Button variant="outlined" onClick={() => navigate("/signup")}>
+              สมัครสมาชิก
+            </Button>
           </div>
-        </section>
-
-        {isAdmin && (
-          <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {[{ k: "users", l: "Users" }, { k: "documents", l: "Documents" }, { k: "downloads", l: "Downloads" }].map((item) => (
-              <Card key={item.k} className="rounded-2xl shadow-sm border border-slate-100">
-                <CardContent>
-                  <Typography variant="overline" color="text.secondary">{item.l}</Typography>
-                  <Typography variant="h4" fontWeight={700}>{stats[item.k]}</Typography>
-                </CardContent>
-              </Card>
-            ))}
-
-            <Card className="rounded-2xl shadow-sm border border-slate-100 lg:col-span-2">
-              <CardContent>
-                <Typography variant="h6" gutterBottom>Uploads (7 days)</Typography>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={stats.uploadsLast7Days}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="day" />
-                    <YAxis allowDecimals={false} />
-                    <Tooltip />
-                    <Bar dataKey="count" fill="#7C83FD" radius={[8, 8, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-2xl shadow-sm border border-slate-100">
-              <CardContent>
-                <Typography variant="h6" gutterBottom>Top Categories</Typography>
-                <ResponsiveContainer width="100%" height={220}>
-                  <PieChart>
-                    <Pie data={stats.topCategories} dataKey="count" nameKey="category" outerRadius={80} label>
-                      {stats.topCategories.map((_, index) => (
-                        <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Legend />
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </section>
         )}
 
-        <section>
-          <Typography variant="h5" className="!font-semibold !mb-4">Popular Documents</Typography>
+        {/* ================= Student Actions ================= */}
+        {isStudent && (
+          <div className="mb-8">
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => navigate("/upload")}
+              sx={{ mb: 4 }}
+            >
+              อัปโหลดผลงานใหม่
+            </Button>
+          </div>
+        )}
+
+        {/* ================= Admin Stats ================= */}
+        {isAdmin && (
+          <div className="space-y-8 mb-12">
+            <Typography variant="h5" gutterBottom className="text-brand-800">
+              📊 แดชบอร์ดผู้ดูแลระบบ
+            </Typography>
+
+            {/* KPI CARDS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 shadow-md">
+                <CardContent>
+                  <Typography variant="h6">👥 ผู้ใช้งานทั้งหมด</Typography>
+                  <Typography variant="h4" className="font-bold text-indigo-700">{stats.users}</Typography>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-purple-50 to-purple-100 shadow-md">
+                <CardContent>
+                  <Typography variant="h6">📚 ผลงานทั้งหมด</Typography>
+                  <Typography variant="h4" className="font-bold text-purple-700">{stats.documents}</Typography>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-pink-50 to-pink-100 shadow-md">
+                <CardContent>
+                  <Typography variant="h6">⬇️ ดาวน์โหลดรวม</Typography>
+                  <Typography variant="h4" className="font-bold text-pink-700">{stats.downloads}</Typography>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-green-50 to-green-100 shadow-md">
+                <CardContent>
+                  <Typography variant="h6">📅 อัปโหลดใน 7 วันล่าสุด</Typography>
+                  <Typography variant="h4" className="font-bold text-green-700">
+                    {stats.uploadsLast7Days?.reduce((a, b) => a + (b.count || 0), 0) || 0}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* CHARTS SECTION */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* BAR CHART - Uploads */}
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>📈 การอัปโหลดใน 7 วันที่ผ่านมา</Typography>
+                  {stats.uploadsLast7Days?.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={stats.uploadsLast7Days}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="day"
+                          tickFormatter={(d) =>
+                            new Date(d).toLocaleDateString("th-TH", { month: "short", day: "numeric" })
+                          }
+                        />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="count" fill="#8884d8" radius={[8, 8, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <Typography color="text.secondary">ไม่มีข้อมูลการอัปโหลด</Typography>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* PIE CHART - Categories */}
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>🥇 หมวดหมู่ยอดนิยม</Typography>
+                  {stats.topCategories?.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={stats.topCategories}
+                          dataKey="count"
+                          nameKey="category"
+                          outerRadius={100}
+                          label
+                        >
+                          {stats.topCategories.map((_, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <Typography color="text.secondary">ไม่มีข้อมูลหมวดหมู่</Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* TOP DOCUMENTS */}
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>🏆 เอกสารยอดดาวน์โหลด</Typography>
+                <div className="space-y-2">
+                  {!stats.topDocuments || stats.topDocuments.length === 0 ? (
+                    <Typography color="text.secondary">ไม่มีข้อมูล</Typography>
+                  ) : (
+                    stats.topDocuments.map((d) => (
+                      <button
+                        key={d.document_id}
+                        className="w-full flex justify-between text-left text-sm hover:bg-gray-50 p-1 rounded"
+                        onClick={async () => {
+                          try {
+                            const res = await api.get(`/api/admin/documents/${d.document_id}/file-downloads`);
+                            const files = res.data;
+                            const list = files && files.length
+                              ? files.map(f => `${f.section || "main"} - ${(f.original_name || "file")} : ${f.download_count}`).join("\n")
+                              : "ไม่มีไฟล์ที่มีการดาวน์โหลด";
+                            alert(`ไฟล์ของ: ${d.title}\n\n${list}`);
+                          } catch (e) {
+                            alert("โหลดข้อมูลไฟล์ไม่สำเร็จ");
+                          }
+                        }}
+                      >
+                        <span className="truncate max-w-[70%]">{d.title}</span>
+                        <span className="font-semibold">{d.download_count}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ================= Recommended Documents (ทุกคนเห็นได้) ================= */}
+        <div>
+          <Typography variant="h5" gutterBottom className="mb-4 text-brand-700">
+            🌟 ผลงานยอดนิยม
+          </Typography>
+
           {popularDocs.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">ยังไม่มีเอกสารที่เผยแพร่</div>
+            <Typography variant="body1" color="text.secondary">
+              ยังไม่มีผลงานที่อัปโหลด
+            </Typography>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {popularDocs.map((doc) => {
-                const meta = docMetaMap[doc.document_id] || { categories: [], fileKinds: [], coverName: null };
-                return (
-                  <Card key={doc.document_id} className="rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all overflow-hidden">
-                    <div className="h-36 bg-gradient-to-br from-slate-100 via-sky-100 to-indigo-100 flex items-center justify-center">
-                      <div className="text-center text-slate-600">
-                        <FileText className="mx-auto mb-2" size={30} />
-                        <p className="text-xs">{meta.coverName ? `Cover: ${meta.coverName}` : "No thumbnail available"}</p>
-                      </div>
-                    </div>
-                    <CardContent className="space-y-3">
-                      <Typography variant="h6" className="!font-semibold line-clamp-2">{doc.title}</Typography>
-
-                      <div className="flex flex-wrap gap-2">
-                        {(meta.categories.length ? meta.categories : ["Uncategorized"]).slice(0, 4).map((cat) => (
-                          <span key={cat} className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">{cat}</span>
-                        ))}
-                      </div>
-
-                      <div className="space-y-1 text-sm text-slate-600">
-                        <p className="flex items-center gap-2"><Tag size={15} /> {doc.keywords || "ไม่ระบุคำค้น"}</p>
-                        <p className="flex items-center gap-2"><CalendarDays size={15} /> ปีการศึกษา: {doc.academic_year || "ไม่ระบุ"}</p>
-                        <p className="flex items-center gap-2"><Download size={15} /> ดาวน์โหลด: {Number(doc.download_count || 0)} ครั้ง</p>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        {meta.fileKinds.length > 0 ? meta.fileKinds.map((kind) => {
-                          const item = fileKindUi[kind];
-                          if (!item) return null;
-                          const Icon = item.icon;
-                          return (
-                            <Chip
-                              key={kind}
-                              icon={<Icon size={14} />}
-                              label={item.label}
-                              size="small"
-                              variant="outlined"
-                            />
-                          );
-                        }) : <Chip label="No file info" size="small" variant="outlined" />}
-                      </div>
-                    </CardContent>
-                    <CardActions className="!px-4 !pb-4">
-                      <Button variant="outlined" fullWidth onClick={() => navigate(`/document-detail/${doc.document_id}`)}>
-                        ดูรายละเอียด
-                      </Button>
-                    </CardActions>
-                  </Card>
-                );
-              })}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {popularDocs.map((doc) => (
+                <Card
+                  key={doc.document_id}
+                  className="shadow-lg hover:shadow-2xl transition rounded-xl border border-brand-100/70"
+                >
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom className="line-clamp-2 text-brand-800">
+                      {doc.title}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" className="mb-2">
+                      หมวดหมู่: {docCategoryNames[doc.document_id] ?? "-"}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" className="mb-2">
+                      คำค้นหา: {doc.keywords || "ไม่ระบุ"}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" className="mb-2">
+                      ปีการศึกษา: {doc.academic_year || "ไม่ระบุ"}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" className="mb-2">
+                      ดาวน์โหลด: {Number.isFinite(parseInt(doc.download_count)) ? parseInt(doc.download_count) : 0} ครั้ง
+                    </Typography>
+                  </CardContent>
+                  <CardActions>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => navigate(`/document-detail/${doc.document_id}`)}
+                    >
+                      ดูรายละเอียด
+                    </Button>
+                  </CardActions>
+                </Card>
+              ))}
             </div>
           )}
-        </section>
+        </div>
       </div>
     </div>
   );
