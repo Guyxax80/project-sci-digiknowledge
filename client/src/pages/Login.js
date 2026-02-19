@@ -68,7 +68,8 @@ export default function LoginForm() {
       }
       } catch (err) {
         console.error("Login error:", err);
-        console.log("Server response:", err?.response?.data); // ✅ ดูข้อความจาก backend
+        console.log("Server data:", err?.response?.data);
+        console.log("Server message:", err?.response?.data?.message);
         setIsLoading(false);
         setErrors({ password: err?.response?.data?.message || "เกิดข้อผิดพลาด กรุณาลองใหม่" });
       }
