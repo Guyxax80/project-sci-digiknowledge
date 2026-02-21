@@ -140,9 +140,9 @@ router.get('/stats', async (req, res) => {
       [days]
     );
 
-    // ----- topCategories (รองรับ schema ของคุณ) -----
+    // ----- topCategories (ตรงกับ schema คุณ) -----
+    // categories(categorie_id, name)
     // document_categories(document_id, categorie_id)
-    // categories(categorie_id, category_name/...)  (ชื่อคอลัมน์ชื่อหมวดหมู่แล้วแต่คุณ)
     let topCategoriesRows = [];
     try {
       const hasCategoriesTableQ = await db.query(
@@ -157,12 +157,7 @@ router.get('/stats', async (req, res) => {
           `
           SELECT
             c.categorie_id AS category_id,
-            COALESCE(
-              c.category_name,
-              c.categorie_name,
-              c.name,
-              ('#' || c.categorie_id::text)
-            ) AS category_name,
+            c.name AS category_name,
             COUNT(dc.document_id)::int AS count
           FROM document_categories dc
           JOIN categories c
@@ -170,7 +165,7 @@ router.get('/stats', async (req, res) => {
           JOIN documents d
             ON d.document_id = dc.document_id
           WHERE d.${tsCol} >= NOW() - ($1 || ' days')::interval
-          GROUP BY c.categorie_id, c.category_name, c.categorie_name, c.name
+          GROUP BY c.categorie_id, c.name
           ORDER BY count DESC
           LIMIT 5
           `,
