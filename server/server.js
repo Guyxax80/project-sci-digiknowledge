@@ -23,6 +23,9 @@ const dbTestRoute = require('./routes/dbTest');
 
 const app = express();
 
+// ✅ สำคัญบน Render/Reverse proxy (เพื่อ rateLimit/req.ip ถูกต้อง)
+app.set('trust proxy', 1);
+
 const envAllowlist = String(process.env.CORS_ALLOWLIST || '')
   .split(',')
   .map((x) => x.trim())
@@ -31,6 +34,7 @@ const envAllowlist = String(process.env.CORS_ALLOWLIST || '')
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
+  'http://localhost:5173', // ✅ Vite
   process.env.FRONTEND_URL,
   'https://project-sci-digiknowledge1.onrender.com',
   'https://project-sci-digiknowledge.vercel.app',
@@ -39,20 +43,50 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    if (!origin) return callback(null, true); // allow curl/postman/no-origin
+    if (allowedOrigins.includes(origin)) return callback(null, true);
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
 };
 
-app.use(helmet());
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: Number(process.env.RATE_LIMIT_MAX || 500) }));
+// ✅ ปรับ helmet ไม่ให้บล็อก resource ข้าม origin (แก้ NotSameOrigin)
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false, // ปิด CORP ไปเลย
+  })
+);
+// ✅ Rate limit
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: Number(process.env.RATE_LIMIT_MAX || 500),
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ✅ Static uploads (ถ้าคุณยังใช้ local uploads)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+/**
+ * ✅ เพิ่ม header เฉพาะ route ที่เป็นไฟล์ (กัน browser block)
+ * (แม้ตั้ง helmet ไว้แล้ว อันนี้ช่วยชัวร์ขึ้น)
+ */
+app.use(['/files', '/uploads'], (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  // ถ้าโหลด video แล้วมีปัญหา seek/stream ให้เปิด range
+  // res.setHeader('Accept-Ranges', 'bytes');
+  next();
+});
+
+// ===== Routes =====
 app.use('/api/upload', uploadRoute);
 app.use('/api/documents', documentRoute);
 app.use('/api/approvals', approvalsRoute);
@@ -61,7 +95,11 @@ app.use('/api/signup', signupRoute);
 app.use('/api/auth', authRoute);
 app.use('/api/admin', adminRoutes);
 app.use('/api/categories', categoriesRoute);
+
+// ⚠️ อันนี้น่าจะชน path เดิม (/api/documents)
+// ถ้า sectionFilesRoute เป็น route แยก แนะนำเปลี่ยน prefix ชัด ๆ เช่น /api/section-files
 app.use('/api/documents', sectionFilesRoute);
+
 app.use('/files', filesRoute);
 app.use('/download', downloadRoute);
 app.use('/api/db-test', dbTestRoute);
@@ -79,6 +117,7 @@ app.use((err, req, res, _next) => {
   }
 
   console.error('Unhandled error:', err?.message || err);
+
   if (err?.message === 'Not allowed by CORS') {
     return res.status(403).json({ message: 'CORS origin denied' });
   }
