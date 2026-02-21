@@ -115,22 +115,26 @@ async function assertStudentCanUpload(userId) {
 
 async function uploadVideoToCloudinary(file, userId) {
   const folder = `digiknowledge/videos/${userId}`;
+  const fileSizeMB = Number((file.size / (1024 * 1024)).toFixed(2));
   const uploadOptions = {
     resource_type: 'video',
     folder,
+    chunk_size: 6000000,
     timeout: VIDEO_UPLOAD_TIMEOUT_MS,
   };
 
   console.info('[upload] video upload start', {
     size: file.size,
+    sizeMB: fileSizeMB,
     mimetype: file.mimetype,
     resource_type: uploadOptions.resource_type,
     folder: uploadOptions.folder,
+    chunk_size: uploadOptions.chunk_size,
   });
 
   try {
     return await new Promise((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
+      const stream = cloudinary.uploader.upload_chunked_stream(uploadOptions, (error, result) => {
         if (error) {
           return reject(error);
         }
@@ -217,7 +221,9 @@ router.post('/', auth, requireRole('student'), (req, res, next) => {
           return res.status(videoErr.status || 502).json({
             success: false,
             message: videoErr.message,
-            error: videoErr.details || null,
+            error: {
+              details: videoErr.details || null,
+            },
           });
         }
 
@@ -280,6 +286,9 @@ router.post('/', auth, requireRole('student'), (req, res, next) => {
     return res.status(err.status || 500).json({
       success: false,
       message: err.message || 'เกิดข้อผิดพลาด',
+      error: {
+        details: err.details || null,
+      },
     });
   }
 });
