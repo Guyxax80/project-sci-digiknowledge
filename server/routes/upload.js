@@ -236,6 +236,7 @@ router.post('/', auth, requireRole('student'), (req, res, next) => {
 
     // ✅ เช็คสิทธิ์อัปโหลด
     const authUser = await assertStudentCanUpload(req.user.user_id);
+    console.log("[upload] categorie_ids raw:", req.body?.categorie_ids);
 
     // ✅ normalize status
     const safeStatus = normalizeStatus(status);

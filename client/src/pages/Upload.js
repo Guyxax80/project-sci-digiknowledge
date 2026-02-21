@@ -58,7 +58,7 @@ const UploadDocument = () => {
       formData.append("user_id", storedUserId);
       formData.append("status", isDraft ? "draft" : "published");
       // ส่งหมวดหมู่หลายค่าเป็น JSON เดียว เพื่อง่ายต่อการ parse ฝั่ง server
-      formData.append("categorieIds", JSON.stringify(selectedCategoryIds));
+      formData.append("categorie_ids", JSON.stringify(selectedCategoryIds));
 
       console.log("=== FRONTEND DATA ===");
       console.log("Title:", title);
@@ -95,7 +95,9 @@ const UploadDocument = () => {
           if (!validatePresentationVideoSize(presentationVideoFile)) return;
           sections.append("presentation_video", presentationVideoFile);
         }
-        if (selectedCategoryIds.length === 0) return alert("กรุณาเลือกหมวดหมู่ (Hardware/Software)");
+        if (selectedCategoryIds.length === 0) {
+          return alert("กรุณาเลือกหมวดหมู่ (Hardware/Software)");
+        }
 
         if ([...sections.keys()].length > 0) {
           await api.post(`/api/documents/${documentId}/sections`, sections, {
