@@ -90,9 +90,6 @@ router.delete('/users/:user_id', async (req, res) => {
 router.get('/stats', async (req, res) => {
   const days = Math.max(1, Math.min(Number(req.query.days || 7), 365));
 
-  // ✅ ถ้าตารางเชื่อมของคุณชื่ออื่น ให้เปลี่ยนตรงนี้
-  const JOIN_TABLE = 'document_categories'; // e.g. 'documents_categories' / 'doc_categories'
-
   try {
     // ----- Core totals -----
     const usersQ = await db.query('SELECT COUNT(*)::int AS count FROM users');
@@ -143,93 +140,47 @@ router.get('/stats', async (req, res) => {
       [days]
     );
 
-    // ----- topCategories: support BOTH schema types -----
+    // ----- topCategories (รองรับ schema ของคุณ) -----
+    // document_categories(document_id, categorie_id)
+    // categories(categorie_id, category_name/...)  (ชื่อคอลัมน์ชื่อหมวดหมู่แล้วแต่คุณ)
     let topCategoriesRows = [];
+    try {
+      const hasCategoriesTableQ = await db.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='categories' LIMIT 1`
+      );
+      const hasJoinTableQ = await db.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='document_categories' LIMIT 1`
+      );
 
-    const hasCategoriesTableQ = await db.query(
-      `
-      SELECT 1
-      FROM information_schema.tables
-      WHERE table_schema='public' AND table_name='categories'
-      LIMIT 1
-      `
-    );
-
-    if (hasCategoriesTableQ.rows.length) {
-      // (A) Try many-to-many: JOIN_TABLE exists?
-      let hasJoinTable = false;
-      try {
-        const hasJoinTableQ = await db.query(
+      if (hasCategoriesTableQ.rows.length && hasJoinTableQ.rows.length) {
+        const topCategoriesQ = await db.query(
           `
-          SELECT 1
-          FROM information_schema.tables
-          WHERE table_schema='public' AND table_name=$1
-          LIMIT 1
+          SELECT
+            c.categorie_id AS category_id,
+            COALESCE(
+              c.category_name,
+              c.categorie_name,
+              c.name,
+              ('#' || c.categorie_id::text)
+            ) AS category_name,
+            COUNT(dc.document_id)::int AS count
+          FROM document_categories dc
+          JOIN categories c
+            ON c.categorie_id = dc.categorie_id
+          JOIN documents d
+            ON d.document_id = dc.document_id
+          WHERE d.${tsCol} >= NOW() - ($1 || ' days')::interval
+          GROUP BY c.categorie_id, c.category_name, c.categorie_name, c.name
+          ORDER BY count DESC
+          LIMIT 5
           `,
-          [JOIN_TABLE]
+          [days]
         );
-        hasJoinTable = hasJoinTableQ.rows.length > 0;
-      } catch (e) {
-        hasJoinTable = false;
+        topCategoriesRows = topCategoriesQ.rows;
       }
-
-      if (hasJoinTable) {
-        // ✅ many-to-many
-        try {
-          const topCategoriesQ = await db.query(
-            `
-            SELECT c.category_id,
-                   c.category_name,
-                   COUNT(j.document_id)::int AS count
-            FROM ${JOIN_TABLE} j
-            JOIN categories c ON c.category_id = j.category_id
-            JOIN documents d ON d.document_id = j.document_id
-            WHERE d.${tsCol} >= NOW() - ($1 || ' days')::interval
-            GROUP BY c.category_id, c.category_name
-            ORDER BY count DESC
-            LIMIT 5
-            `,
-            [days]
-          );
-          topCategoriesRows = topCategoriesQ.rows;
-        } catch (e) {
-          console.error('topCategories M2M error:', e);
-          topCategoriesRows = [];
-        }
-      } else {
-        // (B) Fallback one-to-many: documents.category_id exists?
-        try {
-          const hasCategoryIdQ = await db.query(
-            `
-            SELECT 1
-            FROM information_schema.columns
-            WHERE table_schema='public' AND table_name='documents' AND column_name='category_id'
-            LIMIT 1
-            `
-          );
-
-          if (hasCategoryIdQ.rows.length) {
-            const topCategoriesQ = await db.query(
-              `
-              SELECT c.category_id,
-                     c.category_name,
-                     COUNT(d.document_id)::int AS count
-              FROM documents d
-              JOIN categories c ON c.category_id = d.category_id
-              WHERE d.${tsCol} >= NOW() - ($1 || ' days')::interval
-              GROUP BY c.category_id, c.category_name
-              ORDER BY count DESC
-              LIMIT 5
-              `,
-              [days]
-            );
-            topCategoriesRows = topCategoriesQ.rows;
-          }
-        } catch (e) {
-          console.error('topCategories O2M error:', e);
-          topCategoriesRows = [];
-        }
-      }
+    } catch (e) {
+      console.error('topCategories error:', e);
+      topCategoriesRows = [];
     }
 
     // ----- Top downloads -----
