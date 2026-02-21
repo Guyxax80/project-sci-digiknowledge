@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { getToken, getRole, clearAuth } from "../utils/auth";
+import { getToken, getRole } from "../utils/auth";
 
 const Navbar = () => {
   const location = useLocation();
@@ -53,11 +53,7 @@ const Navbar = () => {
     navigate("/approve");
   };
 
-  {const handleLogout = (e) => {
-    e.preventDefault();
-    clearAuth();
-    navigate("/");
-  };}
+
 
   // ===== เมนูตามเงื่อนไขของคุณ =====
   // ยังไม่ login: หน้าแรก / เอกสารทั้งหมด / อัปโหลดไฟล์ / Profile
