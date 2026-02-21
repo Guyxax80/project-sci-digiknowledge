@@ -8,6 +8,9 @@ const supabase = require('../config/supabase');
 
 const router = express.Router();
 const BUCKET = process.env.SUPABASE_BUCKET_DOCUMENTS || 'documents';
+// Cloudinary Free plan supports video uploads up to 100MB.
+// Larger videos require a paid Cloudinary plan or alternative storage.
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 
 const envPreview = (value) => {
   const v = String(value || '');
@@ -49,17 +52,25 @@ const sectionFields = [
   { name: 'presentation_video', maxCount: 1 },
 ];
 
-const upload = multer({ storage, limits: { fileSize: 200 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: MAX_VIDEO_BYTES } });
 
 const uploadSectionFields = (req, res, next) => {
   upload.fields(sectionFields)(req, res, (err) => {
     if (!err) return next();
 
     console.error('[sections] multer upload error:', err);
+
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        success: false,
+        message: 'ไฟล์วิดีโอใหญ่เกิน 100MB',
+        field: err.field,
+      });
+    }
+
     return res.status(400).json({
       success: false,
-      message: 'ข้อมูลไฟล์ไม่ถูกต้อง',
-      error: err.message,
+      message: err.message,
     });
   });
 };
@@ -303,7 +314,7 @@ router.put('/:documentId/sections/:section', auth, requireRole('student'), uploa
   const documentId = Number(req.params.documentId);
   const sectionName = req.params.section;
 
-  if (!req.file) return res.status(400).json({ success: false, message: 'กรุณาเลือกไฟล์' });
+   if (!req.file) return res.status(400).json({ success: false, message: 'กรุณาเลือกไฟล์' });
 
   try {
     const doc = await db.query('SELECT user_id, status FROM public.documents WHERE document_id = $1 LIMIT 1', [documentId]);

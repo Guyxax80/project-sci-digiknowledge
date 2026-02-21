@@ -1,5 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import api from "../services/api";
+
+const MAX_VIDEO_MB = 100;
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+const VIDEO_SIZE_ERROR_MESSAGE = "วิดีโอเกิน 100MB (จำกัดตามระบบ) กรุณาลดขนาดไฟล์ก่อนอัปโหลด";
 
 const UploadDocument = () => {
   const [title, setTitle] = useState("");
@@ -31,25 +35,19 @@ const UploadDocument = () => {
   const [authorBioFile, setAuthorBioFile] = useState(null);
   const [presentationVideoFile, setPresentationVideoFile] = useState(null);
 
-  // โหลดรายการหมวดหมู่จาก API
- {/* useEffect(() => {
-    const loadCategories = async () => {
-      try {
-        const res = await api.get("/api/categories");
-        setCategories(res.data || []);
-      } catch (err) {
-        console.error("โหลดหมวดหมู่ไม่สำเร็จ", err);
-        setCategories([]);
-      }
-    };
-    loadCategories();
-  }, []);} */}
+  const validatePresentationVideoSize = (file) => {
+    if (!file) return true;
+    if (file.size <= MAX_VIDEO_BYTES) return true;
+    alert(VIDEO_SIZE_ERROR_MESSAGE);
+    return false;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title) return alert("กรุณากรอกชื่อเอกสาร");
     const storedUserId = localStorage.getItem("userId");
     if (!storedUserId) return alert("กรุณา login ก่อนอัปโหลด");
+    if (!validatePresentationVideoSize(presentationVideoFile)) return;
 
     try {
       // ส่ง multipart ไปสร้างเอกสาร (ไม่ต้องมีไฟล์หลัก)
@@ -93,7 +91,10 @@ const UploadDocument = () => {
         if (bibliographyFile) sections.append("bibliography", bibliographyFile);
         if (appendixFile) sections.append("appendix", appendixFile);
         if (authorBioFile) sections.append("author_bio", authorBioFile);
-        if (presentationVideoFile) sections.append("presentation_video", presentationVideoFile);
+        if (presentationVideoFile) {
+          if (!validatePresentationVideoSize(presentationVideoFile)) return;
+          sections.append("presentation_video", presentationVideoFile);
+        }
         if (selectedCategoryIds.length === 0) return alert("กรุณาเลือกหมวดหมู่ (Hardware/Software)");
 
         if ([...sections.keys()].length > 0) {
@@ -128,6 +129,10 @@ const UploadDocument = () => {
 
     } catch (err) {
       console.error(err);
+      if (err?.response?.status === 413) {
+        alert(VIDEO_SIZE_ERROR_MESSAGE);
+        return;
+      }
       alert("เกิดข้อผิดพลาด");
     }
   };
@@ -243,8 +248,20 @@ const UploadDocument = () => {
             <input type="file" onChange={(e) => setAuthorBioFile(e.target.files[0])} />
           </label>
           <label className="flex flex-col sm:col-span-2">
-            <span className="mb-1">วิดีโอนำเสนอ (presentation_video)</span>
-            <input type="file" accept="video/*" onChange={(e) => setPresentationVideoFile(e.target.files[0])} />
+            <span className="mb-1">วิดีโอนำเสนอ (presentation_video, สูงสุด {MAX_VIDEO_MB}MB)</span>
+            <input
+              type="file"
+              accept="video/*"
+              onChange={(e) => {
+                const selectedFile = e.target.files?.[0] || null;
+                if (!validatePresentationVideoSize(selectedFile)) {
+                  e.target.value = "";
+                  setPresentationVideoFile(null);
+                  return;
+                }
+                setPresentationVideoFile(selectedFile);
+              }}
+            />
           </label>
         </div>
 

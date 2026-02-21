@@ -199,6 +199,29 @@ function DocumentDetailTailwind() {
     return fileName.toLowerCase().endsWith(".pdf") || fileType === "application/pdf";
   };
 
+  const handleDownload = async (file) => {
+  try {
+    const res = await api.get(`/download/${file.document_file_id}`, {
+      responseType: "blob",
+    });
+
+    const blob = new Blob([res.data]);
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.original_name || "download";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("Download failed:", err);
+    alert("ดาวน์โหลดไม่สำเร็จ");
+  }
+};
+
   const openPdfViewer = (file) => {
     setViewingPdf(file);
     setNumPages(null);
@@ -329,14 +352,13 @@ function DocumentDetailTailwind() {
                       </button>
                     )}
 
-                    <a
-                      href={`${API_BASE}/files/download/${file.document_file_id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-brand-700 hover:underline"
-                    >
-                      ดาวน์โหลด
-                    </a>
+                      <button
+                        type="button"
+                        onClick={() => handleDownload(file)}
+                        className="text-brand-700 hover:underline"
+                      >
+                        ดาวน์โหลด
+                      </button>
 
                     {canReplace() && (
                       <>

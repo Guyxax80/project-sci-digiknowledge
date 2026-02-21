@@ -21,17 +21,27 @@ const dbTestRoute = require("./routes/dbTest");
 
 const app = express();
 
-app.use(
-  cors({
-    origin: [
-      "http://localhost:3001",
-      "https://project-sci-digiknowledge1.onrender.com",
-      "https://project-sci-digiknowledge.vercel.app",
-    ],
-    credentials: true,
-  })
-);
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  process.env.FRONTEND_URL,
+  'https://project-sci-digiknowledge1.onrender.com',
+  'https://project-sci-digiknowledge.vercel.app',
+].filter(Boolean);
 
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
@@ -55,8 +65,19 @@ app.get("/", (req, res) => {
 
 // ✅ error handler กลาง (ทำให้ 500 มี log ชัด)
 app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
-  res.status(500).json({ message: "Internal server error" });
+  const requestOrigin = req.headers.origin;
+  if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+    res.header('Access-Control-Allow-Origin', requestOrigin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Vary', 'Origin');
+  }
+
+  console.error('Unhandled error:', err);
+  if (err?.message === 'Not allowed by CORS') {
+    return res.status(403).json({ message: 'CORS origin denied' });
+  }
+
+  return res.status(500).json({ message: 'Internal server error' });
 });
 
 const PORT = process.env.PORT || 3000;
