@@ -55,6 +55,28 @@ router.get('/by-user/:userId', async (req, res) => {
   }
 });
 
+// GET /api/supabase-health
+router.get('/supabase-health', async (_req, res) => {
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    const sb = createClient(url, key, { auth: { persistSession: false } });
+    const { data, error } = await sb.storage.from('documents').list('', { limit: 1 });
+
+    return res.json({
+      ok: !error,
+      url,
+      hasServiceKey: !!key,
+      error: error ? (error.message || error) : null,
+      count: Array.isArray(data) ? data.length : null,
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, message: String(e?.message || e) });
+  }
+});
+
 router.post('/:id/publish', async (req, res) => {
   try {
     const documentId = req.params.id;
