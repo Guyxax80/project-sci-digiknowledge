@@ -208,7 +208,7 @@ router.post('/:documentId/sections', auth, requireRole('student'), upload.fields
       ? status
       : [400, 401, 403, 404, 409, 413, 415, 422].includes(upstreamStatus)
         ? upstreamStatus
-        : 502;
+        : 500;
 
     return res.status(normalizedStatus).json({
       success: false,
