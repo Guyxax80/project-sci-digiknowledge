@@ -78,32 +78,32 @@ async function persistFile(documentId, sectionName, file) {
 
   // ===== VIDEO -> Cloudinary =====
   if (sectionName === 'presentation_video') {
-    if (!mimeType?.startsWith('video/')) throw new Error('ไฟล์วิดีโอต้องเป็น mimetype video/*');
+  if (!mimeType?.startsWith('video/')) throw new Error('ไฟล์วิดีโอต้องเป็น mimetype video/*');
 
-    const result = await uploadVideo(file.buffer);
+  const result = await uploadVideo(file.buffer);
 
-    await db.query(
-      `INSERT INTO public.document_files
-        (document_id, file_path, original_name, file_type, section, uploaded_at,
-         provider, public_url, cloudinary_public_id, mime_type, size_bytes)
-       VALUES
-        ($1,$2,$3,$4,$5,NOW(),
-         'cloudinary',$6,$7,$8,$9)`,
-      [
-        documentId,
-        result.secure_url,
-        originalName,
-        mimeType,
-        sectionName,
-        result.secure_url,
-        result.public_id,
-        mimeType,
-        file.size || null,
-      ],
-    );
+  await db.query(
+    `INSERT INTO public.document_files
+      (document_id, file_path, original_name, file_type, section, uploaded_at,
+       provider, public_url, cloudinary_public_id, mime_type, size_bytes)
+     VALUES
+      ($1,$2,$3,$4,$5,NOW(),
+       'cloudinary',$6,$7,$8,$9)`,
+    [
+      documentId,
+      result.secure_url,
+      originalName,
+      mimeType,
+      sectionName,
+      result.secure_url,
+      result.public_id,
+      mimeType,
+      file.size || null,
+    ],
+  );
 
-    return;
-  }
+  return;
+}
 
   // ===== FILES -> Supabase Storage =====
   const ext = getExt(originalName, mimeType);
@@ -146,7 +146,7 @@ async function persistFile(documentId, sectionName, file) {
 }
 
 // POST /api/documents/:documentId/sections
-router.post('/documents/:documentId/sections', auth, requireRole('student'), upload.fields(sectionFields), async (req, res) => {
+router.post('/:documentId/sections', auth, requireRole('student'), upload.fields(sectionFields), async (req, res) => {
   const documentId = Number(req.params.documentId);
 
   if (!req.files || !Object.keys(req.files).length) {
@@ -177,7 +177,7 @@ router.post('/documents/:documentId/sections', auth, requireRole('student'), upl
 });
 
 // PUT /api/documents/:documentId/sections/:section
-router.put('/documents/:documentId/sections/:section', auth, requireRole('student'), upload.single('file'), async (req, res) => {
+router.put('/:documentId/sections/:section', auth, requireRole('student'), upload.single('file'), async (req, res) => {
   const documentId = Number(req.params.documentId);
   const sectionName = req.params.section;
 

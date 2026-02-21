@@ -44,7 +44,7 @@ app.use("/api/signup", signupRoute);
 app.use("/api/auth", authRoute);
 app.use("/api/admin", adminRoutes);
 app.use("/api/categories", categoriesRoute);
-app.use("/api", sectionFilesRoute);
+app.use("/api/documents", sectionFilesRoute);
 app.use("/files", filesRoute);
 app.use("/download", downloadRoute);
 app.use("/api/db-test", dbTestRoute);
