@@ -1,11 +1,12 @@
 // config/supabase.js
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-console.log('[supabase] url =', process.env.SUPABASE_URL);
-console.log('[supabase] has service key =', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabaseUrl = process.env.SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-module.exports = supabase;
+if (!supabaseUrl) throw new Error('Missing SUPABASE_URL');
+if (!serviceKey) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
+
+module.exports = createClient(supabaseUrl, serviceKey, {
+  auth: { persistSession: false },
+});

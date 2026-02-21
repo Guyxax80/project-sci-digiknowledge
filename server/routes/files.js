@@ -50,12 +50,33 @@ const resolveLocalPath = (storedPath) => {
 };
 
 // proxy URL -> stream กลับมาที่ client (สำคัญมากสำหรับ react-pdf)
+// ✅ ช่วย encode ชื่อไฟล์แบบ RFC5987 (รองรับ UTF-8 ใน filename*)
+const encodeRFC5987 = (str) =>
+  encodeURIComponent(str)
+    .replace(/['()]/g, escape)
+    .replace(/\*/g, '%2A')
+    .replace(/%(7C|60|5E)/g, (m) => m.toLowerCase());
+
+// ✅ สร้าง Content-Disposition ที่ปลอดภัย + รองรับชื่อไฟล์ไทย
+const buildContentDisposition = (inline, filename) => {
+  const raw = String(filename || 'file');
+
+  // fallback เป็น ascii ล้วน กัน header พัง
+  const fallback = raw
+    .replace(/["\r\n]/g, '')
+    .replace(/[^\x20-\x7E]/g, '_');
+
+  // utf-8 filename*
+  const utf8 = encodeRFC5987(raw);
+
+  return `${inline ? 'inline' : 'attachment'}; filename="${fallback}"; filename*=UTF-8''${utf8}`;
+};
+
 async function proxyUrlToResponse(url, res, { inline = true, filename, contentType } = {}) {
   const r = await fetch(url, {
-    method: "GET",
-    headers: {
-      Accept: contentType || "application/octet-stream",
-    },
+    method: 'GET',
+    headers: { Accept: contentType || 'application/octet-stream' },
+    redirect: 'follow',
   });
 
   if (!r.ok) {
@@ -63,16 +84,16 @@ async function proxyUrlToResponse(url, res, { inline = true, filename, contentTy
     return;
   }
 
-  const ct = contentType || r.headers.get("content-type") || "application/octet-stream";
-  res.setHeader("Content-Type", ct);
+  const ct = contentType || r.headers.get('content-type') || 'application/octet-stream';
+  res.setHeader('Content-Type', ct);
 
-  const name = safeFilename(filename, "file");
-  res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename="${name}"`);
+  const name = safeFilename(filename, 'file');
 
-  // ปรับ cache ให้เสถียรขึ้น
-  res.setHeader("Cache-Control", "public, max-age=3600");
+  // ✅ แก้ตรงนี้: ใช้ Content-Disposition แบบรองรับ UTF-8
+  res.setHeader('Content-Disposition', buildContentDisposition(inline, name));
 
-  // ส่งผ่าน stream
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+
   const buf = Buffer.from(await r.arrayBuffer());
   res.end(buf);
 }
