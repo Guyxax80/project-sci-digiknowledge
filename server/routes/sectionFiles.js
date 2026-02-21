@@ -51,11 +51,11 @@ const fixOriginalName = (name) => {
   }
 };
 
-const sanitizeFileName = (name) => (name || 'file')
-  .replace(/[\\/]+/g, '-')
-  .replace(/[\x00-\x1F\x7F]/g, '')
-  .trim() || 'file';
-
+const safeObjectName = (name) => {
+  const base = String(name || 'file').trim();
+  return encodeURIComponent(base).replace(/%2F/gi, '-');
+};
+  
 const uploadVideo = (buffer) => new Promise((resolve, reject) => {
   const stream = cloudinary.uploader.upload_stream(
     { resource_type: 'video', folder: 'documents/videos' },
@@ -95,12 +95,14 @@ async function persistFile(documentId, sectionName, file) {
   }
 
   const safeFileName = sanitizeFileName(originalName);
-  const objectPath = `documents/${documentId}/${sectionName}/${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeFileName}`;
+  const objectPath =
+    `${documentId}/${sectionName}/${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeObjectName(originalName)}`;
 
   const { error } = await supabase.storage.from(BUCKET).upload(objectPath, file.buffer, {
     contentType: file.mimetype,
     upsert: false,
   });
+
   if (error) throw error;
 
   const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(objectPath);
