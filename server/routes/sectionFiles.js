@@ -51,6 +51,19 @@ const sectionFields = [
 
 const upload = multer({ storage, limits: { fileSize: 200 * 1024 * 1024 } });
 
+const uploadSectionFields = (req, res, next) => {
+  upload.fields(sectionFields)(req, res, (err) => {
+    if (!err) return next();
+
+    console.error('[sections] multer upload error:', err);
+    return res.status(400).json({
+      success: false,
+      message: 'ข้อมูลไฟล์ไม่ถูกต้อง',
+      error: err.message,
+    });
+  });
+};
+
 // --- fix filename thai mojibake (optional) ---
 const fixOriginalName = (name) => {
   if (!name) return name;
@@ -88,6 +101,70 @@ const uploadVideo = (buffer) =>
     );
     stream.end(buffer);
   });
+
+  const isLikelyJson = (contentType, text) => {
+  const body = String(text || '').trim();
+  if (!body) return false;
+  if (String(contentType || '').toLowerCase().includes('application/json')) return true;
+  return body.startsWith('{') || body.startsWith('[');
+};
+
+const parseJsonIfPossible = (contentType, text) => {
+  if (!isLikelyJson(contentType, text)) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
+
+const uploadToSupabaseStorageRest = async ({ objectPath, mimeType, buffer }) => {
+  const storageUploadUrl = `${process.env.SUPABASE_URL}/storage/v1/object/${BUCKET}/${objectPath}`;
+  const method = 'PUT';
+
+  try {
+    const upstreamRes = await fetch(storageUploadUrl, {
+      method,
+      headers: {
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+        'Content-Type': mimeType || 'application/octet-stream',
+      },
+      body: buffer,
+    });
+
+    const responseText = await upstreamRes.text();
+    const parsedJson = parseJsonIfPossible(upstreamRes.headers.get('content-type'), responseText);
+
+    if (!upstreamRes.ok) {
+      console.error('[sections] Supabase upload failed', {
+        method,
+        fullUrl: storageUploadUrl,
+        status: upstreamRes.status,
+        responseText,
+      });
+
+      const upstreamMessage = parsedJson?.message || parsedJson?.error || null;
+      const e = new Error(upstreamMessage || `Supabase upload failed with status ${upstreamRes.status}`);
+      e.status = upstreamRes.status;
+      e.responseText = responseText;
+      throw e;
+    }
+
+    return parsedJson;
+  } catch (error) {
+    if (!error?.status) {
+      console.error('[sections] Supabase upload request error', {
+        method,
+        fullUrl: storageUploadUrl,
+        status: error?.status || null,
+        responseText: error?.responseText || error?.message || null,
+      });
+    }
+    throw error;
+  }
+};
+
 
 async function persistFile(documentId, sectionName, file) {
   const originalName = fixOriginalName(file.originalname);
@@ -147,12 +224,12 @@ async function persistFile(documentId, sectionName, file) {
     storageUploadUrl: `${process.env.SUPABASE_URL}/storage/v1/object/${BUCKET}/${objectPath}`,
   });
 
-  const { error } = await supabase.storage.from(BUCKET).upload(objectPath, file.buffer, {
-    contentType: mimeType,
-    upsert: false,
+ await uploadToSupabaseStorageRest({
+    objectPath,
+    mimeType,
+    buffer: file.buffer,
   });
 
-  if (error) throw error;
 
   const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(objectPath);
   const publicUrl = pub?.publicUrl || null;
@@ -180,7 +257,7 @@ async function persistFile(documentId, sectionName, file) {
 }
 
 // POST /api/documents/:documentId/sections
-router.post('/:documentId/sections', auth, requireRole('student'), upload.fields(sectionFields), async (req, res) => {
+router.post('/:documentId/sections', auth, requireRole('student'), uploadSectionFields, async (req, res) => {
   const documentId = Number(req.params.documentId);
 
   if (!req.files || !Object.keys(req.files).length) {
