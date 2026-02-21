@@ -1,24 +1,19 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 const db = require('../db');
 const cloudinary = require('../config/cloudinary');
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
+const { createClient } = require('@supabase/supabase-js');
 
 const router = express.Router();
 
-const uploadDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadDir),
-  filename: (_req, file, cb) => {
-  const safeOriginal = fixOriginalName(file.originalname);
-  cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(safeOriginal)}`);
-},
+const BUCKET = process.env.SUPABASE_BUCKET_DOCUMENTS || 'documents';
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
 });
+
+const storage = multer.memoryStorage();
 
 const sectionFields = [
   { name: 'cover', maxCount: 1 }, { name: 'abstract', maxCount: 1 }, { name: 'acknowledgement', maxCount: 1 }, { name: 'toc', maxCount: 1 },
@@ -33,7 +28,7 @@ let supportsCloudinaryPublicIdCache;
 
 async function supportsCloudinaryPublicId() {
   if (typeof supportsCloudinaryPublicIdCache === 'boolean') return supportsCloudinaryPublicIdCache;
-  const { rows } = await db.query(   
+  const { rows } = await db.query(
     "SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'document_files' AND column_name = 'cloudinary_public_id' LIMIT 1",
   );
   supportsCloudinaryPublicIdCache = rows.length > 0;
@@ -43,34 +38,39 @@ async function supportsCloudinaryPublicId() {
 const fixOriginalName = (name) => {
   if (!name) return name;
 
-  // ชื่อเพี้ยนแบบที่คุณเจอ: à¸... และ â ... â
-  const looksMojibake = /à¸|à¹|â|Ã/.test(name);
-  if (!looksMojibake) return name;
+  if (!name.includes('à¸') && !name.includes('à¹') && !name.includes('â') && !name.includes('Ã')) return name;
 
   try {
-    const fixed = Buffer.from(name, "latin1").toString("utf8");
+    const fixed = Buffer.from(name, 'latin1').toString('utf8');
     return fixed || name;
   } catch {
     return name;
   }
 };
 
+const sanitizeFileName = (name) => (name || 'file')
+  .replace(/[\\/]+/g, '-')
+  .replace(/[\x00-\x1F\x7F]/g, '')
+  .trim() || 'file';
+
+const uploadVideo = (buffer) => new Promise((resolve, reject) => {
+  const stream = cloudinary.uploader.upload_stream(
+    { resource_type: 'video', folder: 'documents/videos' },
+    (error, result) => (error ? reject(error) : resolve(result)),
+  );
+  stream.end(buffer);
+});
+
 async function persistFile(documentId, sectionName, file) {
   const originalName = fixOriginalName(file.originalname);
 
-  // debug ชั่วคราว (ทดสอบแล้วค่อยลบ)
-  console.log("[sections] original:", file.originalname);
-  console.log("[sections] fixed   :", originalName);
+  console.log('[sections] original:', file.originalname);
+  console.log('[sections] fixed   :', originalName);
 
   if (sectionName === 'presentation_video') {
     if (!file.mimetype.startsWith('video/')) throw new Error('ไฟล์วิดีโอต้องเป็น mimetype video/*');
 
-    const result = await cloudinary.uploader.upload(file.path, {
-      resource_type: 'video',
-      folder: 'documents/videos',
-    });
-
-    fs.unlink(file.path, () => {});
+    const result = await uploadVideo(file.buffer);
 
     if (await supportsCloudinaryPublicId()) {
       await db.query(
@@ -87,11 +87,22 @@ async function persistFile(documentId, sectionName, file) {
     return;
   }
 
-  const relativePath = path.relative(path.join(__dirname, '..'), file.path).replace(/\\/g, '/');
+  const safeFileName = sanitizeFileName(originalName);
+  const objectPath = `documents/${documentId}/${sectionName}/${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeFileName}`;
+
+  const { error } = await supabase.storage.from(BUCKET).upload(objectPath, file.buffer, {
+    contentType: file.mimetype,
+    upsert: false,
+  });
+
+  if (error) throw error;
+
+  const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(objectPath);
+  const publicUrl = pub?.publicUrl || objectPath;
 
   await db.query(
     'INSERT INTO document_files (document_id, file_path, original_name, file_type, section, uploaded_at) VALUES ($1, $2, $3, $4, $5, NOW())',
-    [documentId, relativePath, originalName, file.mimetype, sectionName],
+    [documentId, publicUrl, originalName, file.mimetype, sectionName],
   );
 }
 
