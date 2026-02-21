@@ -453,7 +453,9 @@ function DocumentDetailTailwind() {
               className="flex-1 overflow-auto p-4 bg-gray-100"
               style={{ scrollBehavior: "smooth" }}
             >
+              
               <div className="mx-auto w-fit">
+              
                 <Document
                   file={`${API_BASE}/files/view/${viewingPdf.document_file_id}`}
                   options={pdfOptions}

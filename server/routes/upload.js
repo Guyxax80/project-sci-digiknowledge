@@ -1,14 +1,21 @@
+// routes/upload.js
 const express = require('express');
 const multer = require('multer');
 const db = require('../db');
 const cloudinary = require('../config/cloudinary');
+const supabase = require('../config/supabase'); // ✅ เพิ่มไฟล์ config/supabase.js ตามที่ให้ไป
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 
 const router = express.Router();
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
+// ✅ เก็บไฟล์ใน memory แล้วอัปขึ้น Storage
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+});
 
+// ===== Helpers =====
 const normalizeStatus = (status) => {
   if (!status) return 'draft';
   if (status === 'published') return 'pending';
@@ -16,20 +23,41 @@ const normalizeStatus = (status) => {
   return 'draft';
 };
 
+const isVideo = (mime) => typeof mime === 'string' && mime.startsWith('video/');
+
+const isDoc = (mime) =>
+  [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ].includes(mime);
+
+const extFromMime = (mime) => {
+  if (mime === 'application/pdf') return 'pdf';
+  if (mime === 'application/msword') return 'doc';
+  if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+  return 'bin';
+};
+
+// ===== Optional column check: cloudinary_public_id =====
 let supportsCloudinaryPublicIdCache;
 
 async function supportsCloudinaryPublicId() {
   if (typeof supportsCloudinaryPublicIdCache === 'boolean') return supportsCloudinaryPublicIdCache;
+
   const { rows } = await db.query(
     "SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'document_files' AND column_name = 'cloudinary_public_id' LIMIT 1",
   );
+
   supportsCloudinaryPublicIdCache = rows.length > 0;
   return supportsCloudinaryPublicIdCache;
 }
 
 async function insertDocumentFileWithOptionalPublicId(payload) {
   const { documentId, filePath, originalName, fileType, section, publicId } = payload;
-  if (publicId && await supportsCloudinaryPublicId()) {
+
+  // ถ้ามีคอลัมน์ cloudinary_public_id ก็ใส่ (เฉพาะกรณี video ที่มาจาก cloudinary)
+  if (publicId && (await supportsCloudinaryPublicId())) {
     await db.query(
       'INSERT INTO document_files (document_id, file_path, original_name, file_type, section, uploaded_at, cloudinary_public_id) VALUES ($1, $2, $3, $4, $5, NOW(), $6)',
       [documentId, filePath, originalName, fileType, section, publicId],
@@ -52,10 +80,10 @@ async function assertStudentCanUpload(userId) {
 
   const { rows } = await db.query(
     'SELECT user_id, role, student_id FROM public.users WHERE user_id = $1 LIMIT 1',
-    [userId]
+    [userId],
   );
 
-if (!rows.length) {
+  if (!rows.length) {
     const e = new Error('ไม่พบผู้ใช้');
     e.status = 401;
     throw e;
@@ -63,63 +91,122 @@ if (!rows.length) {
 
   const u = rows[0];
 
-  // ✅ ต้องเป็น student เท่านั้น
   if (String(u.role).toLowerCase() !== 'student') {
     const e = new Error('บัญชีผู้ใช้ทั่วไปยังอัปโหลดไม่ได้ (ต้องยืนยัน Student ID ให้เป็นนักศึกษา)');
     e.status = 403;
     throw e;
   }
 
-  // ✅ ต้องมี student_id (ตอนสมัคร ถ้าไม่ตรง student_codes จะถูก set เป็น null)
   if (!u.student_id) {
     const e = new Error('Student ID ไม่ถูกต้องหรือยังไม่ยืนยัน');
     e.status = 403;
     throw e;
   }
 
-  return u; // เผื่อใช้ต่อ
+  return u;
 }
 
+// =======================================================
+// POST /api/upload   (ไฟล์เอกสาร -> Supabase, วิดีโอ -> Cloudinary)
+// =======================================================
 router.post('/', auth, requireRole('student'), upload.single('file'), async (req, res) => {
   try {
     const { title, keywords, academic_year, status } = req.body;
-    if (!title?.trim()) return res.status(400).json({ message: 'กรุณากรอกชื่อเอกสาร' });
+
+    if (!title?.trim()) {
+      return res.status(400).json({ success: false, message: 'กรุณากรอกชื่อเอกสาร' });
+    }
 
     // ✅ เช็คสิทธิ์อัปโหลด
     const authUser = await assertStudentCanUpload(req.user.user_id);
 
+    // ✅ normalize status
     const safeStatus = normalizeStatus(status);
 
+    // 1) สร้างเอกสารก่อน
     const docResult = await db.query(
       'INSERT INTO public.documents (user_id, title, keywords, academic_year, status) VALUES ($1, $2, $3, $4, $5) RETURNING document_id',
       [authUser.user_id, title, keywords || null, academic_year || null, safeStatus],
     );
-
     const documentId = docResult.rows[0].document_id;
 
+    // 2) ถ้ามีไฟล์ → อัปโหลดตามชนิดไฟล์
     if (req.file) {
-      const uploaded = await new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          { resource_type: 'auto', folder: 'documents' },
-          (error, result) => (error ? reject(error) : resolve(result))
-        );
-        stream.end(req.file.buffer);
-      });
+      const mimeType = req.file.mimetype;
 
-      await insertDocumentFileWithOptionalPublicId({
-        documentId,
-        filePath: uploaded.secure_url,
-        originalName: req.file.originalname,
-        fileType: req.file.mimetype,
-        section: 'main',
-        publicId: uploaded.public_id,
-      });
+      // ===== A) VIDEO -> Cloudinary =====
+      if (isVideo(mimeType)) {
+        const uploaded = await new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              resource_type: 'video',
+              folder: `digiknowledge/videos/${authUser.user_id}`,
+            },
+            (error, result) => (error ? reject(error) : resolve(result)),
+          );
+          stream.end(req.file.buffer);
+        });
+
+        await insertDocumentFileWithOptionalPublicId({
+          documentId,
+          filePath: uploaded.secure_url, // ✅ เก็บ URL ลง file_path
+          originalName: req.file.originalname,
+          fileType: mimeType,
+          section: 'main',
+          publicId: uploaded.public_id,
+        });
+      }
+
+      // ===== B) PDF/DOC/DOCX -> Supabase Storage =====
+      else if (isDoc(mimeType)) {
+        const bucket = 'documents'; // ✅ สร้าง bucket นี้ใน Supabase Storage
+        const ext = extFromMime(mimeType);
+        const filename = `${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+        const storagePath = `users/${authUser.user_id}/${documentId}/${filename}`;
+
+        const { error: upErr } = await supabase.storage
+          .from(bucket)
+          .upload(storagePath, req.file.buffer, {
+            contentType: mimeType,
+            upsert: false,
+          });
+
+        if (upErr) {
+          console.error('Supabase upload error:', upErr);
+          return res.status(500).json({ success: false, message: 'อัปโหลดขึ้น Supabase ไม่สำเร็จ' });
+        }
+
+        // ✅ ถ้า bucket เป็น Public
+        const { data: pub } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+        const publicUrl = pub?.publicUrl;
+
+        if (!publicUrl) {
+          return res.status(500).json({ success: false, message: 'สร้าง Public URL ไม่สำเร็จ (เช็คว่า bucket เป็น Public)' });
+        }
+
+        await insertDocumentFileWithOptionalPublicId({
+          documentId,
+          filePath: publicUrl, // ✅ เก็บ URL ลง file_path
+          originalName: req.file.originalname,
+          fileType: mimeType,
+          section: 'main',
+          publicId: null,
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'ชนิดไฟล์ไม่รองรับ (รองรับ PDF/DOC/DOCX และ VIDEO)',
+        });
+      }
     }
 
-    res.json({ message: 'อัปโหลดสำเร็จ', documentId });
+    return res.json({ success: true, message: 'อัปโหลดสำเร็จ', documentId });
   } catch (err) {
     console.error('Upload error:', err);
-    res.status(err.status || 500).json({ message: err.message || 'เกิดข้อผิดพลาด' });
+    return res.status(err.status || 500).json({
+      success: false,
+      message: err.message || 'เกิดข้อผิดพลาด',
+    });
   }
 });
 

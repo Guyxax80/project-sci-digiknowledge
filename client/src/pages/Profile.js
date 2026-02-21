@@ -100,17 +100,22 @@ function Profile() {
                         onClick={async () => {
                           try {
                             const userId = user?.user_id;
-                            const res = await api.post(`/api/documents/${doc.document_id}/publish`, {
-                            user_id: userId
-                          });
-                            const data = await res.json();
-                            if (!res.ok || !data.success) {
+
+                            const res = await api.post(
+                              `/api/documents/${doc.document_id}/publish`,
+                              { user_id: userId }
+                            );
+
+                            const data = res.data;   // ✅ ใช้แบบนี้
+
+                            if (!data.success) {
                               alert(data.message || 'เผยแพร่ไม่สำเร็จ');
                               return;
                             }
+
                             const r = await api.get(`/api/documents/by-user/${userId}`);
-                            const docs = await r.json();
-                            setMyDocs(Array.isArray(docs) ? docs : []);
+                            setMyDocs(Array.isArray(r.data) ? r.data : []); // ✅ ไม่ต้อง json()
+
                           } catch (e) {
                             console.error(e);
                             alert('เกิดข้อผิดพลาด');
