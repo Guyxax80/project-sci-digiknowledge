@@ -7,6 +7,46 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!supabaseUrl) throw new Error('Missing SUPABASE_URL');
 if (!serviceKey) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
 
+const redact = (value) => {
+  const s = String(value || '');
+  if (!s) return '<empty>';
+  if (s.length <= 8) return `${s[0]}***`;
+  return `${s.slice(0, 4)}***${s.slice(-4)}`;
+};
+
+let parsedSupabaseUrl;
+try {
+  parsedSupabaseUrl = new URL(supabaseUrl);
+} catch {
+  throw new Error(`Invalid SUPABASE_URL format: ${supabaseUrl}`);
+}
+
+console.log('[supabase] init', {
+  origin: parsedSupabaseUrl.origin,
+  hasServiceRoleKey: Boolean(serviceKey),
+  serviceRoleKeyPreview: redact(serviceKey),
+});
+
+const loggingFetch = async (input, init) => {
+  const requestUrl = typeof input === 'string' ? input : input?.url;
+  const method = init?.method || 'GET';
+  const response = await fetch(input, init);
+
+  if (!response.ok) {
+    const bodyText = await response.clone().text();
+    console.error('[supabase] non-ok response', {
+      method,
+      url: requestUrl,
+      status: response.status,
+      contentType: response.headers.get('content-type'),
+      bodyPreview: bodyText.slice(0, 300),
+    });
+  }
+
+  return response;
+};
+
 module.exports = createClient(supabaseUrl, serviceKey, {
   auth: { persistSession: false },
+  global: { fetch: loggingFetch },
 });

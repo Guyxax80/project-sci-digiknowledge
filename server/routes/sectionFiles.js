@@ -1,4 +1,3 @@
-// routes/sectionFiles.js
 const express = require('express');
 const multer = require('multer');
 const db = require('../db');
@@ -10,8 +9,26 @@ const supabase = require('../config/supabase');
 const router = express.Router();
 const BUCKET = process.env.SUPABASE_BUCKET_DOCUMENTS || 'documents';
 
+const envPreview = (value) => {
+  const v = String(value || '');
+  if (!v) return '<missing>';
+  if (v.length < 8) return `${v[0]}***`;
+  return `${v.slice(0, 4)}***${v.slice(-4)}`;
+};
+
+const requiredSupabaseEnv = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
+for (const key of requiredSupabaseEnv) {
+  if (!process.env[key]) {
+    throw new Error(`[sections] Missing required env: ${key}`);
+  }
+}
+
+const cloudinaryEnv = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
+
 console.log('[sections] BUCKET =', BUCKET);
 console.log('[sections] SUPABASE_URL =', process.env.SUPABASE_URL);
+console.log('[sections] SUPABASE_SERVICE_ROLE_KEY =', envPreview(process.env.SUPABASE_SERVICE_ROLE_KEY));
+console.log('[sections] CLOUDINARY_CLOUD_NAME =', envPreview(process.env.CLOUDINARY_CLOUD_NAME));
 
 const storage = multer.memoryStorage();
 
@@ -53,7 +70,7 @@ const getExt = (originalName, mimeType) => {
   if (lastDot > -1 && lastDot < n.length - 1) {
     const ext = n.slice(lastDot + 1).toLowerCase();
     if (ext && ext.length <= 10) return ext;
-  }
+}
 
   if (mimeType === 'application/pdf') return 'pdf';
   if (mimeType === 'application/msword') return 'doc';
@@ -78,6 +95,18 @@ async function persistFile(documentId, sectionName, file) {
 
   // ===== VIDEO -> Cloudinary =====
   if (sectionName === 'presentation_video') {
+  for (const key of cloudinaryEnv) {
+    if (!process.env[key]) {
+      throw new Error(`[sections] Missing required env for video upload: ${key}`);
+    }
+  }
+
+  console.log('[sections] upload target', {
+    provider: 'cloudinary',
+    folder: 'documents/videos',
+    cloudNamePreview: envPreview(process.env.CLOUDINARY_CLOUD_NAME),
+  });
+
   if (!mimeType?.startsWith('video/')) throw new Error('ไฟล์วิดีโอต้องเป็น mimetype video/*');
 
   const result = await uploadVideo(file.buffer);
@@ -111,7 +140,12 @@ async function persistFile(documentId, sectionName, file) {
   // ✅ key เป็น ASCII ล้วนแน่นอน
   const objectPath = `${documentId}/${sectionName}/${Date.now()}-${Math.round(Math.random() * 1e9)}.${ext}`;
 
-  console.log('[sections] objectPath:', objectPath);
+  console.log('[sections] upload target', {
+    provider: 'supabase',
+    bucket: BUCKET,
+    objectPath,
+    storageUploadUrl: `${process.env.SUPABASE_URL}/storage/v1/object/${BUCKET}/${objectPath}`,
+  });
 
   const { error } = await supabase.storage.from(BUCKET).upload(objectPath, file.buffer, {
     contentType: mimeType,
@@ -168,10 +202,21 @@ router.post('/:documentId/sections', auth, requireRole('student'), upload.fields
     return res.json({ success: true, message: 'อัปโหลดไฟล์รายส่วนสำเร็จ' });
   } catch (err) {
     console.error('DB error (section files):', err);
-    return res.status(500).json({
+    const status = Number(err?.status || err?.statusCode);
+    const upstreamStatus = Number(err?.originalError?.status || err?.cause?.status || err?.cause?.statusCode);
+    const normalizedStatus = [400, 401, 403, 404, 409, 413, 415, 422].includes(status)
+      ? status
+      : [400, 401, 403, 404, 409, 413, 415, 422].includes(upstreamStatus)
+        ? upstreamStatus
+        : 502;
+
+    return res.status(normalizedStatus).json({
       success: false,
-      message: 'เกิดข้อผิดพลาดในการอัปโหลดไฟล์รายส่วน',
+      message: normalizedStatus === 404
+        ? 'อัปโหลดล้มเหลว: ปลายทางจัดเก็บไฟล์ไม่พบ endpoint (404) กรุณาตรวจ SUPABASE_URL/Cloudinary config'
+        : 'อัปโหลดไฟล์รายส่วนไม่สำเร็จ กรุณาตรวจการตั้งค่า Storage และลองใหม่',
       error: err.message,
+      providerStatus: status || upstreamStatus || null,
     });
   }
 });
