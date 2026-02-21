@@ -5,14 +5,10 @@ const db = require('../db');
 const cloudinary = require('../config/cloudinary');
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
-const { createClient } = require('@supabase/supabase-js');
+const supabase = require('../config/supabase');
 
 const router = express.Router();
-
 const BUCKET = process.env.SUPABASE_BUCKET_DOCUMENTS || 'documents';
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
-});
 
 console.log('[sections] BUCKET =', BUCKET);
 console.log('[sections] SUPABASE_URL =', process.env.SUPABASE_URL);
