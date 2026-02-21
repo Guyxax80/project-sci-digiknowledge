@@ -17,15 +17,15 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (error) => {
-    if (typeof window !== "undefined" && error?.response?.status === 401) {
-      const path = window.location.pathname || "/";
-      const isAuthPage = path.startsWith("/signup") || path.startsWith("/login");
-      if (!isAuthPage) {
-        const currentPath = `${path}${window.location.search || ""}`;
-        const redirect = encodeURIComponent(currentPath || "/");
-        window.location.assign(`/signup?redirect=${redirect}`);
+    if (typeof window !== "undefined" && (error?.response?.status === 401 || error?.response?.status === 403)) {
+        const path = window.location.pathname || "/";
+        const isAuthPage = path.startsWith("/signup") || path.startsWith("/login");
+        if (!isAuthPage) {
+          const currentPath = `${path}${window.location.search || ""}`;
+          const redirect = encodeURIComponent(currentPath || "/");
+          window.location.assign(`/signup?redirect=${redirect}`);
+        }
       }
-    }
     return Promise.reject(error);
   }
 );

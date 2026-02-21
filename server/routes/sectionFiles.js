@@ -14,7 +14,10 @@ if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
-  filename: (_req, file, cb) => cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`),
+  filename: (_req, file, cb) => {
+  const safeOriginal = fixOriginalName(file.originalname);
+  cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(safeOriginal)}`);
+},
 });
 
 const sectionFields = [
@@ -37,30 +40,58 @@ async function supportsCloudinaryPublicId() {
   return supportsCloudinaryPublicIdCache;
 }
 
+const fixOriginalName = (name) => {
+  if (!name) return name;
+
+  // ชื่อเพี้ยนแบบที่คุณเจอ: à¸... และ â ... â
+  const looksMojibake = /à¸|à¹|â|Ã/.test(name);
+  if (!looksMojibake) return name;
+
+  try {
+    const fixed = Buffer.from(name, "latin1").toString("utf8");
+    return fixed || name;
+  } catch {
+    return name;
+  }
+};
+
 async function persistFile(documentId, sectionName, file) {
+  const originalName = fixOriginalName(file.originalname);
+
+  // debug ชั่วคราว (ทดสอบแล้วค่อยลบ)
+  console.log("[sections] original:", file.originalname);
+  console.log("[sections] fixed   :", originalName);
+
   if (sectionName === 'presentation_video') {
-     if (!file.mimetype.startsWith('video/')) throw new Error('ไฟล์วิดีโอต้องเป็น mimetype video/*');
-    const result = await cloudinary.uploader.upload(file.path, { resource_type: 'video', folder: 'documents/videos' });
+    if (!file.mimetype.startsWith('video/')) throw new Error('ไฟล์วิดีโอต้องเป็น mimetype video/*');
+
+    const result = await cloudinary.uploader.upload(file.path, {
+      resource_type: 'video',
+      folder: 'documents/videos',
+    });
+
     fs.unlink(file.path, () => {});
+
     if (await supportsCloudinaryPublicId()) {
       await db.query(
         'INSERT INTO document_files (document_id, file_path, original_name, file_type, section, uploaded_at, cloudinary_public_id) VALUES ($1, $2, $3, $4, $5, NOW(), $6)',
-        [documentId, result.secure_url, file.originalname, file.mimetype, sectionName, result.public_id],
+        [documentId, result.secure_url, originalName, file.mimetype, sectionName, result.public_id],
       );
       return;
     }
 
     await db.query(
       'INSERT INTO document_files (document_id, file_path, original_name, file_type, section, uploaded_at) VALUES ($1, $2, $3, $4, $5, NOW())',
-      [documentId, result.secure_url, file.originalname, file.mimetype, sectionName],
+      [documentId, result.secure_url, originalName, file.mimetype, sectionName],
     );
     return;
   }
 
   const relativePath = path.relative(path.join(__dirname, '..'), file.path).replace(/\\/g, '/');
+
   await db.query(
     'INSERT INTO document_files (document_id, file_path, original_name, file_type, section, uploaded_at) VALUES ($1, $2, $3, $4, $5, NOW())',
-    [documentId, relativePath, file.originalname, file.mimetype, sectionName],
+    [documentId, relativePath, originalName, file.mimetype, sectionName],
   );
 }
 
