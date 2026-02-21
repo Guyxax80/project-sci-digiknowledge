@@ -9,11 +9,18 @@ const requireRole = require('../middleware/requireRole');
 
 const router = express.Router();
 
+const MAX_UPLOAD_SIZE_BYTES = 500 * 1024 * 1024; // 500MB
+const VIDEO_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000; // 10 นาที
+
 // ✅ เก็บไฟล์ใน memory แล้วอัปขึ้น Storage
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+  limits: {
+    fileSize: MAX_UPLOAD_SIZE_BYTES,
+    files: 1,
+  },
 });
+const uploadSingleFile = upload.single('file');
 
 // ===== Helpers =====
 const normalizeStatus = (status) => {
@@ -106,10 +113,77 @@ async function assertStudentCanUpload(userId) {
   return u;
 }
 
+async function uploadVideoToCloudinary(file, userId) {
+  const folder = `digiknowledge/videos/${userId}`;
+  const uploadOptions = {
+    resource_type: 'video',
+    folder,
+    timeout: VIDEO_UPLOAD_TIMEOUT_MS,
+  };
+
+  console.info('[upload] video upload start', {
+    size: file.size,
+    mimetype: file.mimetype,
+    resource_type: uploadOptions.resource_type,
+    folder: uploadOptions.folder,
+  });
+
+  try {
+    return await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
+        if (error) {
+          return reject(error);
+        }
+        return resolve(result);
+      });
+
+      stream.end(file.buffer);
+    });
+  } catch (error) {
+    console.error('[upload] cloudinary video upload failed', {
+      message: error.message,
+      http_code: error.http_code,
+      name: error.name,
+    });
+
+    const wrappedError = new Error('อัปโหลดวิดีโอไป Cloudinary ไม่สำเร็จ');
+    wrappedError.status = 502;
+    wrappedError.details = {
+      provider: 'cloudinary',
+      reason: error.message,
+      http_code: error.http_code || null,
+    };
+    throw wrappedError;
+  }
+}
+
 // =======================================================
 // POST /api/upload   (ไฟล์เอกสาร -> Supabase, วิดีโอ -> Cloudinary)
 // =======================================================
-router.post('/', auth, requireRole('student'), upload.single('file'), async (req, res) => {
+router.post('/', auth, requireRole('student'), (req, res, next) => {
+  uploadSingleFile(req, res, (err) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          success: false,
+          message: `ขนาดไฟล์เกินกำหนด (${Math.floor(MAX_UPLOAD_SIZE_BYTES / (1024 * 1024))}MB)`,
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: `Multer error: ${err.message}`,
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: err.message || 'ไม่สามารถอ่านไฟล์ที่อัปโหลดได้',
+    });
+  });
+}, async (req, res) => {
   try {
     const { title, keywords, academic_year, status } = req.body;
 
@@ -136,16 +210,16 @@ router.post('/', auth, requireRole('student'), upload.single('file'), async (req
 
       // ===== A) VIDEO -> Cloudinary =====
       if (isVideo(mimeType)) {
-        const uploaded = await new Promise((resolve, reject) => {
-          const stream = cloudinary.uploader.upload_stream(
-            {
-              resource_type: 'video',
-              folder: `digiknowledge/videos/${authUser.user_id}`,
-            },
-            (error, result) => (error ? reject(error) : resolve(result)),
-          );
-          stream.end(req.file.buffer);
-        });
+         let uploaded;
+        try {
+          uploaded = await uploadVideoToCloudinary(req.file, authUser.user_id);
+        } catch (videoErr) {
+          return res.status(videoErr.status || 502).json({
+            success: false,
+            message: videoErr.message,
+            error: videoErr.details || null,
+          });
+        }
 
         await insertDocumentFileWithOptionalPublicId({
           documentId,
