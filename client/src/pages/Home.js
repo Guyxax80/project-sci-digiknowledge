@@ -6,7 +6,6 @@ import {
   PieChart, Pie, Legend, Cell
 } from "recharts";
 import api from "../services/api";
-import { getToken, getRole } from "../utils/auth";
 
 const COLORS = [
   "#8884d8", "#82ca9d", "#ffc658", "#ff7f50",

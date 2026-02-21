@@ -24,7 +24,7 @@ export default function AdminDashboard() {
   const [editingUser, setEditingUser] = useState(null);
   const [studentCodes, setStudentCodes] = useState([]);
   const [newCodesText, setNewCodesText] = useState("");
-  const [stats, setStats] = useState(null);
+  const [, setStats] = useState(null);
 
     const fetchStats = async () => {
   try {
