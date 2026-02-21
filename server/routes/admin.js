@@ -2,9 +2,14 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// =========================
+// USERS
+// =========================
 router.get('/users', async (_req, res) => {
   try {
-    const { rows } = await db.query('SELECT user_id, username, role, student_id, created_at FROM users ORDER BY user_id DESC');
+    const { rows } = await db.query(
+      'SELECT user_id, username, role, student_id, created_at FROM users ORDER BY user_id DESC'
+    );
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -22,7 +27,12 @@ router.post('/users', async (req, res) => {
       const chk = await db.query('SELECT 1 FROM student_codes WHERE student_id = $1 LIMIT 1', [student_id]);
       if (!chk.rows.length) return res.status(400).json({ error: 'Student ID ไม่พบในระบบ' });
     }
-    await db.query('INSERT INTO users (username, student_id, password, role) VALUES ($1, $2, $3, $4)', [username, student_id || null, password, role]);
+
+    await db.query(
+      'INSERT INTO users (username, student_id, password, role) VALUES ($1, $2, $3, $4)',
+      [username, student_id || null, password, role]
+    );
+
     res.json({ message: 'เพิ่มผู้ใช้สำเร็จ' });
   } catch (err) {
     console.error(err);
@@ -33,18 +43,29 @@ router.post('/users', async (req, res) => {
 router.put('/users/:user_id', async (req, res) => {
   const { username, role, student_id } = req.body;
   const userId = req.params.user_id;
+
   try {
     const current = await db.query('SELECT student_id FROM users WHERE user_id = $1 LIMIT 1', [userId]);
     if (!current.rows.length) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
 
-    const targetStudentId = typeof student_id === 'undefined' ? current.rows[0].student_id : (student_id || null);
-    if (role === 'student' && !targetStudentId) return res.status(400).json({ error: 'กรุณาระบุ Student ID สำหรับนักศึกษา' });
+    const targetStudentId =
+      typeof student_id === 'undefined' ? current.rows[0].student_id : (student_id || null);
+
+    if (role === 'student' && !targetStudentId)
+      return res.status(400).json({ error: 'กรุณาระบุ Student ID สำหรับนักศึกษา' });
 
     if (targetStudentId) {
-      await db.query('INSERT INTO student_codes (student_id) VALUES ($1) ON CONFLICT (student_id) DO NOTHING', [targetStudentId]);
+      await db.query(
+        'INSERT INTO student_codes (student_id) VALUES ($1) ON CONFLICT (student_id) DO NOTHING',
+        [targetStudentId]
+      );
     }
 
-    await db.query('UPDATE users SET username = $1, role = $2, student_id = $3 WHERE user_id = $4', [username, role, targetStudentId, userId]);
+    await db.query(
+      'UPDATE users SET username = $1, role = $2, student_id = $3 WHERE user_id = $4',
+      [username, role, targetStudentId, userId]
+    );
+
     res.json({ message: 'อัปเดตผู้ใช้สำเร็จ' });
   } catch (err) {
     console.error(err);
@@ -63,31 +84,37 @@ router.delete('/users/:user_id', async (req, res) => {
   }
 });
 
+// =========================
+// STATS
+// =========================
 router.get('/stats', async (req, res) => {
   const days = Math.max(1, Math.min(Number(req.query.days || 7), 365));
 
+  // ✅ ถ้าตารางเชื่อมของคุณชื่ออื่น ให้เปลี่ยนตรงนี้
+  const JOIN_TABLE = 'document_categories'; // e.g. 'documents_categories' / 'doc_categories'
+
   try {
-    // ===== Core totals =====
+    // ----- Core totals -----
     const usersQ = await db.query('SELECT COUNT(*)::int AS count FROM users');
     const documentsQ = await db.query('SELECT COUNT(*)::int AS count FROM documents');
     const downloadsQ = await db.query('SELECT COALESCE(SUM(download_count),0)::int AS count FROM documents');
     const usersByRoleQ = await db.query('SELECT role, COUNT(*)::int AS count FROM users GROUP BY role');
 
-    // ===== Detect timestamp column: uploaded_at or created_at =====
+    // ----- Detect timestamp column (uploaded_at preferred) -----
     const tsColQ = await db.query(
       `
       SELECT column_name
       FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'documents'
-        AND column_name IN ('uploaded_at', 'created_at')
+      WHERE table_schema='public'
+        AND table_name='documents'
+        AND column_name IN ('uploaded_at','created_at')
       ORDER BY CASE column_name WHEN 'uploaded_at' THEN 0 ELSE 1 END
       LIMIT 1
       `
     );
-    const tsCol = tsColQ.rows?.[0]?.column_name || 'uploaded_at'; // default เผื่อไว้
+    const tsCol = tsColQ.rows?.[0]?.column_name || 'uploaded_at';
 
-    // ===== Upload count in last N days =====
+    // ----- Upload count in last N days -----
     const uploadCountQ = await db.query(
       `SELECT COUNT(*)::int AS count
        FROM documents
@@ -95,7 +122,7 @@ router.get('/stats', async (req, res) => {
       [days]
     );
 
-    // ===== Daily series in last N days (fill missing days) =====
+    // ----- Daily series in last N days (fill missing days) -----
     const uploadsSeriesQ = await db.query(
       `
       WITH dd AS (
@@ -116,68 +143,115 @@ router.get('/stats', async (req, res) => {
       [days]
     );
 
-    // ===== topCategories (safe mode) =====
-    // - ถ้าไม่มี category_id หรือไม่มีตาราง categories => ไม่ให้ route ล่ม
+    // ----- topCategories: support BOTH schema types -----
     let topCategoriesRows = [];
-    try {
-      const hasCategoryIdQ = await db.query(
-        `
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema='public' AND table_name='documents' AND column_name='category_id'
-        LIMIT 1
-        `
-      );
 
-      const hasCategoriesTableQ = await db.query(
-        `
-        SELECT 1
-        FROM information_schema.tables
-        WHERE table_schema='public' AND table_name='categories'
-        LIMIT 1
-        `
-      );
+    const hasCategoriesTableQ = await db.query(
+      `
+      SELECT 1
+      FROM information_schema.tables
+      WHERE table_schema='public' AND table_name='categories'
+      LIMIT 1
+      `
+    );
 
-      if (hasCategoryIdQ.rows.length && hasCategoriesTableQ.rows.length) {
-        const topCategoriesQ = await db.query(
+    if (hasCategoriesTableQ.rows.length) {
+      // (A) Try many-to-many: JOIN_TABLE exists?
+      let hasJoinTable = false;
+      try {
+        const hasJoinTableQ = await db.query(
           `
-          SELECT c.category_id,
-                 c.category_name,
-                 COUNT(d.document_id)::int AS count
-          FROM documents d
-          JOIN categories c ON c.category_id = d.category_id
-          WHERE d.${tsCol} >= NOW() - ($1 || ' days')::interval
-          GROUP BY c.category_id, c.category_name
-          ORDER BY count DESC
-          LIMIT 5
+          SELECT 1
+          FROM information_schema.tables
+          WHERE table_schema='public' AND table_name=$1
+          LIMIT 1
           `,
-          [days]
+          [JOIN_TABLE]
         );
-        topCategoriesRows = topCategoriesQ.rows;
-      } else {
-        topCategoriesRows = [];
+        hasJoinTable = hasJoinTableQ.rows.length > 0;
+      } catch (e) {
+        hasJoinTable = false;
       }
-    } catch (e) {
-      console.error('topCategories fallback:', e);
-      topCategoriesRows = [];
+
+      if (hasJoinTable) {
+        // ✅ many-to-many
+        try {
+          const topCategoriesQ = await db.query(
+            `
+            SELECT c.category_id,
+                   c.category_name,
+                   COUNT(j.document_id)::int AS count
+            FROM ${JOIN_TABLE} j
+            JOIN categories c ON c.category_id = j.category_id
+            JOIN documents d ON d.document_id = j.document_id
+            WHERE d.${tsCol} >= NOW() - ($1 || ' days')::interval
+            GROUP BY c.category_id, c.category_name
+            ORDER BY count DESC
+            LIMIT 5
+            `,
+            [days]
+          );
+          topCategoriesRows = topCategoriesQ.rows;
+        } catch (e) {
+          console.error('topCategories M2M error:', e);
+          topCategoriesRows = [];
+        }
+      } else {
+        // (B) Fallback one-to-many: documents.category_id exists?
+        try {
+          const hasCategoryIdQ = await db.query(
+            `
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='documents' AND column_name='category_id'
+            LIMIT 1
+            `
+          );
+
+          if (hasCategoryIdQ.rows.length) {
+            const topCategoriesQ = await db.query(
+              `
+              SELECT c.category_id,
+                     c.category_name,
+                     COUNT(d.document_id)::int AS count
+              FROM documents d
+              JOIN categories c ON c.category_id = d.category_id
+              WHERE d.${tsCol} >= NOW() - ($1 || ' days')::interval
+              GROUP BY c.category_id, c.category_name
+              ORDER BY count DESC
+              LIMIT 5
+              `,
+              [days]
+            );
+            topCategoriesRows = topCategoriesQ.rows;
+          }
+        } catch (e) {
+          console.error('topCategories O2M error:', e);
+          topCategoriesRows = [];
+        }
+      }
     }
 
-    // ===== Top downloads =====
+    // ----- Top downloads -----
     const topDocumentsQ = await db.query(
-      `SELECT document_id, title, COALESCE(download_count,0)::int AS download_count
-       FROM documents
-       ORDER BY COALESCE(download_count,0) DESC, ${tsCol} DESC
-       LIMIT 20`
+      `
+      SELECT document_id, title, COALESCE(download_count,0)::int AS download_count
+      FROM documents
+      ORDER BY COALESCE(download_count,0) DESC, ${tsCol} DESC
+      LIMIT 20
+      `
     );
 
     const topFilesQ = await db.query(
-      `SELECT df.document_file_id, df.document_id, df.section, df.original_name,
-              COALESCE(df.download_count,0)::int AS download_count,
-              d.title
-       FROM document_files df
-       JOIN documents d ON d.document_id = df.document_id
-       ORDER BY COALESCE(df.download_count,0) DESC
-       LIMIT 20`
+      `
+      SELECT df.document_file_id, df.document_id, df.section, df.original_name,
+             COALESCE(df.download_count,0)::int AS download_count,
+             d.title
+      FROM document_files df
+      JOIN documents d ON d.document_id = df.document_id
+      ORDER BY COALESCE(df.download_count,0) DESC
+      LIMIT 20
+      `
     );
 
     res.json({
@@ -186,14 +260,12 @@ router.get('/stats', async (req, res) => {
       downloads: downloadsQ.rows[0].count,
       usersByRole: usersByRoleQ.rows,
 
-      // ✅ stats chart
       days,
       tsCol,
       uploadCount7d: uploadCountQ.rows[0].count,
       uploads7dSeries: uploadsSeriesQ.rows,
       topCategories: topCategoriesRows,
 
-      // ✅ existing lists
       topDocuments: topDocumentsQ.rows,
       topFiles: topFilesQ.rows,
     });
@@ -203,11 +275,17 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+// =========================
+// FILE DOWNLOADS (per document)
+// =========================
 router.get('/documents/:documentId/file-downloads', async (req, res) => {
   try {
     const { rows } = await db.query(
-      'SELECT document_file_id, section, original_name, COALESCE(download_count,0) AS download_count FROM document_files WHERE document_id = $1 AND COALESCE(download_count,0) > 0 ORDER BY download_count DESC, document_file_id ASC',
-      [req.params.documentId],
+      `SELECT document_file_id, section, original_name, COALESCE(download_count,0) AS download_count
+       FROM document_files
+       WHERE document_id = $1 AND COALESCE(download_count,0) > 0
+       ORDER BY download_count DESC, document_file_id ASC`,
+      [req.params.documentId]
     );
     res.json(rows);
   } catch (err) {
@@ -216,13 +294,21 @@ router.get('/documents/:documentId/file-downloads', async (req, res) => {
   }
 });
 
+// =========================
+// BACKUP
+// =========================
 router.get('/backup', (_req, res) => {
   res.status(501).json({ error: 'Use Supabase backup tools / pg_dump outside API server.' });
 });
 
+// =========================
+// STUDENT CODES
+// =========================
 router.get('/student-codes', async (_req, res) => {
   try {
-    const { rows } = await db.query('SELECT student_code_id, student_id FROM student_codes ORDER BY student_code_id DESC');
+    const { rows } = await db.query(
+      'SELECT student_code_id, student_id FROM student_codes ORDER BY student_code_id DESC'
+    );
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: 'DB error' });
@@ -232,13 +318,20 @@ router.get('/student-codes', async (_req, res) => {
 router.post('/student-codes', async (req, res) => {
   const raw = req.body.student_ids;
   if (!raw) return res.status(400).json({ error: 'กรุณาระบุ Student ID' });
-  const ids = (Array.isArray(raw) ? raw : String(raw).split(/[\n,]/)).map((s) => String(s).trim()).filter(Boolean);
+
+  const ids = (Array.isArray(raw) ? raw : String(raw).split(/[\n,]/))
+    .map((s) => String(s).trim())
+    .filter(Boolean);
+
   if (!ids.length) return res.status(400).json({ error: 'ไม่มี Student ID ที่เพิ่มได้' });
 
   try {
     let inserted = 0;
     for (const id of ids) {
-      const r = await db.query('INSERT INTO student_codes (student_id) VALUES ($1) ON CONFLICT (student_id) DO NOTHING RETURNING student_code_id', [id]);
+      const r = await db.query(
+        'INSERT INTO student_codes (student_id) VALUES ($1) ON CONFLICT (student_id) DO NOTHING RETURNING student_code_id',
+        [id]
+      );
       if (r.rows.length) inserted += 1;
     }
     res.json({ success: true, inserted, totalSubmitted: ids.length });

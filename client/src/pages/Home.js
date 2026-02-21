@@ -32,6 +32,7 @@ const Home = () => {
     users: 0,
     documents: 0,
     downloads: 0,
+    uploadCount7d: 0,          // ✅ เพิ่ม
     uploadsLast7Days: [],
     topCategories: [],
     usersByRole: [],
@@ -132,42 +133,61 @@ const Home = () => {
   useEffect(() => {
     let cancelled = false;
 
-    const fetchAdminStats = async () => {
-      if (!isAdmin) return;
+const fetchAdminStats = async () => {
+  if (!isAdmin) return;
 
-      try {
-        // ✅ เปลี่ยน endpoint ตรงนี้ให้ตรงกับของคุณถ้าชื่อไม่ใช่ /api/admin/stats
-        let res;
-        try {
-          res = await api.get("/api/admin/stats");
-        } catch (e) {
-          console.warn("admin stats endpoint not found, try fallback", e?.response?.data || e.message);
-          // fallback เผื่อคุณตั้งชื่อไว้แบบอื่น
-          res = await api.get("/api/admin/dashboard").catch(() => null);
-        }
+  try {
+    const res = await api.get("/api/admin/stats", { params: { days: 7 } });
+    const d = res.data || {};
 
-        if (!res || !res.data) {
-          console.warn("No admin stats data returned");
-          return;
-        }
+    // ✅ server ส่ง uploads7dSeries: [{ date, count }]
+    const uploadsLast7Days = Array.isArray(d.uploads7dSeries)
+      ? d.uploads7dSeries.map((x) => ({
+          day: x.date, // ให้ตรงกับกราฟที่ใช้ dataKey="day"
+          count: Number(x.count || 0),
+        }))
+      : [];
 
-        const d = res.data;
+    // ✅ server ส่ง topCategories: [{ category_name, count }]
+    const topCategories = Array.isArray(d.topCategories)
+      ? d.topCategories.map((c) => ({
+          category:
+            c.category ??
+            c.category_name ??
+            c.name ??
+            c.categoryTitle ??
+            `#${c.category_id ?? ""}`,
+          count: Number(c.count ?? c.total ?? c.value ?? 0),
+        }))
+      : [];
 
-        const next = {
-          users: d.users ?? 0,
-          documents: d.documents ?? 0,
-          downloads: d.downloads ?? 0,
-          uploadsLast7Days: Array.isArray(d.uploadsLast7Days) ? d.uploadsLast7Days : [],
-          topCategories: Array.isArray(d.topCategories) ? d.topCategories : [],
-          usersByRole: Array.isArray(d.usersByRole) ? d.usersByRole : [],
-          topDocuments: Array.isArray(d.topDocuments) ? d.topDocuments : [],
-        };
+    const next = {
+      users: Number(d.users || 0),
+      documents: Number(d.documents || 0),
+      downloads: Number(d.downloads || 0),
 
-        if (!cancelled) setStats(next);
-      } catch (err) {
-        console.error("Admin stats load error:", err?.response?.data || err.message);
-      }
+      // ✅ ใช้ตัวนี้โชว์ KPI ได้เลย
+      uploadCount7d: Number(d.uploadCount7d || 0),
+
+      uploadsLast7Days,
+      topCategories,
+      usersByRole: Array.isArray(d.usersByRole) ? d.usersByRole : [],
+      topDocuments: Array.isArray(d.topDocuments) ? d.topDocuments : [],
     };
+
+    if (!cancelled) setStats(next);
+  } catch (err) {
+    console.error("Admin stats load error:", err?.response?.data || err.message);
+    if (!cancelled) {
+      setStats((prev) => ({
+        ...prev,
+        uploadCount7d: 0,
+        uploadsLast7Days: [],
+        topCategories: [],
+      }));
+    }
+  }
+};
 
     fetchAdminStats();
     return () => { cancelled = true; };
@@ -208,7 +228,7 @@ const Home = () => {
         )}
 
         {/* ================= Admin Stats ================= */}
-        {isAdmin && (
+        {isAdmin && stats &&  (
           <div className="space-y-8 mb-12">
             <Typography variant="h5" gutterBottom className="text-brand-800">
               📊 แดชบอร์ดผู้ดูแลระบบ
@@ -238,7 +258,7 @@ const Home = () => {
                 <CardContent>
                   <Typography variant="h6">📅 อัปโหลดใน 7 วันล่าสุด</Typography>
                   <Typography variant="h4" className="font-bold text-green-700">
-                    {stats.uploadsLast7Days?.reduce((a, b) => a + (b.count || 0), 0) || 0}
+                    {stats.uploadCount7d ?? 0}
                   </Typography>
                 </CardContent>
               </Card>

@@ -13,11 +13,6 @@ import {
   TableHead,
   TableRow,
 } from "@mui/material";
-import {
-  ResponsiveContainer,
-  LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
-  PieChart, Pie, Cell, Legend
-} from "recharts";
 import api from "../services/api";
 
 const ADMIN_BASE = "/api/admin"; // ✅ ให้ใช้ตัวเดียวทั้งไฟล์
