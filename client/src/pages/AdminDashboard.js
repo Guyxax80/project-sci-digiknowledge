@@ -13,6 +13,11 @@ import {
   TableHead,
   TableRow,
 } from "@mui/material";
+import {
+  ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
+  PieChart, Pie, Cell, Legend
+} from "recharts";
 import api from "../services/api";
 
 const ADMIN_BASE = "/api/admin"; // ✅ ให้ใช้ตัวเดียวทั้งไฟล์
@@ -24,11 +29,23 @@ export default function AdminDashboard() {
   const [editingUser, setEditingUser] = useState(null);
   const [studentCodes, setStudentCodes] = useState([]);
   const [newCodesText, setNewCodesText] = useState("");
+  const [stats, setStats] = useState(null);
 
-  useEffect(() => {
-    fetchUsers();
-    fetchStudentCodes();
-  }, []);
+    const fetchStats = async () => {
+  try {
+    const res = await api.get(`${ADMIN_BASE}/stats`, { params: { days: 7 } });
+    setStats(res.data);
+  } catch (err) {
+    console.error("โหลด stats ล้มเหลว", err?.response?.data || err.message);
+    setStats(null);
+  }
+};
+
+useEffect(() => {
+  fetchUsers();
+  fetchStudentCodes();
+  fetchStats();
+}, []);
 
   useEffect(() => {
     if (editingUser) {
@@ -50,6 +67,8 @@ export default function AdminDashboard() {
       console.error("โหลดข้อมูลผู้ใช้ล้มเหลว", err?.response?.data || err.message);
     }
   };
+
+
 
   // ✅ ดึง Student Codes (ต้องเป็น GET)
   const fetchStudentCodes = async () => {

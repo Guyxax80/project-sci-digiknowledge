@@ -63,26 +63,142 @@ router.delete('/users/:user_id', async (req, res) => {
   }
 });
 
-router.get('/stats', async (_req, res) => {
+router.get('/stats', async (req, res) => {
+  const days = Math.max(1, Math.min(Number(req.query.days || 7), 365));
+
   try {
-    const users = await db.query('SELECT COUNT(*)::int AS count FROM users');
-    const documents = await db.query('SELECT COUNT(*)::int AS count FROM documents');
-    const downloads = await db.query('SELECT COALESCE(SUM(download_count),0)::int AS count FROM documents');
-    const usersByRole = await db.query('SELECT role, COUNT(*)::int AS count FROM users GROUP BY role');
-    const topDocuments = await db.query('SELECT document_id, title, COALESCE(download_count,0) AS download_count FROM documents ORDER BY COALESCE(download_count,0) DESC, uploaded_at DESC LIMIT 20');
-    const topFiles = await db.query('SELECT df.document_file_id, df.document_id, df.section, df.original_name, COALESCE(df.download_count,0) AS download_count, d.title FROM document_files df JOIN documents d ON d.document_id = df.document_id ORDER BY COALESCE(df.download_count,0) DESC LIMIT 20');
+    // ===== Core totals =====
+    const usersQ = await db.query('SELECT COUNT(*)::int AS count FROM users');
+    const documentsQ = await db.query('SELECT COUNT(*)::int AS count FROM documents');
+    const downloadsQ = await db.query('SELECT COALESCE(SUM(download_count),0)::int AS count FROM documents');
+    const usersByRoleQ = await db.query('SELECT role, COUNT(*)::int AS count FROM users GROUP BY role');
+
+    // ===== Detect timestamp column: uploaded_at or created_at =====
+    const tsColQ = await db.query(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'documents'
+        AND column_name IN ('uploaded_at', 'created_at')
+      ORDER BY CASE column_name WHEN 'uploaded_at' THEN 0 ELSE 1 END
+      LIMIT 1
+      `
+    );
+    const tsCol = tsColQ.rows?.[0]?.column_name || 'uploaded_at'; // default เผื่อไว้
+
+    // ===== Upload count in last N days =====
+    const uploadCountQ = await db.query(
+      `SELECT COUNT(*)::int AS count
+       FROM documents
+       WHERE ${tsCol} >= NOW() - ($1 || ' days')::interval`,
+      [days]
+    );
+
+    // ===== Daily series in last N days (fill missing days) =====
+    const uploadsSeriesQ = await db.query(
+      `
+      WITH dd AS (
+        SELECT generate_series(
+          date_trunc('day', NOW()) - ($1::int - 1) * interval '1 day',
+          date_trunc('day', NOW()),
+          interval '1 day'
+        ) AS day
+      )
+      SELECT to_char(dd.day, 'YYYY-MM-DD') AS date,
+             COALESCE(COUNT(d.document_id), 0)::int AS count
+      FROM dd
+      LEFT JOIN documents d
+        ON date_trunc('day', d.${tsCol}) = dd.day
+      GROUP BY 1
+      ORDER BY 1
+      `,
+      [days]
+    );
+
+    // ===== topCategories (safe mode) =====
+    // - ถ้าไม่มี category_id หรือไม่มีตาราง categories => ไม่ให้ route ล่ม
+    let topCategoriesRows = [];
+    try {
+      const hasCategoryIdQ = await db.query(
+        `
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='documents' AND column_name='category_id'
+        LIMIT 1
+        `
+      );
+
+      const hasCategoriesTableQ = await db.query(
+        `
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema='public' AND table_name='categories'
+        LIMIT 1
+        `
+      );
+
+      if (hasCategoryIdQ.rows.length && hasCategoriesTableQ.rows.length) {
+        const topCategoriesQ = await db.query(
+          `
+          SELECT c.category_id,
+                 c.category_name,
+                 COUNT(d.document_id)::int AS count
+          FROM documents d
+          JOIN categories c ON c.category_id = d.category_id
+          WHERE d.${tsCol} >= NOW() - ($1 || ' days')::interval
+          GROUP BY c.category_id, c.category_name
+          ORDER BY count DESC
+          LIMIT 5
+          `,
+          [days]
+        );
+        topCategoriesRows = topCategoriesQ.rows;
+      } else {
+        topCategoriesRows = [];
+      }
+    } catch (e) {
+      console.error('topCategories fallback:', e);
+      topCategoriesRows = [];
+    }
+
+    // ===== Top downloads =====
+    const topDocumentsQ = await db.query(
+      `SELECT document_id, title, COALESCE(download_count,0)::int AS download_count
+       FROM documents
+       ORDER BY COALESCE(download_count,0) DESC, ${tsCol} DESC
+       LIMIT 20`
+    );
+
+    const topFilesQ = await db.query(
+      `SELECT df.document_file_id, df.document_id, df.section, df.original_name,
+              COALESCE(df.download_count,0)::int AS download_count,
+              d.title
+       FROM document_files df
+       JOIN documents d ON d.document_id = df.document_id
+       ORDER BY COALESCE(df.download_count,0) DESC
+       LIMIT 20`
+    );
 
     res.json({
-      users: users.rows[0].count,
-      documents: documents.rows[0].count,
-      downloads: downloads.rows[0].count,
-      usersByRole: usersByRole.rows,
-      topDocuments: topDocuments.rows,
-      topFiles: topFiles.rows,
-      topCategories: [],
+      users: usersQ.rows[0].count,
+      documents: documentsQ.rows[0].count,
+      downloads: downloadsQ.rows[0].count,
+      usersByRole: usersByRoleQ.rows,
+
+      // ✅ stats chart
+      days,
+      tsCol,
+      uploadCount7d: uploadCountQ.rows[0].count,
+      uploads7dSeries: uploadsSeriesQ.rows,
+      topCategories: topCategoriesRows,
+
+      // ✅ existing lists
+      topDocuments: topDocumentsQ.rows,
+      topFiles: topFilesQ.rows,
     });
   } catch (err) {
-    console.error(err);
+    console.error('admin stats error:', err);
     res.status(500).json({ error: 'DB error' });
   }
 });
