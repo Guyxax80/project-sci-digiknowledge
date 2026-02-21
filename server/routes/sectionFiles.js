@@ -50,10 +50,21 @@ const fixOriginalName = (name) => {
   }
 };
 
-// --- safe key for supabase storage ---
-const safeObjectName = (name) => {
-  const base = String(name || 'file').trim();
-  return encodeURIComponent(base).replace(/%2F/gi, '-'); // กัน / หลุดเป็น path
+// ✅ ห้ามเอาชื่อไฟล์จริงไปเป็น key (กัน Invalid key แบบชัวร์)
+const getExt = (originalName, mimeType) => {
+  const n = String(originalName || '');
+  const lastDot = n.lastIndexOf('.');
+  if (lastDot > -1 && lastDot < n.length - 1) {
+    const ext = n.slice(lastDot + 1).toLowerCase();
+    if (ext && ext.length <= 10) return ext;
+  }
+
+  if (mimeType === 'application/pdf') return 'pdf';
+  if (mimeType === 'application/msword') return 'doc';
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+  if (mimeType?.startsWith('image/')) return (mimeType.split('/')[1] || 'img').toLowerCase();
+
+  return 'bin';
 };
 
 const uploadVideo = (buffer) =>
@@ -99,9 +110,12 @@ async function persistFile(documentId, sectionName, file) {
   }
 
   // ===== FILES -> Supabase Storage =====
-  const objectPath = `${documentId}/${sectionName}/${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeObjectName(
-    originalName,
-  )}`;
+  const ext = getExt(originalName, mimeType);
+
+  // ✅ key เป็น ASCII ล้วนแน่นอน
+  const objectPath = `${documentId}/${sectionName}/${Date.now()}-${Math.round(Math.random() * 1e9)}.${ext}`;
+
+  console.log('[sections] objectPath:', objectPath);
 
   const { error } = await supabase.storage.from(BUCKET).upload(objectPath, file.buffer, {
     contentType: mimeType,
@@ -136,82 +150,64 @@ async function persistFile(documentId, sectionName, file) {
 }
 
 // POST /api/documents/:documentId/sections
-router.post(
-  '/documents/:documentId/sections',
-  auth,
-  requireRole('student'),
-  upload.fields(sectionFields),
-  async (req, res) => {
-    const documentId = Number(req.params.documentId);
-    if (!req.files || !Object.keys(req.files).length) {
-      return res.status(400).json({ message: 'ไม่มีไฟล์ที่อัปโหลด' });
+router.post('/documents/:documentId/sections', auth, requireRole('student'), upload.fields(sectionFields), async (req, res) => {
+  const documentId = Number(req.params.documentId);
+
+  if (!req.files || !Object.keys(req.files).length) {
+    return res.status(400).json({ success: false, message: 'ไม่มีไฟล์ที่อัปโหลด' });
+  }
+
+  try {
+    const ownerCheck = await db.query('SELECT user_id FROM public.documents WHERE document_id = $1 LIMIT 1', [documentId]);
+    if (!ownerCheck.rows.length) return res.status(404).json({ success: false, message: 'ไม่พบเอกสาร' });
+
+    if (Number(ownerCheck.rows[0].user_id) !== Number(req.user.user_id)) {
+      return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์แก้ไขเอกสารนี้' });
     }
 
-    try {
-      const ownerCheck = await db.query('SELECT user_id FROM public.documents WHERE document_id = $1 LIMIT 1', [
-        documentId,
-      ]);
-      if (!ownerCheck.rows.length) return res.status(404).json({ message: 'ไม่พบเอกสาร' });
-      if (Number(ownerCheck.rows[0].user_id) !== Number(req.user.user_id)) {
-        return res.status(403).json({ message: 'ไม่มีสิทธิ์แก้ไขเอกสารนี้' });
-      }
-
-      for (const [sectionName, fileArray] of Object.entries(req.files)) {
-        await persistFile(documentId, sectionName, fileArray[0]);
-      }
-
-      return res.json({ success: true, message: 'อัปโหลดไฟล์รายส่วนสำเร็จ' });
-    } catch (err) {
-      console.error('DB error (section files):', err);
-      return res.status(500).json({
-        success: false,
-        message: 'เกิดข้อผิดพลาดในการอัปโหลดไฟล์รายส่วน',
-        error: err.message,
-      });
+    for (const [sectionName, fileArray] of Object.entries(req.files)) {
+      await persistFile(documentId, sectionName, fileArray[0]);
     }
-  },
-);
+
+    return res.json({ success: true, message: 'อัปโหลดไฟล์รายส่วนสำเร็จ' });
+  } catch (err) {
+    console.error('DB error (section files):', err);
+    return res.status(500).json({
+      success: false,
+      message: 'เกิดข้อผิดพลาดในการอัปโหลดไฟล์รายส่วน',
+      error: err.message,
+    });
+  }
+});
 
 // PUT /api/documents/:documentId/sections/:section
-router.put(
-  '/documents/:documentId/sections/:section',
-  auth,
-  requireRole('student'),
-  upload.single('file'),
-  async (req, res) => {
-    const documentId = Number(req.params.documentId);
-    const sectionName = req.params.section;
+router.put('/documents/:documentId/sections/:section', auth, requireRole('student'), upload.single('file'), async (req, res) => {
+  const documentId = Number(req.params.documentId);
+  const sectionName = req.params.section;
 
-    if (!req.file) return res.status(400).json({ message: 'กรุณาเลือกไฟล์' });
+  if (!req.file) return res.status(400).json({ success: false, message: 'กรุณาเลือกไฟล์' });
 
-    try {
-      const doc = await db.query('SELECT user_id, status FROM public.documents WHERE document_id = $1 LIMIT 1', [
-        documentId,
-      ]);
-      if (!doc.rows.length) return res.status(404).json({ message: 'ไม่พบเอกสาร' });
+  try {
+    const doc = await db.query('SELECT user_id, status FROM public.documents WHERE document_id = $1 LIMIT 1', [documentId]);
+    if (!doc.rows.length) return res.status(404).json({ success: false, message: 'ไม่พบเอกสาร' });
 
-      if (Number(doc.rows[0].user_id) !== Number(req.user.user_id)) {
-        return res.status(403).json({ message: 'ไม่มีสิทธิ์แก้ไขเอกสารนี้' });
-      }
-
-      // ถ้ายังอยากให้แก้ได้เฉพาะ draft คงไว้
-      if (String(doc.rows[0].status || '').toLowerCase() !== 'draft') {
-        return res.status(403).json({ message: 'อนุญาตเฉพาะ draft' });
-      }
-
-      await db.query('DELETE FROM public.document_files WHERE document_id = $1 AND section = $2', [
-        documentId,
-        sectionName,
-      ]);
-
-      await persistFile(documentId, sectionName, req.file);
-
-      return res.json({ success: true, message: 'แทนที่ไฟล์สำเร็จ' });
-    } catch (err) {
-      console.error('section replace error:', err);
-      return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาด', error: err.message });
+    if (Number(doc.rows[0].user_id) !== Number(req.user.user_id)) {
+      return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์แก้ไขเอกสารนี้' });
     }
-  },
-);
+
+    // คงกฎเดิม: แก้ได้เฉพาะ draft
+    if (String(doc.rows[0].status || '').toLowerCase() !== 'draft') {
+      return res.status(403).json({ success: false, message: 'อนุญาตเฉพาะ draft' });
+    }
+
+    await db.query('DELETE FROM public.document_files WHERE document_id = $1 AND section = $2', [documentId, sectionName]);
+    await persistFile(documentId, sectionName, req.file);
+
+    return res.json({ success: true, message: 'แทนที่ไฟล์สำเร็จ' });
+  } catch (err) {
+    console.error('section replace error:', err);
+    return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาด', error: err.message });
+  }
+});
 
 module.exports = router;
