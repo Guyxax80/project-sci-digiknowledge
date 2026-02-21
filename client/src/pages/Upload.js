@@ -58,7 +58,7 @@ const UploadDocument = () => {
       formData.append("user_id", storedUserId);
       formData.append("status", isDraft ? "draft" : "published");
       // ส่งหมวดหมู่หลายค่าเป็น JSON เดียว เพื่อง่ายต่อการ parse ฝั่ง server
-      formData.append("categorie_ids", JSON.stringify(selectedCategoryIds));
+      formData.append("categorieIds", JSON.stringify(selectedCategoryIds));
 
       console.log("=== FRONTEND DATA ===");
       console.log("Title:", title);
@@ -150,26 +150,39 @@ const UploadDocument = () => {
           required
         />
         <div>
-          <p className="font-semibold mb-2">เลือกหมวดหมู่ </p>
+  <p className="font-semibold mb-2">เลือกหมวดหมู่ (เลือกได้ไม่เกิน 2)</p>
 
-          <div className="flex flex-col gap-2 border rounded p-3">
-            {FIXED_CATEGORIES.map((cat) => {
-              const checked = selectedCategoryIds.includes(cat.id);
+  <div className="flex flex-col gap-2 border rounded p-3">
+    {FIXED_CATEGORIES.map((cat) => {
+      const checked = selectedCategoryIds.includes(cat.id);
+      const disableUnchecked = !checked && selectedCategoryIds.length >= 2;
 
-              return (
-                <label key={cat.id} className="inline-flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="category"
-                    checked={checked}
-                    onChange={() => setSelectedCategoryIds([cat.id])}
-                  />
-                  <span>{cat.name}</span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
+      return (
+        <label key={cat.id} className="inline-flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={disableUnchecked}
+            onChange={(e) => {
+              if (e.target.checked) {
+                // เพิ่มหมวด (กันไม่เกิน 2)
+                setSelectedCategoryIds((prev) => (prev.length >= 2 ? prev : [...prev, cat.id]));
+              } else {
+                // เอาออก
+                setSelectedCategoryIds((prev) => prev.filter((id) => id !== cat.id));
+              }
+            }}
+          />
+          <span className={disableUnchecked ? "text-gray-400" : ""}>{cat.name}</span>
+        </label>
+      );
+    })}
+  </div>
+
+  <p className="text-xs text-gray-500 mt-2">
+    เลือกแล้ว: {selectedCategoryIds.length}/2
+  </p>
+</div>
         <input
           type="text"
           placeholder="คำค้นหา"

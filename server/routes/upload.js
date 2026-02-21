@@ -61,22 +61,59 @@ async function supportsCloudinaryPublicId() {
 }
 
 async function insertDocumentFileWithOptionalPublicId(payload) {
-  const { documentId, filePath, originalName, fileType, section, publicId } = payload;
+  const { client, documentId, filePath, originalName, fileType, section, publicId } = payload;
+  const queryClient = client || db;
 
   // ถ้ามีคอลัมน์ cloudinary_public_id ก็ใส่ (เฉพาะกรณี video ที่มาจาก cloudinary)
   if (publicId && (await supportsCloudinaryPublicId())) {
-    await db.query(
+    await queryClient.query(
       'INSERT INTO document_files (document_id, file_path, original_name, file_type, section, uploaded_at, cloudinary_public_id) VALUES ($1, $2, $3, $4, $5, NOW(), $6)',
       [documentId, filePath, originalName, fileType, section, publicId],
     );
     return;
   }
 
-  await db.query(
+  await queryClient.query(
     'INSERT INTO document_files (document_id, file_path, original_name, file_type, section, uploaded_at) VALUES ($1, $2, $3, $4, $5, NOW())',
     [documentId, filePath, originalName, fileType, section],
   );
 }
+
+const parseCategorieIds = (rawCategorieIds) => {
+  if (rawCategorieIds === undefined || rawCategorieIds === null || rawCategorieIds === '') {
+    return [];
+  }
+
+  let parsed = rawCategorieIds;
+
+  if (typeof rawCategorieIds === 'string') {
+    try {
+      parsed = JSON.parse(rawCategorieIds);
+    } catch (_err) {
+      const e = new Error('รูปแบบ categorie_ids ไม่ถูกต้อง');
+      e.status = 400;
+      throw e;
+    }
+  }
+
+  if (!Array.isArray(parsed)) {
+    const e = new Error('categorie_ids ต้องเป็น array');
+    e.status = 400;
+    throw e;
+  }
+
+  const sanitizedIds = [...new Set(parsed
+    .map((item) => Number.parseInt(item, 10))
+    .filter((id) => Number.isInteger(id) && id > 0))];
+
+  if (sanitizedIds.length > 2) {
+    const e = new Error('เลือกหมวดหมู่ได้ไม่เกิน 2 หมวดหมู่');
+    e.status = 400;
+    throw e;
+  }
+
+  return sanitizedIds;
+};
 
 async function assertStudentCanUpload(userId) {
   if (!userId) {
@@ -188,8 +225,10 @@ router.post('/', auth, requireRole('student'), (req, res, next) => {
     });
   });
 }, async (req, res) => {
+  const client = await db.pool.connect();
+
   try {
-    const { title, keywords, academic_year, status } = req.body;
+    const { title, keywords, academic_year, status, categorie_ids } = req.body;
 
     if (!title?.trim()) {
       return res.status(400).json({ success: false, message: 'กรุณากรอกชื่อเอกสาร' });
@@ -201,12 +240,25 @@ router.post('/', auth, requireRole('student'), (req, res, next) => {
     // ✅ normalize status
     const safeStatus = normalizeStatus(status);
 
+     const parsedCategorieIds = parseCategorieIds(categorie_ids);
+
+    await client.query('BEGIN');
+
     // 1) สร้างเอกสารก่อน
-    const docResult = await db.query(
+    const docResult = await client.query(
       'INSERT INTO public.documents (user_id, title, keywords, academic_year, status) VALUES ($1, $2, $3, $4, $5) RETURNING document_id',
       [authUser.user_id, title, keywords || null, academic_year || null, safeStatus],
     );
     const documentId = docResult.rows[0].document_id;
+
+    if (parsedCategorieIds.length > 0) {
+      await client.query(
+        `INSERT INTO public.document_categories (document_id, categorie_id)
+         SELECT $1, unnest($2::int[])
+         ON CONFLICT DO NOTHING`,
+        [documentId, parsedCategorieIds],
+      );
+    }
 
     // 2) ถ้ามีไฟล์ → อัปโหลดตามชนิดไฟล์
     if (req.file) {
@@ -214,20 +266,15 @@ router.post('/', auth, requireRole('student'), (req, res, next) => {
 
       // ===== A) VIDEO -> Cloudinary =====
       if (isVideo(mimeType)) {
-         let uploaded;
+        let uploaded;
         try {
           uploaded = await uploadVideoToCloudinary(req.file, authUser.user_id);
         } catch (videoErr) {
-          return res.status(videoErr.status || 502).json({
-            success: false,
-            message: videoErr.message,
-            error: {
-              details: videoErr.details || null,
-            },
-          });
+          throw videoErr;
         }
 
         await insertDocumentFileWithOptionalPublicId({
+          client,
           documentId,
           filePath: uploaded.secure_url, // ✅ เก็บ URL ลง file_path
           originalName: req.file.originalname,
@@ -253,7 +300,10 @@ router.post('/', auth, requireRole('student'), (req, res, next) => {
 
         if (upErr) {
           console.error('Supabase upload error:', upErr);
-          return res.status(500).json({ success: false, message: 'อัปโหลดขึ้น Supabase ไม่สำเร็จ' });
+          const e = new Error('อัปโหลดขึ้น Supabase ไม่สำเร็จ');
+          e.status = 500;
+          e.details = upErr;
+          throw e;
         }
 
         // ✅ ถ้า bucket เป็น Public
@@ -261,10 +311,13 @@ router.post('/', auth, requireRole('student'), (req, res, next) => {
         const publicUrl = pub?.publicUrl;
 
         if (!publicUrl) {
-          return res.status(500).json({ success: false, message: 'สร้าง Public URL ไม่สำเร็จ (เช็คว่า bucket เป็น Public)' });
+          const e = new Error('สร้าง Public URL ไม่สำเร็จ (เช็คว่า bucket เป็น Public)');
+          e.status = 500;
+          throw e;
         }
 
         await insertDocumentFileWithOptionalPublicId({
+          client,
           documentId,
           filePath: publicUrl, // ✅ เก็บ URL ลง file_path
           originalName: req.file.originalname,
@@ -273,15 +326,25 @@ router.post('/', auth, requireRole('student'), (req, res, next) => {
           publicId: null,
         });
       } else {
-        return res.status(400).json({
-          success: false,
-          message: 'ชนิดไฟล์ไม่รองรับ (รองรับ PDF/DOC/DOCX และ VIDEO)',
-        });
+        const e = new Error('ชนิดไฟล์ไม่รองรับ (รองรับ PDF/DOC/DOCX และ VIDEO)');
+        e.status = 400;
+        throw e;
       }
     }
 
+    await client.query('COMMIT');
+
     return res.json({ success: true, message: 'อัปโหลดสำเร็จ', documentId });
   } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('Upload rollback error:', rollbackErr);
+    }
+
+    if (err.code) {
+      console.error('Upload DB error:', { message: err.message, code: err.code, detail: err.detail || null });
+    }
     console.error('Upload error:', err);
     return res.status(err.status || 500).json({
       success: false,
@@ -290,6 +353,8 @@ router.post('/', auth, requireRole('student'), (req, res, next) => {
         details: err.details || null,
       },
     });
+  } finally {
+    client.release();
   }
 });
 

@@ -124,15 +124,22 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.get('/:id/categories', async (req, res) => {
+router.get("/:id/categories", async (req, res) => {
   try {
     const { rows } = await db.query(
-      'SELECT c.categorie_id, c.name FROM document_categories dc JOIN categories c ON c.categorie_id = dc.categorie_id WHERE dc.document_id = $1 ORDER BY c.name ASC',
-      [req.params.id],
+      `
+      SELECT c.categorie_id, c.name
+      FROM document_categories dc
+      JOIN categories c ON c.categorie_id = dc.categorie_id
+      WHERE dc.document_id = $1
+      ORDER BY c.name ASC
+      `,
+      [req.params.id]
     );
-    res.json(rows);
-  } catch (_err) {
-    res.json([]);
+    return res.json(rows);
+  } catch (err) {
+    console.error("DB error (document categories):", err);
+    return res.status(500).json({ message: "ดึงหมวดหมู่ไม่สำเร็จ" });
   }
 });
 
