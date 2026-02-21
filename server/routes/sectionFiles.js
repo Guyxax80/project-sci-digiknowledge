@@ -15,6 +15,9 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 const storage = multer.memoryStorage();
 
+console.log('[sections] BUCKET =', BUCKET);
+console.log('[sections] SUPABASE_URL =', process.env.SUPABASE_URL);
+
 const sectionFields = [
   { name: 'cover', maxCount: 1 }, { name: 'abstract', maxCount: 1 }, { name: 'acknowledgement', maxCount: 1 }, { name: 'toc', maxCount: 1 },
   { name: 'chapter1', maxCount: 1 }, { name: 'chapter2', maxCount: 1 }, { name: 'chapter3', maxCount: 1 }, { name: 'chapter4', maxCount: 1 },
@@ -64,25 +67,29 @@ const uploadVideo = (buffer) => new Promise((resolve, reject) => {
 async function persistFile(documentId, sectionName, file) {
   const originalName = fixOriginalName(file.originalname);
 
-  console.log('[sections] original:', file.originalname);
-  console.log('[sections] fixed   :', originalName);
-
   if (sectionName === 'presentation_video') {
     if (!file.mimetype.startsWith('video/')) throw new Error('ไฟล์วิดีโอต้องเป็น mimetype video/*');
 
     const result = await uploadVideo(file.buffer);
 
-    if (await supportsCloudinaryPublicId()) {
-      await db.query(
-        'INSERT INTO document_files (document_id, file_path, original_name, file_type, section, uploaded_at, cloudinary_public_id) VALUES ($1, $2, $3, $4, $5, NOW(), $6)',
-        [documentId, result.secure_url, originalName, file.mimetype, sectionName, result.public_id],
-      );
-      return;
-    }
-
     await db.query(
-      'INSERT INTO document_files (document_id, file_path, original_name, file_type, section, uploaded_at) VALUES ($1, $2, $3, $4, $5, NOW())',
-      [documentId, result.secure_url, originalName, file.mimetype, sectionName],
+      `INSERT INTO document_files
+        (document_id, file_path, original_name, file_type, section, uploaded_at,
+         provider, public_url, cloudinary_public_id, mime_type, size_bytes)
+       VALUES
+        ($1,$2,$3,$4,$5,NOW(),
+         'cloudinary',$6,$7,$8,$9)`,
+      [
+        documentId,
+        result.secure_url,
+        originalName,
+        file.mimetype,
+        sectionName,
+        result.secure_url,
+        result.public_id,
+        file.mimetype,
+        file.size || null,
+      ],
     );
     return;
   }
@@ -94,15 +101,30 @@ async function persistFile(documentId, sectionName, file) {
     contentType: file.mimetype,
     upsert: false,
   });
-
   if (error) throw error;
 
   const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(objectPath);
-  const publicUrl = pub?.publicUrl || objectPath;
+  const publicUrl = pub?.publicUrl || null;
 
   await db.query(
-    'INSERT INTO document_files (document_id, file_path, original_name, file_type, section, uploaded_at) VALUES ($1, $2, $3, $4, $5, NOW())',
-    [documentId, publicUrl, originalName, file.mimetype, sectionName],
+    `INSERT INTO document_files
+      (document_id, file_path, original_name, file_type, section, uploaded_at,
+       provider, bucket, storage_path, public_url, mime_type, size_bytes)
+     VALUES
+      ($1,$2,$3,$4,$5,NOW(),
+       'supabase',$6,$7,$8,$9,$10)`,
+    [
+      documentId,
+      publicUrl || objectPath,     // compat
+      originalName,
+      file.mimetype,
+      sectionName,
+      BUCKET,
+      objectPath,
+      publicUrl,
+      file.mimetype,
+      file.size || null,
+    ],
   );
 }
 
