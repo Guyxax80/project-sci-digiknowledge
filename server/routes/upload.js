@@ -25,8 +25,7 @@ const uploadSingleFile = upload.single('file');
 // ===== Helpers =====
 const normalizeStatus = (status) => {
   if (!status) return 'draft';
-  if (status === 'published') return 'pending';
-  if (['draft', 'pending', 'approved', 'rejected'].includes(status)) return status;
+  if (['draft', 'pending', 'published', 'rejected'].includes(status)) return status;
   return 'draft';
 };
 

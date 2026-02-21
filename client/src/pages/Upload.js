@@ -17,7 +17,7 @@ const UploadDocument = () => {
   { id: "2", name: "Software" },
 ];
   // ไม่ต้องอัปโหลดไฟล์หลัก
-  const [isDraft, setIsDraft] = useState(false);
+  //const [isDraft, setIsDraft] = useState(false);
   // ดึง userId จาก localStorage (ต้องมีตอนล็อกอิน)
 
   // ไฟล์รายส่วน
@@ -56,7 +56,7 @@ const UploadDocument = () => {
       formData.append("keywords", keywords);
       formData.append("academic_year", academicYear);
       formData.append("user_id", storedUserId);
-      formData.append("status", isDraft ? "draft" : "published");
+      formData.append("status", "draft");
       // ส่งหมวดหมู่หลายค่าเป็น JSON เดียว เพื่อง่ายต่อการ parse ฝั่ง server
       formData.append("categorie_ids", JSON.stringify(selectedCategoryIds));
 
@@ -65,7 +65,7 @@ const UploadDocument = () => {
       console.log("Keywords:", keywords);
       console.log("Academic Year:", academicYear);
       console.log("User ID:", storedUserId);
-      console.log("Status:", isDraft ? "draft" : "published");
+      console.log("Status:", "draft");
       console.log("Categorie IDs:", selectedCategoryIds);
       console.log("====================");
 
@@ -114,7 +114,7 @@ const UploadDocument = () => {
       setKeywords("");
       setAcademicYear("");
       setAcademicYearDate("");
-      setIsDraft(false);
+      //setIsDraft(false);
       setCoverFile(null);
       setAbstractFile(null);
       setAckFile(null);
@@ -279,22 +279,11 @@ const UploadDocument = () => {
             />
           </label>
         </div>
-
-        <div className="flex items-center gap-3 mt-2">
-          <input
-            type="checkbox"
-            id="draft"
-            checked={isDraft}
-            onChange={(e) => setIsDraft(e.target.checked)}
-          />
-          <label htmlFor="draft">บันทึกเป็นแบบร่าง (Draft)</label>
-        </div>
-
-        <button
+<button
           type="submit"
           className="bg-brand-700 hover:bg-brand-800 text-white px-4 py-2 rounded mt-2"
         >
-          อัปโหลดเอกสาร
+บันทึกฉบับร่าง
         </button>
       </form>
     </div>

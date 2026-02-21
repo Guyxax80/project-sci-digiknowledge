@@ -1,25 +1,32 @@
-// โหลด .env เฉพาะตอน dev เท่านั้น (กัน Render อ่าน .env ในโปรเจกต์)
-if (process.env.NODE_ENV !== "production") {
-  require("dotenv").config();
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
 }
 
-const express = require("express");
-const cors = require("cors");
-const path = require("path");
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
-const uploadRoute = require("./routes/upload");
-const documentRoute = require("./routes/documents");
-const adminRoutes = require("./routes/admin");
-const downloadRoute = require("./routes/download");
-const loginRoute = require("./routes/login");
-const signupRoute = require("./routes/signup");
-const authRoute = require("./routes/auth");
-const filesRoute = require("./routes/files");
-const sectionFilesRoute = require("./routes/sectionFiles");
-const categoriesRoute = require("./routes/categories");
-const dbTestRoute = require("./routes/dbTest");
+const uploadRoute = require('./routes/upload');
+const documentRoute = require('./routes/documents');
+const approvalsRoute = require('./routes/approvals');
+const adminRoutes = require('./routes/admin');
+const downloadRoute = require('./routes/download');
+const loginRoute = require('./routes/login');
+const signupRoute = require('./routes/signup');
+const authRoute = require('./routes/auth');
+const filesRoute = require('./routes/files');
+const sectionFilesRoute = require('./routes/sectionFiles');
+const categoriesRoute = require('./routes/categories');
+const dbTestRoute = require('./routes/dbTest');
 
 const app = express();
+
+const envAllowlist = String(process.env.CORS_ALLOWLIST || '')
+  .split(',')
+  .map((x) => x.trim())
+  .filter(Boolean);
 
 const allowedOrigins = [
   'http://localhost:3000',
@@ -27,44 +34,43 @@ const allowedOrigins = [
   process.env.FRONTEND_URL,
   'https://project-sci-digiknowledge1.onrender.com',
   'https://project-sci-digiknowledge.vercel.app',
+  ...envAllowlist,
 ].filter(Boolean);
 
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
 };
 
+app.use(helmet());
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: Number(process.env.RATE_LIMIT_MAX || 500) }));
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// API Routes
-app.use("/api/upload", uploadRoute);
-app.use("/api/documents", documentRoute);
-app.use("/api/login", loginRoute);
-app.use("/api/signup", signupRoute);
-app.use("/api/auth", authRoute);
-app.use("/api/admin", adminRoutes);
-app.use("/api/categories", categoriesRoute);
-app.use("/api/documents", sectionFilesRoute);
-app.use("/files", filesRoute);
-app.use("/download", downloadRoute);
-app.use("/api/db-test", dbTestRoute);
+app.use('/api/upload', uploadRoute);
+app.use('/api/documents', documentRoute);
+app.use('/api/approvals', approvalsRoute);
+app.use('/api/login', loginRoute);
+app.use('/api/signup', signupRoute);
+app.use('/api/auth', authRoute);
+app.use('/api/admin', adminRoutes);
+app.use('/api/categories', categoriesRoute);
+app.use('/api/documents', sectionFilesRoute);
+app.use('/files', filesRoute);
+app.use('/download', downloadRoute);
+app.use('/api/db-test', dbTestRoute);
 
-app.get("/", (req, res) => {
-  res.send("Welcome to the API server");
+app.get('/', (_req, res) => {
+  res.send('Welcome to the API server');
 });
 
-// ✅ error handler กลาง (ทำให้ 500 มี log ชัด)
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   const requestOrigin = req.headers.origin;
   if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
     res.header('Access-Control-Allow-Origin', requestOrigin);
@@ -72,7 +78,7 @@ app.use((err, req, res, next) => {
     res.header('Vary', 'Origin');
   }
 
-  console.error('Unhandled error:', err);
+  console.error('Unhandled error:', err?.message || err);
   if (err?.message === 'Not allowed by CORS') {
     return res.status(403).json({ message: 'CORS origin denied' });
   }

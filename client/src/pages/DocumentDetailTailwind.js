@@ -20,6 +20,7 @@ function DocumentDetailTailwind() {
   const [downloadFiles, setDownloadFiles] = useState([]);
   const [categories, setCategories] = useState([]);
   const [replacingSection, setReplacingSection] = useState(null);
+  const [timeline, setTimeline] = useState([]);
 
   const fileInputsRef = useRef({});
   const [loading, setLoading] = useState(true);

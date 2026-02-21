@@ -28,10 +28,11 @@ router.post('/users', async (req, res) => {
       if (!chk.rows.length) return res.status(400).json({ error: 'Student ID ไม่พบในระบบ' });
     }
 
-    await db.query(
-      'INSERT INTO users (username, student_id, password, role) VALUES ($1, $2, $3, $4)',
-      [username, student_id || null, password, role]
-    );
+     const hashed = await bcrypt.hash(password, 10);
+      await db.query(
+        'INSERT INTO users (username, student_id, password, role) VALUES ($1, $2, $3, $4)',
+        [username, student_id || null, hashed, role]
+      );
 
     res.json({ message: 'เพิ่มผู้ใช้สำเร็จ' });
   } catch (err) {

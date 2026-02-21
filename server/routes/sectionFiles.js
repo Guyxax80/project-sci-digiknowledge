@@ -251,7 +251,7 @@ async function persistFile(documentId, sectionName, file) {
        provider, bucket, storage_path, public_url, mime_type, size_bytes)
      VALUES
       ($1,$2,$3,$4,$5,NOW(),
-       'supabase',$6,$7,$8,$9,$10)`,
+        'supabase',$6,$7,$8,$9,$10)`,
     [
       documentId,
       publicUrl || objectPath, // compat
@@ -276,11 +276,16 @@ router.post('/:documentId/sections', auth, requireRole('student'), uploadSection
   }
 
   try {
-    const ownerCheck = await db.query('SELECT user_id FROM public.documents WHERE document_id = $1 LIMIT 1', [documentId]);
+    const ownerCheck = await db.query('SELECT user_id, status FROM public.documents WHERE document_id = $1 LIMIT 1', [documentId]);
     if (!ownerCheck.rows.length) return res.status(404).json({ success: false, message: 'ไม่พบเอกสาร' });
 
     if (Number(ownerCheck.rows[0].user_id) !== Number(req.user.user_id)) {
       return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์แก้ไขเอกสารนี้' });
+    }
+
+    const editableStatuses = ['draft', 'rejected'];
+    if (!editableStatuses.includes(String(ownerCheck.rows[0].status || '').toLowerCase())) {
+      return res.status(403).json({ success: false, message: 'แก้ไขได้เฉพาะ draft หรือ rejected' });
     }
 
     for (const [sectionName, fileArray] of Object.entries(req.files)) {
@@ -324,9 +329,8 @@ router.put('/:documentId/sections/:section', auth, requireRole('student'), uploa
       return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์แก้ไขเอกสารนี้' });
     }
 
-    // คงกฎเดิม: แก้ได้เฉพาะ draft
-    if (String(doc.rows[0].status || '').toLowerCase() !== 'draft') {
-      return res.status(403).json({ success: false, message: 'อนุญาตเฉพาะ draft' });
+    if (!['draft', 'rejected'].includes(String(doc.rows[0].status || '').toLowerCase())) {
+      return res.status(403).json({ success: false, message: 'แก้ไขได้เฉพาะ draft หรือ rejected' });
     }
 
     await db.query('DELETE FROM public.document_files WHERE document_id = $1 AND section = $2', [documentId, sectionName]);
