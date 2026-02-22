@@ -20,6 +20,7 @@ const filesRoute = require('./routes/files');
 const sectionFilesRoute = require('./routes/sectionFiles');
 const categoriesRoute = require('./routes/categories');
 const dbTestRoute = require('./routes/dbTest');
+const profileRoute = require('./routes/profile');
 
 const app = express();
 
@@ -34,7 +35,6 @@ const envAllowlist = String(process.env.CORS_ALLOWLIST || '')
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
-  'http://localhost:5173', // ✅ Vite
   process.env.FRONTEND_URL,
   'https://project-sci-digiknowledge1.onrender.com',
   'https://project-sci-digiknowledge.vercel.app',
@@ -95,6 +95,7 @@ app.use('/api/signup', signupRoute);
 app.use('/api/auth', authRoute);
 app.use('/api/admin', adminRoutes);
 app.use('/api/categories', categoriesRoute);
+app.use('/api/profile', profileRoute);
 
 // ⚠️ อันนี้น่าจะชน path เดิม (/api/documents)
 // ถ้า sectionFilesRoute เป็น route แยก แนะนำเปลี่ยน prefix ชัด ๆ เช่น /api/section-files
