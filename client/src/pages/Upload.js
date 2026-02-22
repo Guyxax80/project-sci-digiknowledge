@@ -404,8 +404,11 @@ export default function UploadDocument() {
           </button>
         </div>
 
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-sm text-gray-500 mt-1">
           * หมายเหตุ: บันทึกฉบับร่างอัปไฟล์ไม่ครบได้ แต่ “ส่งให้ที่ปรึกษา” ต้องครบทุกไฟล์
+            <br> 
+              ฟังก์ชันอัปโหลดจะต้องมี Student ID ที่ผ่านการอนุมัติแล้วเท่านั้น กรุณาติดต่ออาจารย์หรือผู้ดูแลระบบเพื่อขออนุมัติ Student ID ของคุณก่อนใช้งานฟังก์ชันนี้
+            </br>
         </p>
       </div>
     </div>

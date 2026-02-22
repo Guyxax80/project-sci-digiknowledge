@@ -10,11 +10,32 @@ import {
   DialogContent,
   DialogTitle,
   TextField,
+  Chip,
 } from '@mui/material';
 import api from '../services/api';
 
-// ✅ ปรับให้ตรง enum document_status_enum: draft, pending, approved, rejected
+// ✅ document_status_enum: draft, pending, approved, rejected
+const statusColor = {
+  draft: 'default',
+  pending: 'warning',
+  approved: 'success',
+  rejected: 'error',
+};
 
+const statusTH = {
+  draft: 'ฉบับร่าง',
+  pending: 'รอตรวจ',
+  approved: 'อนุมัติแล้ว',
+  rejected: 'ตีกลับแก้ไข',
+};
+
+// สำหรับ approval_history ที่มักเป็น Approved/Rejected (ตัวใหญ่)
+const approvalStatusTH = {
+  approved: 'อนุมัติ',
+  rejected: 'ปฏิเสธ/ตีกลับ',
+  pending: 'รอตรวจ',
+  draft: 'ฉบับร่าง',
+};
 
 function Profile() {
   const [user, setUser] = useState(null);
@@ -27,9 +48,20 @@ function Profile() {
   const [rejectingDoc, setRejectingDoc] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  // ✅ timeline ต่อเอกสาร (ใช้ร่วมกันทั้ง student/teacher)
-  // { [docId]: { open, loading, error, items } }
+  // ✅ timeline ต่อเอกสาร
   const [timelineByDoc, setTimelineByDoc] = useState({});
+
+  // ✅ เพิ่ม: โหมดแก้ไขโปรไฟล์
+  const [editProfile, setEditProfile] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    username: '',
+    student_id: '',
+    class_group: '',
+    level: '',
+    email: '',
+    password: '',
+  });
 
   const navigate = useNavigate();
 
@@ -65,7 +97,6 @@ function Profile() {
     }
   }, [isTeacher]);
 
-  // ✅ โหลดโปรไฟล์
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -85,6 +116,16 @@ function Profile() {
 
         setUser(data.user);
 
+        // ✅ ตั้งค่า form เริ่มต้นสำหรับแก้ไขโปรไฟล์
+        setProfileForm({
+          username: data.user.username || '',
+          student_id: data.user.student_id || '',
+          class_group: data.user.class_group || '',
+          level: data.user.level || '',
+          email: data.user.email || '',
+          password: '',
+        });
+
         if (String(data.user.role).toLowerCase() === 'student') {
           await loadMyDocs(data.user.user_id);
         }
@@ -96,7 +137,6 @@ function Profile() {
       .finally(() => setLoading(false));
   }, [loadMyDocs]);
 
-  // ✅ โหลดรายการรอตรวจของครู
   useEffect(() => {
     loadPendingDocs().catch((e) => console.error(e));
   }, [loadPendingDocs]);
@@ -108,7 +148,68 @@ function Profile() {
     navigate('/login');
   };
 
-  // ✅ เปิด/ปิด + โหลด timeline แบบ lazy (กดแล้วค่อยโหลด)
+  // ✅ เพิ่ม: เช็ค email ก่อนทำ action สำคัญ
+  const ensureEmailOrOpenEdit = (actionLabel) => {
+    const email = String(user?.email || '').trim();
+    if (email) return true;
+
+    alert(`ต้องเพิ่มอีเมลในโปรไฟล์ก่อน ถึงจะ${actionLabel}ได้`);
+    setEditProfile(true);
+    return false;
+  };
+
+  // ✅ เพิ่ม: บันทึกแก้ไขโปรไฟล์ (ใช้ PATCH /api/profile/me ตาม backend ของคุณ)
+  const handleSaveProfile = async () => {
+    try {
+      setSavingProfile(true);
+
+      // ส่งเฉพาะ field ตาม role (ไม่รื้อระบบเดิม)
+      const payload = {
+        username: profileForm.username,
+        email: profileForm.email,
+      };
+
+      if (isStudent) {
+        payload.student_id = profileForm.student_id;
+        payload.class_group = profileForm.class_group;
+        payload.level = profileForm.level;
+      }
+
+      // เปลี่ยนรหัสผ่านถ้ากรอกมา
+      if (String(profileForm.password || '').trim()) {
+        payload.password = profileForm.password;
+      }
+
+      const res = await api.patch('/api/profile/me', payload);
+      const updatedUser = res.data?.user;
+
+      if (!res.data?.success || !updatedUser) {
+        alert(res.data?.message || 'บันทึกไม่สำเร็จ');
+        return;
+      }
+
+      setUser(updatedUser);
+      setProfileForm((prev) => ({
+        ...prev,
+        username: updatedUser.username || '',
+        student_id: updatedUser.student_id || '',
+        class_group: updatedUser.class_group || '',
+        level: updatedUser.level || '',
+        email: updatedUser.email || '',
+        password: '',
+      }));
+
+      setEditProfile(false);
+      alert('บันทึกโปรไฟล์สำเร็จ');
+    } catch (err) {
+      console.error('save profile error:', err?.response?.data || err.message);
+      alert(err?.response?.data?.message || 'บันทึกไม่สำเร็จ');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  // ✅ เปิด/ปิด + โหลด timeline (lazy)
   const toggleTimeline = async (documentId) => {
     // toggle open
     setTimelineByDoc((prev) => {
@@ -137,25 +238,42 @@ function Profile() {
       console.error('load timeline error:', err?.response?.data || err.message);
       setTimelineByDoc((prev) => ({
         ...prev,
-        [documentId]: { ...(prev[documentId] || {}), open: true, loading: false, error: 'โหลด Timeline ไม่สำเร็จ', items: [] },
+        [documentId]: {
+          ...(prev[documentId] || {}),
+          open: true,
+          loading: false,
+          error: 'โหลด Timeline ไม่สำเร็จ',
+          items: [],
+        },
       }));
     }
   };
 
-  // ✅ UI timeline สวย (รีใช้ได้ทั้ง student/teacher)
-  const TimelineBlock = ({ documentId }) => {
+  // ✅ UI timeline (มี Chip สถานะอยู่บนหัว)
+  const TimelineBlock = ({ documentId, docStatus }) => {
     const state = timelineByDoc[documentId] || { open: false, loading: false, error: null, items: null };
     const items = Array.isArray(state.items) ? state.items : [];
 
+    const normalizedDocStatus = String(docStatus || 'draft').toLowerCase();
+
     return (
       <div className="mt-2">
-        <button
-          type="button"
-          onClick={() => toggleTimeline(documentId)}
-          className="text-sm text-blue-600 hover:underline"
-        >
-          {state.open ? 'ซ่อน Timeline' : 'ดู Timeline'}
-        </button>
+        {/* ✅ สถานะเอกสารอยู่บนหัว Timeline */}
+        <div className="flex items-center justify-between gap-2">
+          <Chip
+            size="small"
+            label={`สถานะ: ${statusTH[normalizedDocStatus] || normalizedDocStatus}`}
+            color={statusColor[normalizedDocStatus] || 'default'}
+          />
+
+          <button
+            type="button"
+            onClick={() => toggleTimeline(documentId)}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            {state.open ? 'ซ่อน Timeline' : 'ดู Timeline'}
+          </button>
+        </div>
 
         {state.open && (
           <div className="mt-3">
@@ -190,7 +308,7 @@ function Profile() {
                             <div className="bg-white shadow-sm rounded-lg p-4 border">
                               <div className="flex justify-between items-center mb-1">
                                 <span className={`px-2 py-1 text-xs rounded-full border ${style}`}>
-                                  {item.status}
+                                  {approvalStatusTH[status] || item.status}
                                 </span>
 
                                 <span className="text-xs text-gray-500">
@@ -226,24 +344,120 @@ function Profile() {
       <Card>
         <CardContent>
           <Typography variant="h5" className="mb-2">โปรไฟล์ผู้ใช้งาน</Typography>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>Username: <strong>{user.username}</strong></div>
-            <div>Role: <strong>{user.role}</strong></div>
-            <div>Student ID: <strong>{user.student_id || '-'}</strong></div>
-            <div>Class Group: <strong>{user.class_group || '-'}</strong></div>
-            <div>Level: <strong>{user.level || '-'}</strong></div>
-            <div>Email: <strong>{user.email || '-'}</strong></div>
-          </div>
 
-          <div className="mt-4">
-            <Button variant="outlined" color="error" onClick={handleLogout}>Logout</Button>
-          </div>
+          {/* ✅ แสดง/แก้ไข โปรไฟล์ (เพิ่มเข้ามา แต่ไม่รื้อของเดิม) */}
+          {!editProfile ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>Username: <strong>{user.username}</strong></div>
+                <div>Role: <strong>{user.role}</strong></div>
+                <div>Student ID: <strong>{user.student_id || '-'}</strong></div>
+                <div>Class Group: <strong>{user.class_group || '-'}</strong></div>
+                <div>Level: <strong>{user.level || '-'}</strong></div>
+                <div>Email: <strong>{user.email || '-'}</strong></div>
+              </div>
 
-          {isAdmin ? (
-            <Typography sx={{ mt: 2 }} color="text.secondary">
-              คุณเป็นผู้ดูแลระบบ (Admin) — หน้านี้แสดงข้อมูลโปรไฟล์เท่านั้น
-            </Typography>
-          ) : null}
+              <div className="mt-4 flex gap-2 flex-wrap">
+                {!isAdmin && (
+                  <Button variant="contained" onClick={() => setEditProfile(true)}>
+                    แก้ไขโปรไฟล์
+                  </Button>
+                )}
+
+                <Button variant="outlined" color="error" onClick={handleLogout}>
+                  Logout
+                </Button>
+              </div>
+
+              {isAdmin ? (
+                <Typography sx={{ mt: 2 }} color="text.secondary">
+                  คุณเป็นผู้ดูแลระบบ (Admin) — หน้านี้แสดงข้อมูลโปรไฟล์เท่านั้น
+                </Typography>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                <TextField
+                  label="Username"
+                  value={profileForm.username}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, username: e.target.value }))}
+                  fullWidth
+                />
+
+                {/* ✅ Student แก้ได้ครบ */}
+                {isStudent && (
+                  <>
+                    <TextField
+                      label="Student ID"
+                      value={profileForm.student_id}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, student_id: e.target.value }))}
+                      fullWidth
+                    />
+                    <TextField
+                      label="Class Group"
+                      value={profileForm.class_group}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, class_group: e.target.value }))}
+                      fullWidth
+                    />
+                    <TextField
+                      label="Level"
+                      value={profileForm.level}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, level: e.target.value }))}
+                      fullWidth
+                    />
+                  </>
+                )}
+
+                {/* ✅ Student/Teacher ใส่ email ได้ */}
+                {(isStudent || isTeacher) && (
+                  <TextField
+                    label="Email (สำหรับรับแจ้งเตือน)"
+                    value={profileForm.email}
+                    onChange={(e) => setProfileForm((p) => ({ ...p, email: e.target.value }))}
+                    fullWidth
+                  />
+                )}
+
+                {/* ✅ เปลี่ยนรหัสผ่าน (ถ้าไม่กรอก จะไม่เปลี่ยน) */}
+                <TextField
+                  label="เปลี่ยนรหัสผ่าน (ไม่กรอก = ไม่เปลี่ยน)"
+                  type="password"
+                  value={profileForm.password}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, password: e.target.value }))}
+                  fullWidth
+                />
+              </div>
+
+              <div className="mt-4 flex gap-2 flex-wrap">
+                <Button
+                  variant="contained"
+                  disabled={savingProfile}
+                  onClick={handleSaveProfile}
+                >
+                  บันทึก
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    // reset form ให้กลับเป็นค่าล่าสุดจาก user
+                    setProfileForm({
+                      username: user.username || '',
+                      student_id: user.student_id || '',
+                      class_group: user.class_group || '',
+                      level: user.level || '',
+                      email: user.email || '',
+                      password: '',
+                    });
+                    setEditProfile(false);
+                  }}
+                >
+                  ยกเลิก
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -266,9 +480,8 @@ function Profile() {
                     <Typography variant="body2" color="text.secondary">คำค้นหา: {doc.keywords || '-'}</Typography>
                     <Typography variant="body2" color="text.secondary">ปีการศึกษา: {doc.academic_year || '-'}</Typography>
 
-                    {/* ✅ แทน Chip ด้วย Timeline ตามที่ขอ */}
                     <div className="mt-2">
-                      <TimelineBlock documentId={doc.document_id} />
+                      <TimelineBlock documentId={doc.document_id} docStatus={doc.status} />
                     </div>
 
                     <div className="mt-3 flex gap-2 flex-wrap">
@@ -281,6 +494,9 @@ function Profile() {
                           size="small"
                           variant="contained"
                           onClick={async () => {
+                            // ✅ เพิ่มเงื่อนไข: ไม่มี email ห้ามส่ง
+                            if (!ensureEmailOrOpenEdit('ส่งให้อาจารย์ตรวจ')) return;
+
                             await api.post(`/api/documents/${doc.document_id}/submit`);
                             await loadMyDocs(user.user_id);
                           }}
@@ -297,15 +513,12 @@ function Profile() {
         </>
       )}
 
-      {/* ================= TEACHER (Advisor) ================= */}
+      {/* ================= TEACHER ================= */}
       {isTeacher && (
         <>
           <Typography variant="h6">รายการรออนุมัติ (เฉพาะนักศึกษาที่คุณเป็นที่ปรึกษา)</Typography>
 
-          {pendingError ? (
-            <Typography color="error" sx={{ mb: 1 }}>{pendingError}</Typography>
-          ) : null}
-
+          {pendingError ? <Typography color="error" sx={{ mb: 1 }}>{pendingError}</Typography> : null}
           {pendingDocs.length === 0 && !pendingError && (
             <Typography color="text.secondary">ไม่มีรายการรอตรวจ</Typography>
           )}
@@ -319,9 +532,8 @@ function Profile() {
                     ผู้ส่ง: {doc.student_name} ({doc.student_id || '-'})
                   </Typography>
 
-                  {/* ✅ ครูอยากดู Timeline ของงานที่จะตรวจได้ด้วย */}
                   <div className="mt-2">
-                    <TimelineBlock documentId={doc.document_id} />
+                    <TimelineBlock documentId={doc.document_id} docStatus={doc.status} />
                   </div>
 
                   <div className="mt-3 flex gap-2 flex-wrap">
@@ -334,6 +546,9 @@ function Profile() {
                       variant="contained"
                       color="success"
                       onClick={async () => {
+                        // ✅ เพิ่มเงื่อนไข: ครูไม่มี email ห้ามอนุมัติ
+                        if (!ensureEmailOrOpenEdit('อนุมัติ')) return;
+
                         await api.post(`/api/approvals/${doc.document_id}/approve`);
                         await loadPendingDocs();
                       }}
@@ -345,7 +560,11 @@ function Profile() {
                       size="small"
                       variant="contained"
                       color="error"
-                      onClick={() => setRejectingDoc(doc)}
+                      onClick={() => {
+                        // ✅ เพิ่มเงื่อนไข: ครูไม่มี email ห้ามตีกลับ (แม้แต่เปิด dialog)
+                        if (!ensureEmailOrOpenEdit('ตีกลับ')) return;
+                        setRejectingDoc(doc);
+                      }}
                     >
                       ตีกลับ
                     </Button>
@@ -387,6 +606,9 @@ function Profile() {
             variant="contained"
             disabled={!rejectReason.trim()}
             onClick={async () => {
+              // ✅ เพิ่มเช็คอีเมลอีกชั้นกันหลุด
+              if (!ensureEmailOrOpenEdit('ตีกลับ')) return;
+
               await api.post(`/api/approvals/${rejectingDoc.document_id}/reject`, { reason: rejectReason });
               setRejectingDoc(null);
               setRejectReason('');
