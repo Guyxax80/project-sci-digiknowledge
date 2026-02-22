@@ -1,4 +1,4 @@
-// routes/upload.js
+// server/routes/upload.js
 const express = require('express');
 const multer = require('multer');
 const db = require('../db');
@@ -13,7 +13,7 @@ const router = express.Router();
 const MAX_UPLOAD_SIZE_BYTES = 500 * 1024 * 1024; // 500MB
 const VIDEO_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000; // 10 นาที
 
-// ✅ เก็บไฟล์ใน memory แล้วอัปขึ้น Storage
+// ✅ เก็บไฟล์ใน memory แล้วอัปขึ้น Storage (ถ้ามีส่งมา)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -24,9 +24,11 @@ const upload = multer({
 const uploadSingleFile = upload.single('file');
 
 // ===== Helpers =====
+// ✅ status documents ของคุณ = draft/pending/approved/rejected
 const normalizeStatus = (status) => {
-  if (!status) return 'draft';
-  if (['draft', 'pending', 'published', 'rejected'].includes(status)) return status;
+  const s = String(status || '').trim().toLowerCase();
+  if (!s) return 'draft';
+  if (['draft', 'pending', 'approved', 'rejected'].includes(s)) return s;
   return 'draft';
 };
 
@@ -168,8 +170,10 @@ async function uploadVideoToCloudinary(file, userId) {
 }
 
 // =======================================================
-// POST /api/upload  (เอกสาร -> Supabase, วิดีโอ -> Cloudinary)
-// ✅ เฉพาะนักศึกษาที่ "verified" (student_id อยู่ใน student_codes) เท่านั้น
+// POST /api/upload
+// ✅ สร้างเอกสารได้แม้ไม่มีไฟล์ main (ใช้สำหรับ draft)
+// - เอกสาร (PDF/DOC/DOCX) -> Supabase Storage (ถ้ามีส่งมา)
+// - วิดีโอ -> Cloudinary (ถ้ามีส่งมา)
 // =======================================================
 router.post(
   '/',
@@ -209,13 +213,6 @@ router.post(
         return res.status(400).json({ success: false, message: 'กรุณากรอกชื่อเอกสาร' });
       }
 
-      // ✅ ถ้าต้อง "บังคับมีไฟล์" ให้เปิดไว้
-      if (!req.file) {
-        return res.status(400).json({ success: false, message: 'กรุณาเลือกไฟล์ (PDF/DOC/DOCX หรือ VIDEO)' });
-      }
-
-      console.log('[upload] categorie_ids raw:', req.body?.categorie_ids);
-
       const safeStatus = normalizeStatus(status);
       const parsedCategorieIds = parseCategorieIds(categorie_ids);
 
@@ -223,7 +220,7 @@ router.post(
 
       await client.query('BEGIN');
 
-      // 1) สร้างเอกสาร
+      // 1) สร้างเอกสาร (draft ได้เลย)
       const docResult = await client.query(
         `INSERT INTO public.documents (user_id, title, keywords, academic_year, status)
          VALUES ($1, $2, $3, $4, $5)
@@ -243,73 +240,80 @@ router.post(
         );
       }
 
-      // 3) อัปโหลดไฟล์ตามชนิด
-      const mimeType = req.file.mimetype;
+      // 3) ถ้ามีไฟล์ main -> อัปโหลดและบันทึกลง document_files
+      if (req.file) {
+        const mimeType = req.file.mimetype;
 
-      // ===== A) VIDEO -> Cloudinary =====
-      if (isVideo(mimeType)) {
-        const uploaded = await uploadVideoToCloudinary(req.file, userId);
+        // ===== A) VIDEO -> Cloudinary =====
+        if (isVideo(mimeType)) {
+          const uploaded = await uploadVideoToCloudinary(req.file, userId);
 
-        await insertDocumentFileWithOptionalPublicId({
-          client,
-          documentId,
-          filePath: uploaded.secure_url,
-          originalName: req.file.originalname,
-          fileType: mimeType,
-          section: 'main',
-          publicId: uploaded.public_id,
-        });
-      }
-
-      // ===== B) PDF/DOC/DOCX -> Supabase Storage =====
-      else if (isDoc(mimeType)) {
-        const bucket = 'documents';
-        const ext = extFromMime(mimeType);
-        const filename = `${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
-        const storagePath = `users/${userId}/${documentId}/${filename}`;
-
-        const { error: upErr } = await supabase.storage
-          .from(bucket)
-          .upload(storagePath, req.file.buffer, {
-            contentType: mimeType,
-            upsert: false,
+          await insertDocumentFileWithOptionalPublicId({
+            client,
+            documentId,
+            filePath: uploaded.secure_url,
+            originalName: req.file.originalname,
+            fileType: mimeType,
+            section: 'main',
+            publicId: uploaded.public_id,
           });
-
-        if (upErr) {
-          console.error('Supabase upload error:', upErr);
-          const e = new Error('อัปโหลดขึ้น Supabase ไม่สำเร็จ');
-          e.status = 500;
-          e.details = upErr;
-          throw e;
         }
 
-        const { data: pub } = supabase.storage.from(bucket).getPublicUrl(storagePath);
-        const publicUrl = pub?.publicUrl;
+        // ===== B) PDF/DOC/DOCX -> Supabase Storage =====
+        else if (isDoc(mimeType)) {
+          const bucket = 'documents';
+          const ext = extFromMime(mimeType);
+          const filename = `${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+          const storagePath = `users/${userId}/${documentId}/${filename}`;
 
-        if (!publicUrl) {
-          const e = new Error('สร้าง Public URL ไม่สำเร็จ (เช็คว่า bucket เป็น Public)');
-          e.status = 500;
+          const { error: upErr } = await supabase.storage
+            .from(bucket)
+            .upload(storagePath, req.file.buffer, {
+              contentType: mimeType,
+              upsert: false,
+            });
+
+          if (upErr) {
+            console.error('Supabase upload error:', upErr);
+            const e = new Error('อัปโหลดขึ้น Supabase ไม่สำเร็จ');
+            e.status = 500;
+            e.details = upErr;
+            throw e;
+          }
+
+          const { data: pub } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+          const publicUrl = pub?.publicUrl;
+
+          if (!publicUrl) {
+            const e = new Error('สร้าง Public URL ไม่สำเร็จ (เช็คว่า bucket เป็น Public)');
+            e.status = 500;
+            throw e;
+          }
+
+          await insertDocumentFileWithOptionalPublicId({
+            client,
+            documentId,
+            filePath: publicUrl,
+            originalName: req.file.originalname,
+            fileType: mimeType,
+            section: 'main',
+            publicId: null,
+          });
+        } else {
+          const e = new Error('ชนิดไฟล์ไม่รองรับ (รองรับ PDF/DOC/DOCX และ VIDEO)');
+          e.status = 400;
           throw e;
         }
-
-        await insertDocumentFileWithOptionalPublicId({
-          client,
-          documentId,
-          filePath: publicUrl,
-          originalName: req.file.originalname,
-          fileType: mimeType,
-          section: 'main',
-          publicId: null,
-        });
-      } else {
-        const e = new Error('ชนิดไฟล์ไม่รองรับ (รองรับ PDF/DOC/DOCX และ VIDEO)');
-        e.status = 400;
-        throw e;
       }
 
       await client.query('COMMIT');
 
-      return res.json({ success: true, message: 'อัปโหลดสำเร็จ', documentId });
+      return res.json({
+        success: true,
+        message: 'สร้างเอกสารสำเร็จ',
+        documentId,
+        uploadedMain: Boolean(req.file),
+      });
     } catch (err) {
       try {
         await client.query('ROLLBACK');
