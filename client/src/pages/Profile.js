@@ -5,7 +5,6 @@ import {
   Card,
   CardContent,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -14,12 +13,8 @@ import {
 } from '@mui/material';
 import api from '../services/api';
 
-const statusColor = {
-  draft: 'default',
-  pending: 'warning',
-  published: 'success',
-  rejected: 'error',
-};
+// ✅ ปรับให้ตรง enum document_status_enum: draft, pending, approved, rejected
+
 
 function Profile() {
   const [user, setUser] = useState(null);
@@ -32,6 +27,10 @@ function Profile() {
   const [rejectingDoc, setRejectingDoc] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
 
+  // ✅ timeline ต่อเอกสาร (ใช้ร่วมกันทั้ง student/teacher)
+  // { [docId]: { open, loading, error, items } }
+  const [timelineByDoc, setTimelineByDoc] = useState({});
+
   const navigate = useNavigate();
 
   const effectiveRole = useMemo(
@@ -39,7 +38,6 @@ function Profile() {
     [user]
   );
 
-  // ✅ approvals backend ของคุณ: ให้เฉพาะ teacher เท่านั้น
   const isTeacher = effectiveRole === 'teacher';
   const isStudent = effectiveRole === 'student';
   const isAdmin = effectiveRole === 'admin';
@@ -50,7 +48,6 @@ function Profile() {
   }, []);
 
   const loadPendingDocs = useCallback(async () => {
-    // ✅ admin ไม่ต้องเรียก (จะ 403)
     if (!isTeacher) {
       setPendingDocs([]);
       setPendingError('');
@@ -68,6 +65,7 @@ function Profile() {
     }
   }, [isTeacher]);
 
+  // ✅ โหลดโปรไฟล์
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -75,7 +73,6 @@ function Profile() {
       return;
     }
 
-    // ✅ api.js ใส่ Authorization ให้อยู่แล้ว ไม่ต้องส่ง headers ซ้ำ
     api
       .get('/api/auth/me')
       .then(async (res) => {
@@ -99,6 +96,7 @@ function Profile() {
       .finally(() => setLoading(false));
   }, [loadMyDocs]);
 
+  // ✅ โหลดรายการรอตรวจของครู
   useEffect(() => {
     loadPendingDocs().catch((e) => console.error(e));
   }, [loadPendingDocs]);
@@ -108,6 +106,116 @@ function Profile() {
     localStorage.removeItem('role');
     localStorage.removeItem('userId');
     navigate('/login');
+  };
+
+  // ✅ เปิด/ปิด + โหลด timeline แบบ lazy (กดแล้วค่อยโหลด)
+  const toggleTimeline = async (documentId) => {
+    // toggle open
+    setTimelineByDoc((prev) => {
+      const cur = prev[documentId] || { open: false, loading: false, error: null, items: null };
+      return { ...prev, [documentId]: { ...cur, open: !cur.open } };
+    });
+
+    // ถ้าเคยโหลดแล้ว ไม่ต้องโหลดซ้ำ
+    const cur = timelineByDoc[documentId];
+    if (cur?.items) return;
+
+    // โหลดตอนเปิดครั้งแรก
+    setTimelineByDoc((prev) => ({
+      ...prev,
+      [documentId]: { ...(prev[documentId] || {}), open: true, loading: true, error: null, items: null },
+    }));
+
+    try {
+      const res = await api.get(`/api/approvals/${documentId}/timeline`);
+      const items = res.data?.timeline || [];
+      setTimelineByDoc((prev) => ({
+        ...prev,
+        [documentId]: { ...(prev[documentId] || {}), open: true, loading: false, error: null, items },
+      }));
+    } catch (err) {
+      console.error('load timeline error:', err?.response?.data || err.message);
+      setTimelineByDoc((prev) => ({
+        ...prev,
+        [documentId]: { ...(prev[documentId] || {}), open: true, loading: false, error: 'โหลด Timeline ไม่สำเร็จ', items: [] },
+      }));
+    }
+  };
+
+  // ✅ UI timeline สวย (รีใช้ได้ทั้ง student/teacher)
+  const TimelineBlock = ({ documentId }) => {
+    const state = timelineByDoc[documentId] || { open: false, loading: false, error: null, items: null };
+    const items = Array.isArray(state.items) ? state.items : [];
+
+    return (
+      <div className="mt-2">
+        <button
+          type="button"
+          onClick={() => toggleTimeline(documentId)}
+          className="text-sm text-blue-600 hover:underline"
+        >
+          {state.open ? 'ซ่อน Timeline' : 'ดู Timeline'}
+        </button>
+
+        {state.open && (
+          <div className="mt-3">
+            {state.loading && <p className="text-sm text-gray-500">กำลังโหลด...</p>}
+            {state.error && <p className="text-sm text-red-600">{state.error}</p>}
+
+            {!state.loading && !state.error && (
+              <>
+                {items.length === 0 ? (
+                  <p className="text-sm text-gray-500">ยังไม่มีประวัติการอนุมัติ</p>
+                ) : (
+                  <div className="mt-4 border-t pt-4">
+                    <h3 className="font-semibold mb-4 text-lg">Timeline การอนุมัติ</h3>
+
+                    <div className="relative border-l-2 border-gray-200 ml-2">
+                      {items.map((item) => {
+                        const status = (item.status || '').toLowerCase();
+
+                        const statusStyles = {
+                          approved: 'bg-green-100 text-green-700 border-green-400',
+                          rejected: 'bg-red-100 text-red-700 border-red-400',
+                          pending: 'bg-yellow-100 text-yellow-700 border-yellow-400',
+                          draft: 'bg-gray-100 text-gray-600 border-gray-400',
+                        };
+
+                        const style = statusStyles[status] || 'bg-gray-100 text-gray-600 border-gray-400';
+
+                        return (
+                          <div key={item.approval_id} className="mb-6 ml-6 relative">
+                            <span className={`absolute -left-3 top-1 w-5 h-5 rounded-full border-2 ${style}`}></span>
+
+                            <div className="bg-white shadow-sm rounded-lg p-4 border">
+                              <div className="flex justify-between items-center mb-1">
+                                <span className={`px-2 py-1 text-xs rounded-full border ${style}`}>
+                                  {item.status}
+                                </span>
+
+                                <span className="text-xs text-gray-500">
+                                  {item.approved_at ? new Date(item.approved_at).toLocaleString() : '-'}
+                                </span>
+                              </div>
+
+                              <div className="text-sm">โดย {item.approver_name || '-'}</div>
+
+                              {item.reason && (
+                                <div className="text-sm text-red-500 mt-1">เหตุผล: {item.reason}</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   if (loading) return <p className="p-4">กำลังโหลด...</p>;
@@ -131,7 +239,6 @@ function Profile() {
             <Button variant="outlined" color="error" onClick={handleLogout}>Logout</Button>
           </div>
 
-          {/* ✅ Admin: แค่โชว์ข้อความ ไม่ต้องดึง approvals */}
           {isAdmin ? (
             <Typography sx={{ mt: 2 }} color="text.secondary">
               คุณเป็นผู้ดูแลระบบ (Admin) — หน้านี้แสดงข้อมูลโปรไฟล์เท่านั้น
@@ -159,8 +266,9 @@ function Profile() {
                     <Typography variant="body2" color="text.secondary">คำค้นหา: {doc.keywords || '-'}</Typography>
                     <Typography variant="body2" color="text.secondary">ปีการศึกษา: {doc.academic_year || '-'}</Typography>
 
+                    {/* ✅ แทน Chip ด้วย Timeline ตามที่ขอ */}
                     <div className="mt-2">
-                      <Chip size="small" label={normalized} color={statusColor[normalized] || 'default'} />
+                      <TimelineBlock documentId={doc.document_id} />
                     </div>
 
                     <div className="mt-3 flex gap-2 flex-wrap">
@@ -173,7 +281,6 @@ function Profile() {
                           size="small"
                           variant="contained"
                           onClick={async () => {
-                            // ✅ ถ้าคุณย้ายไป approvals/request แล้ว ให้เปลี่ยน endpoint ตรงนี้ได้
                             await api.post(`/api/documents/${doc.document_id}/submit`);
                             await loadMyDocs(user.user_id);
                           }}
@@ -211,6 +318,11 @@ function Profile() {
                   <Typography variant="body2" color="text.secondary">
                     ผู้ส่ง: {doc.student_name} ({doc.student_id || '-'})
                   </Typography>
+
+                  {/* ✅ ครูอยากดู Timeline ของงานที่จะตรวจได้ด้วย */}
+                  <div className="mt-2">
+                    <TimelineBlock documentId={doc.document_id} />
+                  </div>
 
                   <div className="mt-3 flex gap-2 flex-wrap">
                     <Button size="small" variant="outlined" onClick={() => navigate(`/document-detail/${doc.document_id}`)}>

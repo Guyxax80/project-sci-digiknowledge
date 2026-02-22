@@ -20,6 +20,39 @@ function requireTeacher(req, res) {
 }
 
 // =========================
+// TIMELINE: ดูประวัติการอนุมัติของเอกสาร
+// GET /api/approvals/:documentId/timeline
+// =========================
+router.get('/:documentId/timeline', auth, async (req, res) => {
+  const documentId = Number(req.params.documentId);
+  if (!documentId) {
+    return res.status(400).json({ success: false, message: 'documentId ไม่ถูกต้อง' });
+  }
+
+  try {
+    const { rows } = await db.query(
+      `
+      SELECT ah.approval_id,
+             ah.status,
+             ah.reason,
+             ah.approved_at,
+             u.username AS approver_name
+      FROM public.approval_history ah
+      LEFT JOIN public.users u ON u.user_id = ah.approver_id
+      WHERE ah.document_id = $1
+      ORDER BY ah.approved_at DESC
+      `,
+      [documentId]
+    );
+
+    return res.json({ success: true, timeline: rows });
+  } catch (err) {
+    console.error('GET /api/approvals/:documentId/timeline error', err);
+    return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาด' });
+  }
+});
+
+// =========================
 // TEACHER: pending list (เฉพาะของตัวเอง)
 // GET /api/approvals/pending
 // =========================
@@ -92,7 +125,7 @@ router.post('/:documentId/approve', auth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'อนุมัติได้เฉพาะเอกสารรอตรวจ' });
     }
 
-    // ✅ approval_history enum ของคุณเป็น Approved/Rejected (ตัวใหญ่)
+    // ✅ approval_history enum เป็น Approved/Rejected (ตัวใหญ่)
     await client.query(
       `
       INSERT INTO public.approval_history (document_id, approver_id, status, reason, approved_at)
@@ -101,7 +134,7 @@ router.post('/:documentId/approve', auth, async (req, res) => {
       [documentId, teacherId]
     );
 
-    // ✅ documents.status enum ของคุณเป็น draft/pending/approved/rejected (ตัวเล็ก)
+    // ✅ documents.status enum เป็น draft/pending/approved/rejected (ตัวเล็ก)
     await client.query(
       `UPDATE public.documents SET status = 'approved' WHERE document_id = $1`,
       [documentId]
@@ -183,7 +216,6 @@ router.post('/:documentId/reject', auth, async (req, res) => {
       [documentId, teacherId, parsed.data.reason]
     );
 
-    // ✅ documents.status enum เป็นตัวเล็ก
     await client.query(
       `UPDATE public.documents SET status = 'rejected' WHERE document_id = $1`,
       [documentId]

@@ -19,7 +19,7 @@ function DocumentDetailTailwind() {
   const [videoFile, setVideoFile] = useState(null);
   const [downloadFiles, setDownloadFiles] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [timeline, setTimeline] = useState([]);
+  const [, setTimeline] = useState([]);
   const [replacingSection, setReplacingSection] = useState(null);
 
 
@@ -327,64 +327,6 @@ function DocumentDetailTailwind() {
               <span className="font-semibold">ปีการศึกษา:</span>{" "}
               {doc.academic_year || "-"}
             </p>
-
-            {/* 🔥 Timeline ย้ายมาอยู่ตรงนี้ */}
-            {timeline.length > 0 && (
-              <div className="mt-6 border-t pt-4">
-                <h3 className="font-semibold mb-4 text-lg">Timeline การอนุมัติ</h3>
-
-                <div className="relative border-l-2 border-gray-200 ml-2">
-                  {timeline.map((item) => {
-                    const status = (item.status || "").toLowerCase();
-
-                    const statusStyles = {
-                      approved: "bg-green-100 text-green-700 border-green-400",
-                      rejected: "bg-red-100 text-red-700 border-red-400",
-                      pending: "bg-yellow-100 text-yellow-700 border-yellow-400",
-                      draft: "bg-gray-100 text-gray-600 border-gray-400",
-                    };
-
-                    const style =
-                      statusStyles[status] || "bg-gray-100 text-gray-600 border-gray-400";
-
-                    return (
-                      <div key={item.approval_id} className="mb-6 ml-6 relative">
-                        {/* จุดวงกลม */}
-                        <span
-                          className={`absolute -left-3 top-1 w-5 h-5 rounded-full border-2 ${style}`}
-                        ></span>
-
-                        <div className="bg-white shadow-sm rounded-lg p-4 border">
-                          <div className="flex justify-between items-center mb-1">
-                            <span
-                              className={`px-2 py-1 text-xs rounded-full border ${style}`}
-                            >
-                              {item.status}
-                            </span>
-
-                            <span className="text-xs text-gray-500">
-                              {item.approved_at
-                                ? new Date(item.approved_at).toLocaleString()
-                                : "-"}
-                            </span>
-                          </div>
-
-                          <div className="text-sm">
-                            โดย {item.approver_name || "-"}
-                          </div>
-
-                          {item.reason && (
-                            <div className="text-sm text-red-500 mt-1">
-                              เหตุผล: {item.reason}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
