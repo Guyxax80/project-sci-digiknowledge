@@ -51,7 +51,7 @@ function Profile() {
   // ✅ timeline ต่อเอกสาร
   const [timelineByDoc, setTimelineByDoc] = useState({});
 
-  // ✅ เพิ่ม: โหมดแก้ไขโปรไฟล์
+  // ✅ โหมดแก้ไขโปรไฟล์
   const [editProfile, setEditProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({
@@ -73,6 +73,14 @@ function Profile() {
   const isTeacher = effectiveRole === 'teacher';
   const isStudent = effectiveRole === 'student';
   const isAdmin = effectiveRole === 'admin';
+
+  // ✅ ดึง profile จาก route ที่ “ชัวร์ว่ามี email”
+  const fetchProfileMe = useCallback(async () => {
+    // server ต้องมี GET /api/profile/me (คุณ mount แล้ว)
+    const res = await api.get('/api/profile/me');
+    // expected: { user_id, username, role, student_id, class_group, level, email }
+    return res.data;
+  }, []);
 
   const loadMyDocs = useCallback(async (userId) => {
     const r = await api.get(`/api/documents/by-user/${userId}`);
@@ -97,6 +105,7 @@ function Profile() {
     }
   }, [isTeacher]);
 
+  // ✅ โหลด user จาก /api/auth/me แล้ว merge email จาก /api/profile/me
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -104,38 +113,55 @@ function Profile() {
       return;
     }
 
-    api
-      .get('/api/auth/me')
-      .then(async (res) => {
-        const data = res.data;
+    (async () => {
+      try {
+        // 1) auth/me สำหรับเช็ค login
+        const authRes = await api.get('/api/auth/me');
+        const data = authRes.data;
 
         if (!data?.success || !data?.user) {
           setUser(null);
           return;
         }
 
-        setUser(data.user);
+        // 2) profile/me เพื่อเอา email ที่ชัวร์
+        let profileMe = null;
+        try {
+          profileMe = await fetchProfileMe();
+        } catch (e) {
+          console.error('profile/me error:', e?.response?.data || e.message);
+          profileMe = null;
+        }
 
-        // ✅ ตั้งค่า form เริ่มต้นสำหรับแก้ไขโปรไฟล์
+        const mergedUser = {
+          ...data.user,
+          ...(profileMe || {}),
+          email: String(profileMe?.email ?? data.user.email ?? '').trim(),
+        };
+
+        setUser(mergedUser);
+
+        // ✅ ตั้งค่า form เริ่มต้น
         setProfileForm({
-          username: data.user.username || '',
-          student_id: data.user.student_id || '',
-          class_group: data.user.class_group || '',
-          level: data.user.level || '',
-          email: data.user.email || '',
+          username: mergedUser.username || '',
+          student_id: mergedUser.student_id || '',
+          class_group: mergedUser.class_group || '',
+          level: mergedUser.level || '',
+          email: mergedUser.email || '',
           password: '',
         });
 
-        if (String(data.user.role).toLowerCase() === 'student') {
-          await loadMyDocs(data.user.user_id);
+        if (String(mergedUser.role).toLowerCase() === 'student') {
+          await loadMyDocs(mergedUser.user_id);
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error('Error fetching profile:', err?.response?.data || err.message);
         setUser(null);
-      })
-      .finally(() => setLoading(false));
-  }, [loadMyDocs]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [loadMyDocs, fetchProfileMe]);
 
   useEffect(() => {
     loadPendingDocs().catch((e) => console.error(e));
@@ -148,7 +174,7 @@ function Profile() {
     navigate('/login');
   };
 
-  // ✅ เพิ่ม: เช็ค email ก่อนทำ action สำคัญ
+  // ✅ เช็ค email ก่อนทำ action สำคัญ
   const ensureEmailOrOpenEdit = (actionLabel) => {
     const email = String(user?.email || '').trim();
     if (email) return true;
@@ -158,12 +184,11 @@ function Profile() {
     return false;
   };
 
-  // ✅ เพิ่ม: บันทึกแก้ไขโปรไฟล์ (ใช้ PATCH /api/profile/me ตาม backend ของคุณ)
+  // ✅ บันทึกแก้ไขโปรไฟล์ (ใช้ PATCH /api/profile/me ตาม backend ของคุณ)
   const handleSaveProfile = async () => {
     try {
       setSavingProfile(true);
 
-      // ส่งเฉพาะ field ตาม role (ไม่รื้อระบบเดิม)
       const payload = {
         username: profileForm.username,
         email: profileForm.email,
@@ -175,7 +200,6 @@ function Profile() {
         payload.level = profileForm.level;
       }
 
-      // เปลี่ยนรหัสผ่านถ้ากรอกมา
       if (String(profileForm.password || '').trim()) {
         payload.password = profileForm.password;
       }
@@ -188,7 +212,13 @@ function Profile() {
         return;
       }
 
-      setUser(updatedUser);
+      // ✅ อัปเดต state user และฟอร์มให้ตรงของจริง
+      setUser((prev) => ({
+        ...(prev || {}),
+        ...updatedUser,
+        email: String(updatedUser.email || '').trim(),
+      }));
+
       setProfileForm((prev) => ({
         ...prev,
         username: updatedUser.username || '',
@@ -249,7 +279,7 @@ function Profile() {
     }
   };
 
-  // ✅ UI timeline (มี Chip สถานะอยู่บนหัว)
+  // ✅ UI timeline
   const TimelineBlock = ({ documentId, docStatus }) => {
     const state = timelineByDoc[documentId] || { open: false, loading: false, error: null, items: null };
     const items = Array.isArray(state.items) ? state.items : [];
@@ -258,7 +288,6 @@ function Profile() {
 
     return (
       <div className="mt-2">
-        {/* ✅ สถานะเอกสารอยู่บนหัว Timeline */}
         <div className="flex items-center justify-between gap-2">
           <Chip
             size="small"
@@ -345,7 +374,6 @@ function Profile() {
         <CardContent>
           <Typography variant="h5" className="mb-2">โปรไฟล์ผู้ใช้งาน</Typography>
 
-          {/* ✅ แสดง/แก้ไข โปรไฟล์ (เพิ่มเข้ามา แต่ไม่รื้อของเดิม) */}
           {!editProfile ? (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -383,9 +411,10 @@ function Profile() {
                   value={profileForm.username}
                   onChange={(e) => setProfileForm((p) => ({ ...p, username: e.target.value }))}
                   fullWidth
+                  margin="normal"
+                  InputLabelProps={{ shrink: true }}
                 />
 
-                {/* ✅ Student แก้ได้ครบ */}
                 {isStudent && (
                   <>
                     <TextField
@@ -393,55 +422,58 @@ function Profile() {
                       value={profileForm.student_id}
                       onChange={(e) => setProfileForm((p) => ({ ...p, student_id: e.target.value }))}
                       fullWidth
+                      margin="normal"
+                      InputLabelProps={{ shrink: true }}
                     />
                     <TextField
                       label="Class Group"
                       value={profileForm.class_group}
                       onChange={(e) => setProfileForm((p) => ({ ...p, class_group: e.target.value }))}
                       fullWidth
+                      margin="normal"
+                      InputLabelProps={{ shrink: true }}
                     />
                     <TextField
                       label="Level"
                       value={profileForm.level}
                       onChange={(e) => setProfileForm((p) => ({ ...p, level: e.target.value }))}
                       fullWidth
+                      margin="normal"
+                      InputLabelProps={{ shrink: true }}
                     />
                   </>
                 )}
 
-                {/* ✅ Student/Teacher ใส่ email ได้ */}
+                {/* ✅ ให้เห็นค่าที่กรอกแน่นอน */}
                 <TextField
                   label="Email (สำหรับรับแจ้งเตือน)"
                   type="email"
                   value={profileForm.email ?? ""}
                   onChange={(e) => setProfileForm((p) => ({ ...p, email: e.target.value }))}
                   fullWidth
+                  margin="normal"
                   InputLabelProps={{ shrink: true }}
                 />
 
-                {/* ✅ เปลี่ยนรหัสผ่าน (ถ้าไม่กรอก จะไม่เปลี่ยน) */}
                 <TextField
                   label="เปลี่ยนรหัสผ่าน (ไม่กรอก = ไม่เปลี่ยน)"
                   type="password"
                   value={profileForm.password}
                   onChange={(e) => setProfileForm((p) => ({ ...p, password: e.target.value }))}
                   fullWidth
+                  margin="normal"
+                  InputLabelProps={{ shrink: true }}
                 />
               </div>
 
               <div className="mt-4 flex gap-2 flex-wrap">
-                <Button
-                  variant="contained"
-                  disabled={savingProfile}
-                  onClick={handleSaveProfile}
-                >
+                <Button variant="contained" disabled={savingProfile} onClick={handleSaveProfile}>
                   บันทึก
                 </Button>
 
                 <Button
                   variant="outlined"
                   onClick={() => {
-                    // reset form ให้กลับเป็นค่าล่าสุดจาก user
                     setProfileForm({
                       username: user.username || '',
                       student_id: user.student_id || '',
@@ -494,7 +526,6 @@ function Profile() {
                           size="small"
                           variant="contained"
                           onClick={async () => {
-                            // ✅ เพิ่มเงื่อนไข: ไม่มี email ห้ามส่ง
                             if (!ensureEmailOrOpenEdit('ส่งให้อาจารย์ตรวจ')) return;
 
                             await api.post(`/api/documents/${doc.document_id}/submit`);
@@ -546,7 +577,6 @@ function Profile() {
                       variant="contained"
                       color="success"
                       onClick={async () => {
-                        // ✅ เพิ่มเงื่อนไข: ครูไม่มี email ห้ามอนุมัติ
                         if (!ensureEmailOrOpenEdit('อนุมัติ')) return;
 
                         await api.post(`/api/approvals/${doc.document_id}/approve`);
@@ -561,7 +591,6 @@ function Profile() {
                       variant="contained"
                       color="error"
                       onClick={() => {
-                        // ✅ เพิ่มเงื่อนไข: ครูไม่มี email ห้ามตีกลับ (แม้แต่เปิด dialog)
                         if (!ensureEmailOrOpenEdit('ตีกลับ')) return;
                         setRejectingDoc(doc);
                       }}
@@ -606,7 +635,6 @@ function Profile() {
             variant="contained"
             disabled={!rejectReason.trim()}
             onClick={async () => {
-              // ✅ เพิ่มเช็คอีเมลอีกชั้นกันหลุด
               if (!ensureEmailOrOpenEdit('ตีกลับ')) return;
 
               await api.post(`/api/approvals/${rejectingDoc.document_id}/reject`, { reason: rejectReason });
