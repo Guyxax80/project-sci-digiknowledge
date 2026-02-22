@@ -97,7 +97,7 @@ router.post('/:documentId/approve', auth, async (req, res) => {
     await client.query(
       `
       INSERT INTO public.approval_history (document_id, approver_id, status, reason, approved_at)
-      VALUES ($1, $2, 'approved', NULL, NOW())
+      VALUES ($1, $2, 'Approved', NULL, NOW())
       `,
       [documentId, teacherId]
     );
@@ -180,7 +180,7 @@ router.post('/:documentId/reject', auth, async (req, res) => {
     await client.query(
       `
       INSERT INTO public.approval_history (document_id, approver_id, status, reason, approved_at)
-      VALUES ($1, $2, 'rejected', $3, NOW())
+      VALUES ($1, $2, 'Rejected', $3, NOW())
       `,
       [documentId, teacherId, parsed.data.reason]
     );
