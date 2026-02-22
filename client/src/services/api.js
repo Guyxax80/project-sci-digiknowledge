@@ -1,12 +1,17 @@
 import axios from "axios";
-import { getToken } from "../utils/auth";
+import { getToken, clearAuth } from "../utils/auth";
+
+const baseURL =
+  process.env.REACT_APP_API_URL ||
+  "https://project-sci-digiknowledge.onrender.com"; // ✅ fallback กัน env ว่าง
 
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL,
+  baseURL,
+  timeout: 30000,
 });
 
 api.interceptors.request.use((config) => {
-  const token = getToken();
+  const token = getToken?.();
   if (token) {
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
@@ -17,15 +22,29 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (error) => {
-    if (typeof window !== "undefined" && (error?.response?.status === 401 || error?.response?.status === 403)) {
-        const path = window.location.pathname || "/";
-        const isAuthPage = path.startsWith("/signup") || path.startsWith("/login");
-        if (!isAuthPage) {
-          const currentPath = `${path}${window.location.search || ""}`;
-          const redirect = encodeURIComponent(currentPath || "/");
-          window.location.assign(`/signup?redirect=${redirect}`);
-        }
-      }
+    if (typeof window === "undefined") return Promise.reject(error);
+
+    // ✅ ถ้าเป็น network error (ไม่มี response) ไม่ต้อง redirect
+    const status = error?.response?.status;
+    if (!status) return Promise.reject(error);
+
+    const path = window.location.pathname || "/";
+    const isAuthPage =
+      path.startsWith("/login") ||
+      path.startsWith("/signup");
+
+    // ✅ redirect เฉพาะ 401 เท่านั้น
+    if (status === 401 && !isAuthPage) {
+      try {
+        if (typeof clearAuth === "function") clearAuth();
+      } catch (_) {}
+
+      const currentPath = `${path}${window.location.search || ""}`;
+      const redirect = encodeURIComponent(currentPath || "/");
+      window.location.assign(`/login?redirect=${redirect}`);
+    }
+
+    // ✅ 403 ปล่อยให้หน้าจัดการเอง (ไม่เด้งออก)
     return Promise.reject(error);
   }
 );
