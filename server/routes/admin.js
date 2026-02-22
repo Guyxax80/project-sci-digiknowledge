@@ -1,14 +1,59 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const bcrypt = require('bcrypt'); // ✅ เพิ่มให้ครบ
+
+// =========================
+// helpers: check columns exists (กันพังถ้ายังไม่มีคอลัมน์)
+// =========================
+async function getExistingColumns(tableName, wantedCols) {
+  const { rows } = await db.query(
+    `
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema='public'
+      AND table_name=$1
+      AND column_name = ANY($2::text[])
+    `,
+    [tableName, wantedCols]
+  );
+  const set = new Set(rows.map(r => r.column_name));
+  return wantedCols.filter(c => set.has(c));
+}
+
+async function ensureUsersHasAdvisorId() {
+  const cols = await getExistingColumns('users', ['advisor_id']);
+  return cols.includes('advisor_id');
+}
 
 // =========================
 // USERS
 // =========================
 router.get('/users', async (_req, res) => {
   try {
+    // อยากได้ fields เพิ่ม แต่ถ้าไม่มีคอลัมน์ก็ไม่พัง
+    const existing = await getExistingColumns('users', [
+      'email',
+      'class_group',
+      'level',
+      'advisor_id',
+      'created_at',
+    ]);
+
+    const selectParts = [
+      'user_id',
+      'username',
+      'role',
+      'student_id',
+      existing.includes('email') ? 'email' : 'NULL::text AS email',
+      existing.includes('class_group') ? 'class_group' : 'NULL::text AS class_group',
+      existing.includes('level') ? 'level' : 'NULL::text AS level',
+      existing.includes('advisor_id') ? 'advisor_id' : 'NULL::int AS advisor_id',
+      existing.includes('created_at') ? 'created_at' : 'NOW() AS created_at',
+    ];
+
     const { rows } = await db.query(
-      'SELECT user_id, username, role, student_id, created_at FROM users ORDER BY user_id DESC'
+      `SELECT ${selectParts.join(', ')} FROM users ORDER BY user_id DESC`
     );
     res.json(rows);
   } catch (err) {
@@ -28,11 +73,11 @@ router.post('/users', async (req, res) => {
       if (!chk.rows.length) return res.status(400).json({ error: 'Student ID ไม่พบในระบบ' });
     }
 
-     const hashed = await bcrypt.hash(password, 10);
-      await db.query(
-        'INSERT INTO users (username, student_id, password, role) VALUES ($1, $2, $3, $4)',
-        [username, student_id || null, hashed, role]
-      );
+    const hashed = await bcrypt.hash(password, 10);
+    await db.query(
+      'INSERT INTO users (username, student_id, password, role) VALUES ($1, $2, $3, $4)',
+      [username, student_id || null, hashed, role]
+    );
 
     res.json({ message: 'เพิ่มผู้ใช้สำเร็จ' });
   } catch (err) {
@@ -82,6 +127,111 @@ router.delete('/users/:user_id', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'ไม่สามารถลบผู้ใช้ได้' });
+  }
+});
+
+// =========================
+// ✅ ADVISOR: teachers/students + set advisor
+// =========================
+
+// GET /api/admin/teachers
+router.get('/teachers', async (_req, res) => {
+  try {
+    const existing = await getExistingColumns('users', ['email']);
+    const selectParts = [
+      'user_id',
+      'username',
+      'role',
+      existing.includes('email') ? 'email' : 'NULL::text AS email',
+    ];
+
+    const { rows } = await db.query(
+      `SELECT ${selectParts.join(', ')}
+       FROM users
+       WHERE role='teacher'
+       ORDER BY user_id DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('admin/teachers error:', err);
+    res.status(500).json({ error: 'DB error' });
+  }
+});
+
+// GET /api/admin/students
+router.get('/students', async (_req, res) => {
+  try {
+    const existing = await getExistingColumns('users', [
+      'email',
+      'class_group',
+      'level',
+      'advisor_id',
+    ]);
+
+    const selectParts = [
+      'user_id',
+      'username',
+      'role',
+      'student_id',
+      existing.includes('email') ? 'email' : 'NULL::text AS email',
+      existing.includes('class_group') ? 'class_group' : 'NULL::text AS class_group',
+      existing.includes('level') ? 'level' : 'NULL::text AS level',
+      existing.includes('advisor_id') ? 'advisor_id' : 'NULL::int AS advisor_id',
+    ];
+
+    const { rows } = await db.query(
+      `SELECT ${selectParts.join(', ')}
+       FROM users
+       WHERE role='student'
+       ORDER BY user_id DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('admin/students error:', err);
+    res.status(500).json({ error: 'DB error' });
+  }
+});
+
+// PUT /api/admin/students/:id/advisor  { advisor_id }
+router.put('/students/:id/advisor', async (req, res) => {
+  try {
+    const studentUserId = Number(req.params.id);
+    const { advisor_id } = req.body;
+
+    if (!advisor_id) return res.status(400).json({ error: 'advisor_id required' });
+
+    // ✅ กันพังถ้ายังไม่มีคอลัมน์ advisor_id
+    const hasAdvisorId = await ensureUsersHasAdvisorId();
+    if (!hasAdvisorId) {
+      return res.status(400).json({
+        error:
+          "ตาราง users ยังไม่มีคอลัมน์ advisor_id กรุณารัน SQL: ALTER TABLE public.users ADD COLUMN advisor_id integer;",
+      });
+    }
+
+    // เช็คว่า student มีจริงและเป็น role student
+    const stu = await db.query(
+      `SELECT user_id FROM users WHERE user_id=$1 AND role='student' LIMIT 1`,
+      [studentUserId]
+    );
+    if (!stu.rows.length) return res.status(404).json({ error: 'ไม่พบนักศึกษา' });
+
+    // เช็คว่า advisor เป็น teacher จริง
+    const t = await db.query(
+      `SELECT user_id FROM users WHERE user_id=$1 AND role='teacher' LIMIT 1`,
+      [advisor_id]
+    );
+    if (!t.rows.length) return res.status(400).json({ error: 'advisor ต้องเป็น teacher' });
+
+    await db.query(
+      `UPDATE users SET advisor_id=$1 WHERE user_id=$2`,
+      [advisor_id, studentUserId]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('admin set advisor error:', err);
+    res.status(500).json({ error: 'DB error' });
   }
 });
 
@@ -142,8 +292,6 @@ router.get('/stats', async (req, res) => {
     );
 
     // ----- topCategories (ตรงกับ schema คุณ) -----
-    // categories(categorie_id, name)
-    // document_categories(document_id, categorie_id)
     let topCategoriesRows = [];
     try {
       const hasCategoriesTableQ = await db.query(

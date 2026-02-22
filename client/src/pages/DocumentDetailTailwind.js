@@ -19,6 +19,7 @@ function DocumentDetailTailwind() {
   const [videoFile, setVideoFile] = useState(null);
   const [downloadFiles, setDownloadFiles] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [timeline, setTimeline] = useState([]);
   const [replacingSection, setReplacingSection] = useState(null);
 
 
@@ -150,6 +151,9 @@ function DocumentDetailTailwind() {
           setCategories(docRes.data.categories || []);
         }
 
+         const timelineRes = await api.get(`/api/documents/${id}/timeline`).catch(() => ({ data: [] }));
+        setTimeline(Array.isArray(timelineRes.data) ? timelineRes.data : []);
+
         setLoading(false);
       } catch (err) {
         console.error("Error fetching document details:", err);
@@ -180,7 +184,7 @@ function DocumentDetailTailwind() {
     try {
       const form = new FormData();
       form.append("file", file);
-      await api.put(`/api/documents/${doc.document_id}/sections/${section}`, form);
+      await api.put(`/api/section-files/${doc.document_id}/sections/${section}`, form);
 
       const docRes = await api.get(`/api/documents/${id}`);
       setDoc(docRes.data.document);
@@ -320,6 +324,17 @@ function DocumentDetailTailwind() {
             {doc.academic_year || "-"}
           </p>
         </div>
+
+          <div className="mt-4">
+            <h3 className="font-semibold">Timeline การอนุมัติ</h3>
+            {timeline.length === 0 && <p className="text-sm text-gray-500">ยังไม่มีประวัติการอนุมัติ</p>}
+            {timeline.map((item) => (
+              <div key={item.approval_id} className="text-sm border-l-2 pl-3 my-2">
+                <div>{item.status} โดย {item.approver_name || '-'} ({new Date(item.approved_at).toLocaleString()})</div>
+                {item.reason && <div className="text-red-500">เหตุผล: {item.reason}</div>}
+              </div>
+            ))}
+          </div>
 
         <div className="flex-1 bg-white p-4 md:p-6 rounded-lg shadow-md">
           <h3 className="text-xl font-semibold mb-4">ไฟล์ทั้งหมดของเอกสารนี้</h3>
