@@ -3,9 +3,10 @@ const express = require('express');
 const multer = require('multer');
 const db = require('../db');
 const cloudinary = require('../config/cloudinary');
-const supabase = require('../config/supabase'); // ✅ เพิ่มไฟล์ config/supabase.js ตามที่ให้ไป
+const supabase = require('../config/supabase');
+
 const auth = require('../middleware/auth');
-const requireRole = require('../middleware/requireRole');
+const requireVerifiedStudent = require('../middleware/requireVerifiedStudent');
 
 const router = express.Router();
 
@@ -63,17 +64,20 @@ async function insertDocumentFileWithOptionalPublicId(payload) {
   const { client, documentId, filePath, originalName, fileType, section, publicId } = payload;
   const queryClient = client || db;
 
-  // ถ้ามีคอลัมน์ cloudinary_public_id ก็ใส่ (เฉพาะกรณี video ที่มาจาก cloudinary)
   if (publicId && (await supportsCloudinaryPublicId())) {
     await queryClient.query(
-      'INSERT INTO document_files (document_id, file_path, original_name, file_type, section, uploaded_at, cloudinary_public_id) VALUES ($1, $2, $3, $4, $5, NOW(), $6)',
+      `INSERT INTO document_files
+       (document_id, file_path, original_name, file_type, section, uploaded_at, cloudinary_public_id)
+       VALUES ($1, $2, $3, $4, $5, NOW(), $6)`,
       [documentId, filePath, originalName, fileType, section, publicId],
     );
     return;
   }
 
   await queryClient.query(
-    'INSERT INTO document_files (document_id, file_path, original_name, file_type, section, uploaded_at) VALUES ($1, $2, $3, $4, $5, NOW())',
+    `INSERT INTO document_files
+     (document_id, file_path, original_name, file_type, section, uploaded_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())`,
     [documentId, filePath, originalName, fileType, section],
   );
 }
@@ -101,9 +105,13 @@ const parseCategorieIds = (rawCategorieIds) => {
     throw e;
   }
 
-  const sanitizedIds = [...new Set(parsed
-    .map((item) => Number.parseInt(item, 10))
-    .filter((id) => Number.isInteger(id) && id > 0))];
+  const sanitizedIds = [
+    ...new Set(
+      parsed
+        .map((item) => Number.parseInt(item, 10))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ),
+  ];
 
   if (sanitizedIds.length > 2) {
     const e = new Error('เลือกหมวดหมู่ได้ไม่เกิน 2 หมวดหมู่');
@@ -113,55 +121,6 @@ const parseCategorieIds = (rawCategorieIds) => {
 
   return sanitizedIds;
 };
-
-async function assertStudentCanUpload(userId) {
-  if (!userId) {
-    const e = new Error('กรุณาเข้าสู่ระบบก่อนอัปโหลด');
-    e.status = 401;
-    throw e;
-  }
-
-  const { rows } = await db.query(
-    'SELECT user_id, role, student_id FROM public.users WHERE user_id = $1 LIMIT 1',
-    [userId],
-  );
-
-  if (!rows.length) {
-    const e = new Error('ไม่พบผู้ใช้');
-    e.status = 401;
-    throw e;
-  }
-
-  const u = rows[0];
-
-  // ต้องเป็น role student (ตามโมเดลใหม่ของคุณ)
-  if (String(u.role).toLowerCase() !== 'student') {
-    const e = new Error('ไม่มีสิทธิ์อัปโหลด (ต้องเป็นนักศึกษา)');
-    e.status = 403;
-    throw e;
-  }
-
-  // ต้องมี student_id ก่อน
-  if (!u.student_id) {
-    const e = new Error('ยังไม่ได้กรอก Student ID');
-    e.status = 403;
-    throw e;
-  }
-
-  // ✅ ต้องอยู่ใน student_codes ด้วย ถึงจะอัปโหลดได้
-  const check = await db.query(
-    'SELECT 1 FROM public.student_codes WHERE student_id = $1 LIMIT 1',
-    [u.student_id],
-  );
-
-  if (!check.rows.length) {
-    const e = new Error('Student ID ยังไม่ผ่านการอนุมัติ (ไม่พบใน student_codes)');
-    e.status = 403;
-    throw e;
-  }
-
-  return u;
-}
 
 async function uploadVideoToCloudinary(file, userId) {
   const folder = `digiknowledge/videos/${userId}`;
@@ -177,7 +136,6 @@ async function uploadVideoToCloudinary(file, userId) {
     size: file.size,
     sizeMB: fileSizeMB,
     mimetype: file.mimetype,
-    resource_type: uploadOptions.resource_type,
     folder: uploadOptions.folder,
     chunk_size: uploadOptions.chunk_size,
   });
@@ -185,9 +143,7 @@ async function uploadVideoToCloudinary(file, userId) {
   try {
     return await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_chunked_stream(uploadOptions, (error, result) => {
-        if (error) {
-          return reject(error);
-        }
+        if (error) return reject(error);
         return resolve(result);
       });
 
@@ -212,85 +168,92 @@ async function uploadVideoToCloudinary(file, userId) {
 }
 
 // =======================================================
-// POST /api/upload   (ไฟล์เอกสาร -> Supabase, วิดีโอ -> Cloudinary)
+// POST /api/upload  (เอกสาร -> Supabase, วิดีโอ -> Cloudinary)
+// ✅ เฉพาะนักศึกษาที่ "verified" (student_id อยู่ใน student_codes) เท่านั้น
 // =======================================================
-router.post('/', auth, (req, res, next) => {
-  uploadSingleFile(req, res, (err) => {
-    if (!err) return next();
+router.post(
+  '/',
+  auth,
+  requireVerifiedStudent,
+  (req, res, next) => {
+    uploadSingleFile(req, res, (err) => {
+      if (!err) return next();
 
-    if (err instanceof multer.MulterError) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            success: false,
+            message: `ขนาดไฟล์เกินกำหนด (${Math.floor(MAX_UPLOAD_SIZE_BYTES / (1024 * 1024))}MB)`,
+          });
+        }
+
         return res.status(400).json({
           success: false,
-          message: `ขนาดไฟล์เกินกำหนด (${Math.floor(MAX_UPLOAD_SIZE_BYTES / (1024 * 1024))}MB)`,
+          message: `Multer error: ${err.message}`,
         });
       }
 
       return res.status(400).json({
         success: false,
-        message: `Multer error: ${err.message}`,
+        message: err.message || 'ไม่สามารถอ่านไฟล์ที่อัปโหลดได้',
       });
-    }
-
-    return res.status(400).json({
-      success: false,
-      message: err.message || 'ไม่สามารถอ่านไฟล์ที่อัปโหลดได้',
     });
-  });
-}, async (req, res) => {
-  const client = await db.pool.connect();
+  },
+  async (req, res) => {
+    const client = await db.pool.connect();
 
-  try {
-    const { title, keywords, academic_year, status, categorie_ids } = req.body;
+    try {
+      const { title, keywords, academic_year, status, categorie_ids } = req.body;
 
-    if (!title?.trim()) {
-      return res.status(400).json({ success: false, message: 'กรุณากรอกชื่อเอกสาร' });
-    }
+      if (!title?.trim()) {
+        return res.status(400).json({ success: false, message: 'กรุณากรอกชื่อเอกสาร' });
+      }
 
-    // ✅ เช็คสิทธิ์อัปโหลด
-    const authUser = await assertStudentCanUpload(req.user.user_id);
-    console.log("[upload] categorie_ids raw:", req.body?.categorie_ids);
+      // ✅ ถ้าต้อง "บังคับมีไฟล์" ให้เปิดไว้
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: 'กรุณาเลือกไฟล์ (PDF/DOC/DOCX หรือ VIDEO)' });
+      }
 
-    // ✅ normalize status
-    const safeStatus = normalizeStatus(status);
+      console.log('[upload] categorie_ids raw:', req.body?.categorie_ids);
 
-     const parsedCategorieIds = parseCategorieIds(categorie_ids);
+      const safeStatus = normalizeStatus(status);
+      const parsedCategorieIds = parseCategorieIds(categorie_ids);
 
-    await client.query('BEGIN');
+      const userId = req.user.user_id;
 
-    // 1) สร้างเอกสารก่อน
-    const docResult = await client.query(
-      'INSERT INTO public.documents (user_id, title, keywords, academic_year, status) VALUES ($1, $2, $3, $4, $5) RETURNING document_id',
-      [authUser.user_id, title, keywords || null, academic_year || null, safeStatus],
-    );
-    const documentId = docResult.rows[0].document_id;
+      await client.query('BEGIN');
 
-    if (parsedCategorieIds.length > 0) {
-      await client.query(
-        `INSERT INTO public.document_categories (document_id, categorie_id)
-         SELECT $1, unnest($2::int[])
-         ON CONFLICT DO NOTHING`,
-        [documentId, parsedCategorieIds],
+      // 1) สร้างเอกสาร
+      const docResult = await client.query(
+        `INSERT INTO public.documents (user_id, title, keywords, academic_year, status)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING document_id`,
+        [userId, title.trim(), keywords || null, academic_year || null, safeStatus],
       );
-    }
 
-    // 2) ถ้ามีไฟล์ → อัปโหลดตามชนิดไฟล์
-    if (req.file) {
+      const documentId = docResult.rows[0].document_id;
+
+      // 2) ผูกหมวดหมู่
+      if (parsedCategorieIds.length > 0) {
+        await client.query(
+          `INSERT INTO public.document_categories (document_id, categorie_id)
+           SELECT $1, unnest($2::int[])
+           ON CONFLICT DO NOTHING`,
+          [documentId, parsedCategorieIds],
+        );
+      }
+
+      // 3) อัปโหลดไฟล์ตามชนิด
       const mimeType = req.file.mimetype;
 
       // ===== A) VIDEO -> Cloudinary =====
       if (isVideo(mimeType)) {
-        let uploaded;
-        try {
-          uploaded = await uploadVideoToCloudinary(req.file, authUser.user_id);
-        } catch (videoErr) {
-          throw videoErr;
-        }
+        const uploaded = await uploadVideoToCloudinary(req.file, userId);
 
         await insertDocumentFileWithOptionalPublicId({
           client,
           documentId,
-          filePath: uploaded.secure_url, // ✅ เก็บ URL ลง file_path
+          filePath: uploaded.secure_url,
           originalName: req.file.originalname,
           fileType: mimeType,
           section: 'main',
@@ -300,10 +263,10 @@ router.post('/', auth, (req, res, next) => {
 
       // ===== B) PDF/DOC/DOCX -> Supabase Storage =====
       else if (isDoc(mimeType)) {
-        const bucket = 'documents'; // ✅ สร้าง bucket นี้ใน Supabase Storage
+        const bucket = 'documents';
         const ext = extFromMime(mimeType);
         const filename = `${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
-        const storagePath = `users/${authUser.user_id}/${documentId}/${filename}`;
+        const storagePath = `users/${userId}/${documentId}/${filename}`;
 
         const { error: upErr } = await supabase.storage
           .from(bucket)
@@ -320,7 +283,6 @@ router.post('/', auth, (req, res, next) => {
           throw e;
         }
 
-        // ✅ ถ้า bucket เป็น Public
         const { data: pub } = supabase.storage.from(bucket).getPublicUrl(storagePath);
         const publicUrl = pub?.publicUrl;
 
@@ -333,7 +295,7 @@ router.post('/', auth, (req, res, next) => {
         await insertDocumentFileWithOptionalPublicId({
           client,
           documentId,
-          filePath: publicUrl, // ✅ เก็บ URL ลง file_path
+          filePath: publicUrl,
           originalName: req.file.originalname,
           fileType: mimeType,
           section: 'main',
@@ -344,32 +306,31 @@ router.post('/', auth, (req, res, next) => {
         e.status = 400;
         throw e;
       }
-    }
 
-    await client.query('COMMIT');
+      await client.query('COMMIT');
 
-    return res.json({ success: true, message: 'อัปโหลดสำเร็จ', documentId });
-  } catch (err) {
-    try {
-      await client.query('ROLLBACK');
-    } catch (rollbackErr) {
-      console.error('Upload rollback error:', rollbackErr);
-    }
+      return res.json({ success: true, message: 'อัปโหลดสำเร็จ', documentId });
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackErr) {
+        console.error('Upload rollback error:', rollbackErr);
+      }
 
-    if (err.code) {
-      console.error('Upload DB error:', { message: err.message, code: err.code, detail: err.detail || null });
+      if (err.code) {
+        console.error('Upload DB error:', { message: err.message, code: err.code, detail: err.detail || null });
+      }
+
+      console.error('Upload error:', err);
+      return res.status(err.status || 500).json({
+        success: false,
+        message: err.message || 'เกิดข้อผิดพลาด',
+        error: { details: err.details || null },
+      });
+    } finally {
+      client.release();
     }
-    console.error('Upload error:', err);
-    return res.status(err.status || 500).json({
-      success: false,
-      message: err.message || 'เกิดข้อผิดพลาด',
-      error: {
-        details: err.details || null,
-      },
-    });
-  } finally {
-    client.release();
-  }
-});
+  },
+);
 
 module.exports = router;
