@@ -134,14 +134,28 @@ async function assertStudentCanUpload(userId) {
 
   const u = rows[0];
 
+  // ต้องเป็น role student (ตามโมเดลใหม่ของคุณ)
   if (String(u.role).toLowerCase() !== 'student') {
-    const e = new Error('บัญชีผู้ใช้ทั่วไปยังอัปโหลดไม่ได้ (ต้องยืนยัน Student ID ให้เป็นนักศึกษา)');
+    const e = new Error('ไม่มีสิทธิ์อัปโหลด (ต้องเป็นนักศึกษา)');
     e.status = 403;
     throw e;
   }
 
+  // ต้องมี student_id ก่อน
   if (!u.student_id) {
-    const e = new Error('Student ID ไม่ถูกต้องหรือยังไม่ยืนยัน');
+    const e = new Error('ยังไม่ได้กรอก Student ID');
+    e.status = 403;
+    throw e;
+  }
+
+  // ✅ ต้องอยู่ใน student_codes ด้วย ถึงจะอัปโหลดได้
+  const check = await db.query(
+    'SELECT 1 FROM public.student_codes WHERE student_id = $1 LIMIT 1',
+    [u.student_id],
+  );
+
+  if (!check.rows.length) {
+    const e = new Error('Student ID ยังไม่ผ่านการอนุมัติ (ไม่พบใน student_codes)');
     e.status = 403;
     throw e;
   }
@@ -200,7 +214,7 @@ async function uploadVideoToCloudinary(file, userId) {
 // =======================================================
 // POST /api/upload   (ไฟล์เอกสาร -> Supabase, วิดีโอ -> Cloudinary)
 // =======================================================
-router.post('/', auth, requireRole('student'), (req, res, next) => {
+router.post('/', auth, (req, res, next) => {
   uploadSingleFile(req, res, (err) => {
     if (!err) return next();
 
