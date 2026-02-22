@@ -63,7 +63,6 @@ router.post('/:documentId/approve', auth, async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // ✅ JOIN users เพื่อเช็ค advisor_id
     const docQ = await client.query(
       `
       SELECT d.document_id, d.title, d.user_id, d.status,
@@ -83,7 +82,6 @@ router.post('/:documentId/approve', auth, async (req, res) => {
 
     const doc = docQ.rows[0];
 
-    // ✅ ต้องเป็น advisor ของนักศึกษาคนนั้นเท่านั้น
     if (Number(doc.advisor_id) !== Number(teacherId)) {
       await client.query('ROLLBACK');
       return res.status(403).json({ success: false, message: 'คุณไม่ใช่ที่ปรึกษาของเอกสารนี้' });
@@ -94,6 +92,7 @@ router.post('/:documentId/approve', auth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'อนุมัติได้เฉพาะเอกสารรอตรวจ' });
     }
 
+    // ✅ approval_history enum ของคุณเป็น Approved/Rejected (ตัวใหญ่)
     await client.query(
       `
       INSERT INTO public.approval_history (document_id, approver_id, status, reason, approved_at)
@@ -102,8 +101,9 @@ router.post('/:documentId/approve', auth, async (req, res) => {
       [documentId, teacherId]
     );
 
+    // ✅ documents.status enum ของคุณเป็น draft/pending/approved/rejected (ตัวเล็ก)
     await client.query(
-      `UPDATE public.documents SET status = 'published' WHERE document_id = $1`,
+      `UPDATE public.documents SET status = 'approved' WHERE document_id = $1`,
       [documentId]
     );
 
@@ -146,7 +146,6 @@ router.post('/:documentId/reject', auth, async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // ✅ JOIN users เพื่อเช็ค advisor_id
     const docQ = await client.query(
       `
       SELECT d.document_id, d.title, d.user_id, d.status,
@@ -166,7 +165,6 @@ router.post('/:documentId/reject', auth, async (req, res) => {
 
     const doc = docQ.rows[0];
 
-    // ✅ ต้องเป็น advisor ของนักศึกษาคนนั้นเท่านั้น
     if (Number(doc.advisor_id) !== Number(teacherId)) {
       await client.query('ROLLBACK');
       return res.status(403).json({ success: false, message: 'คุณไม่ใช่ที่ปรึกษาของเอกสารนี้' });
@@ -185,6 +183,7 @@ router.post('/:documentId/reject', auth, async (req, res) => {
       [documentId, teacherId, parsed.data.reason]
     );
 
+    // ✅ documents.status enum เป็นตัวเล็ก
     await client.query(
       `UPDATE public.documents SET status = 'rejected' WHERE document_id = $1`,
       [documentId]
