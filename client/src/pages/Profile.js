@@ -410,14 +410,14 @@ function Profile() {
                 )}
 
                 {/* ✅ Student/Teacher ใส่ email ได้ */}
-                {(isStudent || isTeacher) && (
-                  <TextField
-                    label="Email (สำหรับรับแจ้งเตือน)"
-                    value={profileForm.email}
-                    onChange={(e) => setProfileForm((p) => ({ ...p, email: e.target.value }))}
-                    fullWidth
-                  />
-                )}
+                <TextField
+                  label="Email (สำหรับรับแจ้งเตือน)"
+                  type="email"
+                  value={profileForm.email ?? ""}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, email: e.target.value }))}
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                />
 
                 {/* ✅ เปลี่ยนรหัสผ่าน (ถ้าไม่กรอก จะไม่เปลี่ยน) */}
                 <TextField

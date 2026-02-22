@@ -1,10 +1,12 @@
 // client/src/pages/Upload.js
 import React, { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 
 const MAX_VIDEO_MB = 100;
 const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
-const VIDEO_SIZE_ERROR_MESSAGE = "วิดีโอเกิน 100MB (จำกัดตามระบบ) กรุณาลดขนาดไฟล์ก่อนอัปโหลด";
+const VIDEO_SIZE_ERROR_MESSAGE =
+  "วิดีโอเกิน 100MB (จำกัดตามระบบ) กรุณาลดขนาดไฟล์ก่อนอัปโหลด";
 
 const FIXED_CATEGORIES = [
   { id: "1", name: "Hardware" },
@@ -29,6 +31,8 @@ const REQUIRED_SECTIONS = [
 ];
 
 export default function UploadDocument() {
+  const navigate = useNavigate();
+
   const [title, setTitle] = useState("");
   const [selectedCategoryIds, setSelectedCategoryIds] = useState([]);
   const [keywords, setKeywords] = useState("");
@@ -127,6 +131,26 @@ export default function UploadDocument() {
     return true;
   };
 
+  // ✅ เช็ค email ก่อน “ส่งให้ที่ปรึกษา”
+  const mustHaveEmail = async () => {
+    try {
+      // server: GET /api/profile/me
+      const res = await api.get("/api/profile/me");
+      const email = String(res?.data?.email || "").trim();
+
+      if (!email) {
+        alert("ส่งให้ที่ปรึกษาไม่ได้: กรุณาเพิ่มอีเมลในโปรไฟล์ก่อน");
+        navigate("/profile"); // ✅ ตามที่คุณบอก
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error("CHECK EMAIL ERR:", err?.response?.data || err.message);
+      alert(err?.response?.data?.message || "ตรวจสอบอีเมลไม่สำเร็จ กรุณาลองใหม่");
+      return false;
+    }
+  };
+
   const createDraftDocument = async () => {
     const storedUserId = mustLogin();
     if (!storedUserId) return null;
@@ -137,7 +161,7 @@ export default function UploadDocument() {
     formData.append("title", title);
     formData.append("keywords", keywords);
     formData.append("academic_year", academicYear);
-    formData.append("user_id", storedUserId); // server ใช้ req.user เป็นหลักอยู่แล้ว แต่เก็บไว้ไม่เสียหาย
+    formData.append("user_id", storedUserId);
     formData.append("status", "draft");
     formData.append("categorie_ids", JSON.stringify(selectedCategoryIds));
 
@@ -199,7 +223,6 @@ export default function UploadDocument() {
       await uploadSectionsIfAny(documentId);
 
       alert("บันทึกฉบับร่างสำเร็จ (คุณสามารถมาอัปไฟล์เพิ่มทีหลังได้)");
-      // จะ clear หรือไม่ clear แล้วแต่คุณ — ผมให้ clear เพื่อกันคนคิดว่าไม่บันทึก
       clearForm();
     } catch (err) {
       console.error("DRAFT ERR:", err?.response?.data || err.message);
@@ -208,17 +231,20 @@ export default function UploadDocument() {
   };
 
   // =========================
-  // ✅ ส่งให้ที่ปรึกษา (ต้องครบทุกไฟล์)
+  // ✅ ส่งให้ที่ปรึกษา (ต้องครบทุกไฟล์ + ต้องมี email)
   // =========================
   const handleSubmitToAdvisor = async () => {
     try {
       if (!validateBaseFields()) return;
       if (!validateAllRequiredFiles()) return;
 
+      // ✅ ต้องมี email ก่อน
+      const okEmail = await mustHaveEmail();
+      if (!okEmail) return;
+
       const documentId = await createDraftDocument();
       if (!documentId) return;
 
-      // ✅ ส่งไฟล์ครบแน่นอน
       await uploadSectionsIfAny(documentId);
 
       // ✅ ค่อยเปลี่ยนสถานะเป็น pending และส่งเมลไปที่ปรึกษาที่ผูกไว้
@@ -236,7 +262,6 @@ export default function UploadDocument() {
     <div className="p-4 md:p-6 max-w-2xl mx-auto border rounded-lg shadow-md bg-white/80">
       <h2 className="text-2xl font-bold mb-4 text-brand-800">อัปโหลดเอกสาร</h2>
 
-      {/* ❌ ไม่ใช้ onSubmit เพื่อกัน handleSubmit no-undef */}
       <div className="flex flex-col gap-4">
         <input
           type="text"
@@ -263,19 +288,27 @@ export default function UploadDocument() {
                     disabled={disableUnchecked}
                     onChange={(e) => {
                       if (e.target.checked) {
-                        setSelectedCategoryIds((prev) => (prev.length >= 2 ? prev : [...prev, cat.id]));
+                        setSelectedCategoryIds((prev) =>
+                          prev.length >= 2 ? prev : [...prev, cat.id]
+                        );
                       } else {
-                        setSelectedCategoryIds((prev) => prev.filter((id) => id !== cat.id));
+                        setSelectedCategoryIds((prev) =>
+                          prev.filter((id) => id !== cat.id)
+                        );
                       }
                     }}
                   />
-                  <span className={disableUnchecked ? "text-gray-400" : ""}>{cat.name}</span>
+                  <span className={disableUnchecked ? "text-gray-400" : ""}>
+                    {cat.name}
+                  </span>
                 </label>
               );
             })}
           </div>
 
-          <p className="text-xs text-gray-500 mt-2">เลือกแล้ว: {selectedCategoryIds.length}/2</p>
+          <p className="text-xs text-gray-500 mt-2">
+            เลือกแล้ว: {selectedCategoryIds.length}/2
+          </p>
         </div>
 
         <input
@@ -300,7 +333,11 @@ export default function UploadDocument() {
             }}
             className="border rounded px-3 py-2 w-full"
           />
-          {academicYear && <span className="text-sm text-gray-600 mt-1">เลือกปี (พ.ศ.): {academicYear}</span>}
+          {academicYear && (
+            <span className="text-sm text-gray-600 mt-1">
+              เลือกปี (พ.ศ.): {academicYear}
+            </span>
+          )}
         </div>
 
         <hr className="my-2" />
@@ -309,66 +346,104 @@ export default function UploadDocument() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="flex flex-col">
             <span className="mb-1">ปก (cover)</span>
-            <input type="file" onChange={(e) => setCoverFile(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+            />
           </label>
 
           <label className="flex flex-col">
             <span className="mb-1">บทคัดย่อ (abstract)</span>
-            <input type="file" onChange={(e) => setAbstractFile(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              onChange={(e) => setAbstractFile(e.target.files?.[0] || null)}
+            />
           </label>
 
           <label className="flex flex-col">
             <span className="mb-1">กิตติกรรมประกาศ (acknowledgement)</span>
-            <input type="file" onChange={(e) => setAckFile(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              onChange={(e) => setAckFile(e.target.files?.[0] || null)}
+            />
           </label>
 
           <label className="flex flex-col">
             <span className="mb-1">สารบัญ (toc)</span>
-            <input type="file" onChange={(e) => setTocFile(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              onChange={(e) => setTocFile(e.target.files?.[0] || null)}
+            />
           </label>
 
           <label className="flex flex-col">
             <span className="mb-1">บทที่ 1 (chapter1)</span>
-            <input type="file" onChange={(e) => setChapter1File(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              onChange={(e) => setChapter1File(e.target.files?.[0] || null)}
+            />
           </label>
 
           <label className="flex flex-col">
             <span className="mb-1">บทที่ 2 (chapter2)</span>
-            <input type="file" onChange={(e) => setChapter2File(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              onChange={(e) => setChapter2File(e.target.files?.[0] || null)}
+            />
           </label>
 
           <label className="flex flex-col">
             <span className="mb-1">บทที่ 3 (chapter3)</span>
-            <input type="file" onChange={(e) => setChapter3File(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              onChange={(e) => setChapter3File(e.target.files?.[0] || null)}
+            />
           </label>
 
           <label className="flex flex-col">
             <span className="mb-1">บทที่ 4 (chapter4)</span>
-            <input type="file" onChange={(e) => setChapter4File(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              onChange={(e) => setChapter4File(e.target.files?.[0] || null)}
+            />
           </label>
 
           <label className="flex flex-col">
             <span className="mb-1">บทที่ 5 (chapter5)</span>
-            <input type="file" onChange={(e) => setChapter5File(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              onChange={(e) => setChapter5File(e.target.files?.[0] || null)}
+            />
           </label>
 
           <label className="flex flex-col">
             <span className="mb-1">บรรณานุกรม (bibliography)</span>
-            <input type="file" onChange={(e) => setBibliographyFile(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              onChange={(e) => setBibliographyFile(e.target.files?.[0] || null)}
+            />
           </label>
 
           <label className="flex flex-col">
             <span className="mb-1">ภาคผนวก (appendix)</span>
-            <input type="file" onChange={(e) => setAppendixFile(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              onChange={(e) => setAppendixFile(e.target.files?.[0] || null)}
+            />
           </label>
 
           <label className="flex flex-col">
             <span className="mb-1">ประวัติผู้จัดทำ (author_bio)</span>
-            <input type="file" onChange={(e) => setAuthorBioFile(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              onChange={(e) => setAuthorBioFile(e.target.files?.[0] || null)}
+            />
           </label>
 
           <label className="flex flex-col sm:col-span-2">
-            <span className="mb-1">วิดีโอนำเสนอ (presentation_video, สูงสุด {MAX_VIDEO_MB}MB)</span>
+            <span className="mb-1">
+              วิดีโอนำเสนอ (presentation_video, สูงสุด {MAX_VIDEO_MB}MB)
+            </span>
             <input
               type="file"
               accept="video/*"
@@ -385,7 +460,6 @@ export default function UploadDocument() {
           </label>
         </div>
 
-        {/* ✅ 2 ปุ่มแยกชัดเจน */}
         <div className="flex gap-2 flex-col sm:flex-row mt-2">
           <button
             type="button"
@@ -404,11 +478,15 @@ export default function UploadDocument() {
           </button>
         </div>
 
-        <p className="text-sm text-gray-500 mt-1">
-          * หมายเหตุ: บันทึกฉบับร่างอัปไฟล์ไม่ครบได้ แต่ “ส่งให้ที่ปรึกษา” ต้องครบทุกไฟล์
-            <br> 
-              ฟังก์ชันอัปโหลดจะต้องมี Student ID ที่ผ่านการอนุมัติแล้วเท่านั้น กรุณาติดต่ออาจารย์หรือผู้ดูแลระบบเพื่อขออนุมัติ Student ID ของคุณก่อนใช้งานฟังก์ชันนี้
-            </br>
+        <p className="text-sm text-gray-500 mt-1 space-y-1">
+          <span>
+            * หมายเหตุ: บันทึกฉบับร่างอัปไฟล์ไม่ครบได้ แต่ “ส่งให้ที่ปรึกษา”
+            ต้องครบทุกไฟล์
+          </span>
+          <span className="block">
+            ฟังก์ชันอัปโหลดจะต้องมี Student ID ที่ผ่านการอนุมัติแล้วเท่านั้น
+            กรุณาติดต่ออาจารย์หรือผู้ดูแลระบบเพื่อขออนุมัติ Student ID ของคุณก่อนใช้งานฟังก์ชันนี้
+          </span>
         </p>
       </div>
     </div>
