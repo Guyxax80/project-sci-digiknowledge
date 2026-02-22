@@ -42,71 +42,79 @@ const UploadDocument = () => {
     return false;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSave = async (mode) => {
     if (!title) return alert("กรุณากรอกชื่อเอกสาร");
     const storedUserId = localStorage.getItem("userId");
     if (!storedUserId) return alert("กรุณา login ก่อนอัปโหลด");
+    if (selectedCategoryIds.length === 0) return alert("กรุณาเลือกหมวดหมู่ (Hardware/Software)");
     if (!validatePresentationVideoSize(presentationVideoFile)) return;
 
+    // ✅ โหมด submit แนะนำให้บังคับต้องมีไฟล์อย่างน้อย 1 ชิ้น
+    const hasAnySectionFile =
+      !!coverFile || !!abstractFile || !!ackFile || !!tocFile ||
+      !!chapter1File || !!chapter2File || !!chapter3File || !!chapter4File || !!chapter5File ||
+      !!bibliographyFile || !!appendixFile || !!authorBioFile || !!presentationVideoFile;
+
+    if (mode === "submit" && !hasAnySectionFile) {
+      return alert("ส่งให้ที่ปรึกษาต้องมีไฟล์อย่างน้อย 1 ส่วนก่อน");
+    }
+
+    const status = mode === "submit" ? "pending" : "draft";
+
     try {
-      // ส่ง multipart ไปสร้างเอกสาร (ไม่ต้องมีไฟล์หลัก)
+      // 1) สร้างเอกสาร (metadata)
       const formData = new FormData();
       formData.append("title", title);
       formData.append("keywords", keywords);
       formData.append("academic_year", academicYear);
       formData.append("user_id", storedUserId);
-      formData.append("status", "draft");
-      // ส่งหมวดหมู่หลายค่าเป็น JSON เดียว เพื่อง่ายต่อการ parse ฝั่ง server
+      formData.append("status", status);
+
+      // ส่งหมวดหมู่ (แนะนำส่งแบบ JSON เดิมได้)
       formData.append("categorie_ids", JSON.stringify(selectedCategoryIds));
 
-      console.log("=== FRONTEND DATA ===");
-      console.log("Title:", title);
-      console.log("Keywords:", keywords);
-      console.log("Academic Year:", academicYear);
-      console.log("User ID:", storedUserId);
-      console.log("Status:", "draft");
-      console.log("Categorie IDs:", selectedCategoryIds);
-      console.log("====================");
-
       const response = await api.post("/api/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" }
+        headers: { "Content-Type": "multipart/form-data" },
       });
-      
-      console.log("Server response:", response.data);
-      
-      // หลังสร้างเอกสารแล้ว อัปโหลดไฟล์รายส่วน (ถ้ามี)
-      const { documentId } = response.data || {};
-      if (documentId) {
-        const sections = new FormData();
-        if (coverFile) sections.append("cover", coverFile);
-        if (abstractFile) sections.append("abstract", abstractFile);
-        if (ackFile) sections.append("acknowledgement", ackFile);
-        if (tocFile) sections.append("toc", tocFile);
-        if (chapter1File) sections.append("chapter1", chapter1File);
-        if (chapter2File) sections.append("chapter2", chapter2File);
-        if (chapter3File) sections.append("chapter3", chapter3File);
-        if (chapter4File) sections.append("chapter4", chapter4File);
-        if (chapter5File) sections.append("chapter5", chapter5File);
-        if (bibliographyFile) sections.append("bibliography", bibliographyFile);
-        if (appendixFile) sections.append("appendix", appendixFile);
-        if (authorBioFile) sections.append("author_bio", authorBioFile);
-        if (presentationVideoFile) {
-          if (!validatePresentationVideoSize(presentationVideoFile)) return;
-          sections.append("presentation_video", presentationVideoFile);
-        }
-        if (selectedCategoryIds.length === 0) {
-          return alert("กรุณาเลือกหมวดหมู่ (Hardware/Software)");
-        }
 
-        if ([...sections.keys()].length > 0) {
-          await api.post(`/api/documents/${documentId}/sections`, sections, {
-            headers: { "Content-Type": "multipart/form-data" }
-          });
-        }
+      const { documentId } = response.data || {};
+      if (!documentId) throw new Error("No documentId from server");
+
+      // 2) อัปโหลดไฟล์รายส่วน (ถ้ามี)
+      const sections = new FormData();
+      if (coverFile) sections.append("cover", coverFile);
+      if (abstractFile) sections.append("abstract", abstractFile);
+      if (ackFile) sections.append("acknowledgement", ackFile);
+      if (tocFile) sections.append("toc", tocFile);
+      if (chapter1File) sections.append("chapter1", chapter1File);
+      if (chapter2File) sections.append("chapter2", chapter2File);
+      if (chapter3File) sections.append("chapter3", chapter3File);
+      if (chapter4File) sections.append("chapter4", chapter4File);
+      if (chapter5File) sections.append("chapter5", chapter5File);
+      if (bibliographyFile) sections.append("bibliography", bibliographyFile);
+      if (appendixFile) sections.append("appendix", appendixFile);
+      if (authorBioFile) sections.append("author_bio", authorBioFile);
+      if (presentationVideoFile) sections.append("presentation_video", presentationVideoFile);
+
+      if ([...sections.keys()].length > 0) {
+        await api.post(`/api/documents/${documentId}/sections`, sections, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
       }
 
-      alert("อัปโหลดเอกสารสำเร็จ");
+      // 3) ถ้าเป็น submit: ยิง “ขออนุมัติ/ส่งให้ที่ปรึกษา”
+      // ✅ ตรงนี้ต้องให้ endpoint ฝั่ง server รองรับ (ตัวอย่าง 2 แบบ)
+      if (mode === "submit") {
+        // แบบ A: มี approvals route
+        // await api.post("/api/approvals/request", { documentId });
+
+        // แบบ B: เปลี่ยนสถานะเอกสาร
+        // await api.put(`/api/documents/${documentId}/status`, { status: "pending" });
+
+        // ตอนนี้ยังไม่รู้ endpoint ของคุณ ใช้อันที่มีจริงในโปรเจกต์นะ
+      }
+
+      alert(mode === "submit" ? "ส่งให้ที่ปรึกษาเรียบร้อย" : "บันทึกฉบับร่างเรียบร้อย");
 
       // เคลียร์ฟอร์ม
       setTitle("");
@@ -114,7 +122,6 @@ const UploadDocument = () => {
       setKeywords("");
       setAcademicYear("");
       setAcademicYearDate("");
-      //setIsDraft(false);
       setCoverFile(null);
       setAbstractFile(null);
       setAckFile(null);
@@ -128,21 +135,17 @@ const UploadDocument = () => {
       setAppendixFile(null);
       setAuthorBioFile(null);
       setPresentationVideoFile(null);
-
     } catch (err) {
-      console.error(err);
-      if (err?.response?.status === 413) {
-        alert(VIDEO_SIZE_ERROR_MESSAGE);
-        return;
-      }
-      alert("เกิดข้อผิดพลาด");
+      console.error("UPLOAD ERR:", err?.response?.data || err.message);
+      if (err?.response?.status === 413) return alert(VIDEO_SIZE_ERROR_MESSAGE);
+      alert(err?.response?.data?.message || err?.response?.data?.error || "เกิดข้อผิดพลาด");
     }
   };
 
   return (
     <div className="p-4 md:p-6 max-w-2xl mx-auto border rounded-lg shadow-md bg-white/80">
       <h2 className="text-2xl font-bold mb-4 text-brand-800">อัปโหลดเอกสาร</h2>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <form onSubmit={(e) => e.preventDefault()} className="flex flex-col gap-4">
         <input
           type="text"
           placeholder="ชื่อเอกสาร"
@@ -279,12 +282,23 @@ const UploadDocument = () => {
             />
           </label>
         </div>
-<button
-          type="submit"
-          className="bg-brand-700 hover:bg-brand-800 text-white px-4 py-2 rounded mt-2"
-        >
-บันทึกฉบับร่าง
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => handleSave("draft")}
+            className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded mt-2"
+          >
+            บันทึกฉบับร่าง
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSave("submit")}
+            className="bg-brand-700 hover:bg-brand-800 text-white px-4 py-2 rounded mt-2"
+          >
+            ส่งให้ที่ปรึกษา
+          </button>
+        </div>
       </form>
     </div>
   );
