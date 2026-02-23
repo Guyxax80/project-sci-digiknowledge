@@ -1,18 +1,31 @@
 // server/services/emailService.js
 const nodemailer = require("nodemailer");
 
-let Resend = null;
+let ResendCtor = null;
+let resendClient = null;
+
 function getResendClient() {
-  if (!Resend) {
+  if (resendClient) return resendClient;
+
+  if (!ResendCtor) {
     // lazy require กันพังถ้ายังไม่ได้ติดตั้ง
     // eslint-disable-next-line global-require
-    Resend = require("resend").Resend;
+    ResendCtor = require("resend").Resend;
   }
-  return new Resend(process.env.RESEND_API_KEY);
+
+  resendClient = new ResendCtor(process.env.RESEND_API_KEY);
+  return resendClient;
 }
 
-const EMAIL_PROVIDER = String(process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
-// smtp | resend
+// ✅ แนะนำให้ default เป็น resend เพราะ Render free ส่ง SMTP ไม่ได้
+const EMAIL_PROVIDER = String(process.env.EMAIL_PROVIDER || "resend").toLowerCase();
+// "smtp" | "resend"
+
+function normalizeRecipients(to) {
+  if (!to) return [];
+  if (Array.isArray(to)) return to.map(String).map((s) => s.trim()).filter(Boolean);
+  return String(to).split(",").map((s) => s.trim()).filter(Boolean);
+}
 
 function isResendConfigured() {
   return Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
@@ -37,22 +50,31 @@ function getTransporter() {
   const host = process.env.SMTP_HOST || "smtp.gmail.com";
   const port = Number(process.env.SMTP_PORT || 587);
 
+  // 465 -> secure true (SSL)
+  // 587 -> secure false (STARTTLS)
+  const secure = port === 465;
+
   cachedTransporter = nodemailer.createTransport({
     host,
     port,
-    secure: false,
+    secure,
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
 
-    // ✅ timeout กัน ETIMEDOUT
+    // ✅ timeout กันค้างนาน
     connectionTimeout: 20000,
     greetingTimeout: 20000,
     socketTimeout: 30000,
 
-    requireTLS: true,
-    tls: { servername: host },
+    // STARTTLS บน 587
+    requireTLS: !secure,
+
+    // TLS settings (ปลอดภัยและไม่ทำให้พัง)
+    tls: {
+      servername: host,
+    },
   });
 
   return cachedTransporter;
@@ -80,15 +102,25 @@ async function verifySmtpSafe() {
 /**
  * sendEmail
  * - ไม่ทำให้ระบบพัง: ส่งไม่สำเร็จ -> skipped:true
+ * @param {object} params
+ * @param {string|string[]} params.to
+ * @param {string} params.subject
+ * @param {string} params.text
+ * @param {string} params.html
  */
 async function sendEmail({ to, subject, text, html }) {
-  if (!to) {
+  const recipients = normalizeRecipients(to);
+
+  if (recipients.length === 0) {
     console.warn('[email] Missing "to". Skip sending email.');
     return { skipped: true };
   }
 
+  const from = String(process.env.EMAIL_FROM || "").trim();
+  const safeSubject = subject || "(no subject)";
+
   // ======================
-  // ✅ RESEND (แนะนำ)
+  // ✅ RESEND
   // ======================
   if (EMAIL_PROVIDER === "resend") {
     if (!isResendConfigured()) {
@@ -103,19 +135,30 @@ async function sendEmail({ to, subject, text, html }) {
       const resend = getResendClient();
 
       const resp = await resend.emails.send({
-        from: process.env.EMAIL_FROM,
-        to,
-        subject: subject || "(no subject)",
+        from,
+        to: recipients,
+        subject: safeSubject,
         text: text || undefined,
         html: html || undefined,
       });
 
-      console.info("[email] sent via Resend", { to, id: resp?.data?.id, error: resp?.error });
-      if (resp?.error) return { skipped: true, error: resp.error?.message || "resend error" };
+      // Resend v2 คืนเป็น { data, error }
+      const id = resp?.data?.id;
+      const err = resp?.error;
 
-      return { skipped: false, messageId: resp?.data?.id };
+      if (err) {
+        console.error("[email] Resend send failed (ignored)", {
+          to: recipients,
+          message: err?.message || "resend error",
+        });
+        return { skipped: true, error: err?.message || "resend error" };
+      }
+
+      console.info("[email] sent via Resend", { to: recipients, id });
+      return { skipped: false, messageId: id };
     } catch (err) {
       console.error("[email] Resend send failed (ignored)", {
+        to: recipients,
         message: err?.message,
       });
       return { skipped: true, error: err?.message };
@@ -143,17 +186,22 @@ async function sendEmail({ to, subject, text, html }) {
 
   try {
     const info = await transporter.sendMail({
-      from: process.env.EMAIL_FROM,
-      to,
-      subject: subject || "(no subject)",
+      from,
+      to: recipients.join(", "),
+      subject: safeSubject,
       text: text || undefined,
       html: html || undefined,
     });
 
-    console.info("[email] sent via SMTP", { to, messageId: info?.messageId, response: info?.response });
+    console.info("[email] sent via SMTP", {
+      to: recipients,
+      messageId: info?.messageId,
+      response: info?.response,
+    });
     return { skipped: false, messageId: info?.messageId };
   } catch (err) {
     console.error("[email] send failed (ignored)", {
+      to: recipients,
       message: err?.message,
       code: err?.code,
       response: err?.response,
@@ -162,4 +210,8 @@ async function sendEmail({ to, subject, text, html }) {
   }
 }
 
-module.exports = { sendEmail, isSmtpConfigured, verifySmtpSafe };
+module.exports = {
+  sendEmail,
+  isSmtpConfigured,
+  verifySmtpSafe,
+};
