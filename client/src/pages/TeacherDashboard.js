@@ -28,7 +28,7 @@ const TeacherDashboard = () => {
     (async () => {
       try {
         setLoading(true);
-        const res = await api.get("/api/teacher/approval-history");
+        const res = await api.get("/teacher/approval-history");
         if (alive) setLogs(res.data || []);
       } catch (err) {
         console.error(err);

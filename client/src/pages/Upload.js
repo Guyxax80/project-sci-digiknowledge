@@ -134,7 +134,7 @@ export default function UploadDocument() {
   // ✅ เช็ค email ก่อน “ส่งให้ที่ปรึกษา”
   const mustHaveEmail = async () => {
     try {
-      const res = await api.get("/api/auth/me"); // ✅ ใช้ตัวนี้เลย
+      const res = await api.get("/auth/me"); // ✅ ใช้ตัวนี้เลย
       const email = String(res?.data?.user?.email || "").trim();
 
       if (!email) {
@@ -164,7 +164,7 @@ export default function UploadDocument() {
     formData.append("status", "draft");
     formData.append("categorie_ids", JSON.stringify(selectedCategoryIds));
 
-    const res = await api.post("/api/upload", formData, {
+    const res = await api.post("/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
 
@@ -182,7 +182,7 @@ export default function UploadDocument() {
 
     if ([...sections.keys()].length === 0) return;
 
-    await api.post(`/api/documents/${documentId}/sections`, sections, {
+    await api.post(`/documents/${documentId}/sections`, sections, {
       headers: { "Content-Type": "multipart/form-data" },
     });
   };
@@ -247,7 +247,7 @@ export default function UploadDocument() {
       await uploadSectionsIfAny(documentId);
 
       // ✅ ค่อยเปลี่ยนสถานะเป็น pending และส่งเมลไปที่ปรึกษาที่ผูกไว้
-      await api.post(`/api/documents/${documentId}/submit`);
+      await api.post(`/documents/${documentId}/submit`);
 
       alert("ส่งให้ที่ปรึกษาเรียบร้อยแล้ว");
       clearForm();

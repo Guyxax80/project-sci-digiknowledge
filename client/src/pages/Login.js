@@ -39,7 +39,7 @@ export default function LoginForm() {
     setIsLoading(true);
 
     try {
-      const res = await api.post("/api/login", {
+      const res = await api.post("/login", {
         username: formData.username,
         password: formData.password,
       });
@@ -186,7 +186,7 @@ export default function LoginForm() {
                   const username = prompt('ระบุชื่อผู้ใช้เพื่อรีเซ็ตรหัสผ่าน');
                   if (!username) return;
                   try {
-                   const res = await api.post("/api/auth/forgot-password", { username });
+                   const res = await api.post("/auth/forgot-password", { username });
                     const data = res.data;
                     if (!data.success) {
                       return alert(data.message || "ส่งรหัสรีเซ็ตไม่สำเร็จ");
@@ -195,7 +195,7 @@ export default function LoginForm() {
                     if (!code) return;
                     const newPass = prompt('กรอกรหัสผ่านใหม่');
                     if (!newPass) return;
-                    const res2 = await api.post("/api/auth/reset-password", {
+                    const res2 = await api.post("/auth/reset-password", {
                       username,
                       code,
                       new_password: newPass,

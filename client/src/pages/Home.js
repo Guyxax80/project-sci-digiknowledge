@@ -74,14 +74,14 @@ const Home = () => {
 
         if (isStudent || isTeacher) {
           try {
-            res = await api.get("/api/documents/recommended");
+            res = await api.get("/documents/recommended");
           } catch (e) {
             console.warn("recommended failed, fallback /api/documents", e?.response?.data || e.message);
-            res = await api.get("/api/documents");
+            res = await api.get("/documents");
           }
         } else {
           // guest หรือ admin ให้ดู list ได้
-          res = await api.get("/api/documents");
+          res = await api.get("/documents");
         }
 
         const docs = Array.isArray(res.data) ? res.data : [];
@@ -94,7 +94,7 @@ const Home = () => {
           const detailResults = await Promise.all(
             docs.map((doc) =>
               api
-                .get(`/api/documents/${doc.document_id}`)
+                .get(`/documents/${doc.document_id}`)
                 .then((dres) => ({ id: doc.document_id, detail: dres.data, fallback: doc }))
                 .catch(() => ({ id: doc.document_id, detail: null, fallback: doc }))
             )
@@ -136,7 +136,7 @@ const fetchAdminStats = async () => {
   if (!isAdmin) return;
 
   try {
-    const res = await api.get("/api/admin/stats", { params: { days: 7 } });
+    const res = await api.get("/admin/stats", { params: { days: 7 } });
     const d = res.data || {};
 
     // ✅ server ส่ง uploads7dSeries: [{ date, count }]
@@ -333,7 +333,7 @@ const fetchAdminStats = async () => {
                         className="w-full flex justify-between text-left text-sm hover:bg-gray-50 p-1 rounded"
                         onClick={async () => {
                           try {
-                            const res = await api.get(`/api/admin/documents/${d.document_id}/file-downloads`);
+                            const res = await api.get(`/admin/documents/${d.document_id}/file-downloads`);
                             const files = res.data;
                             const list = files && files.length
                               ? files.map(f => `${f.section || "main"} - ${(f.original_name || "file")} : ${f.download_count}`).join("\n")

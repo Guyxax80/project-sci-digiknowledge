@@ -12,7 +12,7 @@ const DocumentPage = () => {
 
   useEffect(() => {
     api
-      .get("/api/documents")
+      .get("/documents")
       .then((res) => {
         setDocuments(res.data);
         setLoading(false);

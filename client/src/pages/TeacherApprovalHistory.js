@@ -25,7 +25,7 @@ export default function TeacherApprovalHistory() {
     (async () => {
       try {
         setLoading(true);
-        const res = await api.get("/api/teacher/approval-history");
+        const res = await api.get("/teacher/approval-history");
         const rows = res.data?.data || [];
         if (alive) setItems(rows);
       } catch (e) {

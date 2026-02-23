@@ -76,14 +76,14 @@ function Profile() {
 
   // ✅ ดึง profile จาก route ที่ “ชัวร์ว่ามี email”
   const fetchProfileMe = useCallback(async () => {
-    // server ต้องมี GET /api/profile/me (คุณ mount แล้ว)
-    const res = await api.get('/api/profile/me');
-    // expected: { user_id, username, role, student_id, class_group, level, email }
+    // ✅ baseURL = .../api แล้ว → เรียกแค่ /profile/me
+    const res = await api.get('/profile/me');
     return res.data;
   }, []);
 
   const loadMyDocs = useCallback(async (userId) => {
-    const r = await api.get(`/api/documents/by-user/${userId}`);
+    // ✅ baseURL = .../api แล้ว
+    const r = await api.get(`/documents/by-user/${userId}`);
     setMyDocs(Array.isArray(r.data) ? r.data : []);
   }, []);
 
@@ -96,7 +96,8 @@ function Profile() {
 
     try {
       setPendingError('');
-      const r = await api.get('/api/approvals/pending');
+      // ✅ baseURL = .../api แล้ว
+      const r = await api.get('/approvals/pending');
       setPendingDocs(Array.isArray(r.data) ? r.data : []);
     } catch (e) {
       const msg = e?.response?.data?.message || 'โหลดรายการรอตรวจไม่สำเร็จ';
@@ -105,7 +106,7 @@ function Profile() {
     }
   }, [isTeacher]);
 
-  // ✅ โหลด user จาก /api/auth/me แล้ว merge email จาก /api/profile/me
+  // ✅ โหลด user จาก /auth/me แล้ว merge email จาก /profile/me
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -116,7 +117,8 @@ function Profile() {
     (async () => {
       try {
         // 1) auth/me สำหรับเช็ค login
-        const authRes = await api.get('/api/auth/me');
+        // ✅ baseURL = .../api แล้ว → /auth/me
+        const authRes = await api.get('/auth/me');
         const data = authRes.data;
 
         if (!data?.success || !data?.user) {
@@ -184,7 +186,7 @@ function Profile() {
     return false;
   };
 
-  // ✅ บันทึกแก้ไขโปรไฟล์ (ใช้ PATCH /api/profile/me ตาม backend ของคุณ)
+  // ✅ บันทึกแก้ไขโปรไฟล์ (PATCH /profile/me)
   const handleSaveProfile = async () => {
     try {
       setSavingProfile(true);
@@ -204,7 +206,8 @@ function Profile() {
         payload.password = profileForm.password;
       }
 
-      const res = await api.patch('/api/profile/me', payload);
+      // ✅ baseURL = .../api แล้ว
+      const res = await api.patch('/profile/me', payload);
       const updatedUser = res.data?.user;
 
       if (!res.data?.success || !updatedUser) {
@@ -212,7 +215,6 @@ function Profile() {
         return;
       }
 
-      // ✅ อัปเดต state user และฟอร์มให้ตรงของจริง
       setUser((prev) => ({
         ...(prev || {}),
         ...updatedUser,
@@ -239,37 +241,48 @@ function Profile() {
     }
   };
 
-  // ✅ เปิด/ปิด + โหลด timeline (lazy)
+  // ✅ เปิด/ปิด + โหลด timeline (lazy) — แก้บั๊ก state อ่านค่าเก่า
   const toggleTimeline = async (documentId) => {
-    // toggle open
-    setTimelineByDoc((prev) => {
-      const cur = prev[documentId] || { open: false, loading: false, error: null, items: null };
-      return { ...prev, [documentId]: { ...cur, open: !cur.open } };
-    });
+    // อ่านค่าปัจจุบันจาก state อย่างปลอดภัย
+    const current = timelineByDoc[documentId] || {
+      open: false,
+      loading: false,
+      error: null,
+      items: null,
+    };
 
-    // ถ้าเคยโหลดแล้ว ไม่ต้องโหลดซ้ำ
-    const cur = timelineByDoc[documentId];
-    if (cur?.items) return;
+    // toggle open/close
+    const nextOpen = !current.open;
+
+    // อัปเดต open ก่อน
+    setTimelineByDoc((prev) => ({
+      ...prev,
+      [documentId]: { ...(prev[documentId] || current), open: nextOpen },
+    }));
+
+    // ถ้าปิดอยู่ หรือเคยโหลดแล้ว ไม่ต้องโหลด
+    if (!nextOpen || current.items) return;
 
     // โหลดตอนเปิดครั้งแรก
     setTimelineByDoc((prev) => ({
       ...prev,
-      [documentId]: { ...(prev[documentId] || {}), open: true, loading: true, error: null, items: null },
+      [documentId]: { ...(prev[documentId] || current), open: true, loading: true, error: null, items: null },
     }));
 
     try {
-      const res = await api.get(`/api/approvals/${documentId}/timeline`);
+      // ✅ baseURL = .../api แล้ว
+      const res = await api.get(`/approvals/${documentId}/timeline`);
       const items = res.data?.timeline || [];
       setTimelineByDoc((prev) => ({
         ...prev,
-        [documentId]: { ...(prev[documentId] || {}), open: true, loading: false, error: null, items },
+        [documentId]: { ...(prev[documentId] || current), open: true, loading: false, error: null, items },
       }));
     } catch (err) {
       console.error('load timeline error:', err?.response?.data || err.message);
       setTimelineByDoc((prev) => ({
         ...prev,
         [documentId]: {
-          ...(prev[documentId] || {}),
+          ...(prev[documentId] || current),
           open: true,
           loading: false,
           error: 'โหลด Timeline ไม่สำเร็จ',
@@ -444,7 +457,6 @@ function Profile() {
                   </>
                 )}
 
-                {/* ✅ ให้เห็นค่าที่กรอกแน่นอน */}
                 <TextField
                   label="Email (สำหรับรับแจ้งเตือน)"
                   type="email"
@@ -528,7 +540,8 @@ function Profile() {
                           onClick={async () => {
                             if (!ensureEmailOrOpenEdit('ส่งให้อาจารย์ตรวจ')) return;
 
-                            await api.post(`/api/documents/${doc.document_id}/submit`);
+                            // ✅ baseURL = .../api แล้ว
+                            await api.post(`/documents/${doc.document_id}/submit`);
                             await loadMyDocs(user.user_id);
                           }}
                         >
@@ -579,7 +592,8 @@ function Profile() {
                       onClick={async () => {
                         if (!ensureEmailOrOpenEdit('อนุมัติ')) return;
 
-                        await api.post(`/api/approvals/${doc.document_id}/approve`);
+                        // ✅ baseURL = .../api แล้ว
+                        await api.post(`/approvals/${doc.document_id}/approve`);
                         await loadPendingDocs();
                       }}
                     >
@@ -637,7 +651,8 @@ function Profile() {
             onClick={async () => {
               if (!ensureEmailOrOpenEdit('ตีกลับ')) return;
 
-              await api.post(`/api/approvals/${rejectingDoc.document_id}/reject`, { reason: rejectReason });
+              // ✅ baseURL = .../api แล้ว
+              await api.post(`/approvals/${rejectingDoc.document_id}/reject`, { reason: rejectReason });
               setRejectingDoc(null);
               setRejectReason('');
               await loadPendingDocs();

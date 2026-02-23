@@ -40,7 +40,7 @@ export default function Signup() {
     setIsLoading(true);
 
     try {
-      const res = await api.post("/api/signup", formData);
+      const res = await api.post("/signup", formData);
       const data = res.data;
       setIsLoading(false);
 

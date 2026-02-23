@@ -139,19 +139,19 @@ function DocumentDetailTailwind() {
         return;
       }
       try {
-        const docRes = await api.get(`/api/documents/${id}`);
+        const docRes = await api.get(`/documents/${id}`);
         setDoc(docRes.data.document);
         setVideoFile(docRes.data.videoFile);
         setDownloadFiles(docRes.data.downloadFiles);
 
         try {
-          const catRes = await api.get(`/api/documents/${id}/categories`);
+          const catRes = await api.get(`/documents/${id}/categories`);
           setCategories(catRes.data || []);
         } catch (_) {
           setCategories(docRes.data.categories || []);
         }
 
-         const timelineRes = await api.get(`/api/documents/${id}/timeline`).catch(() => ({ data: [] }));
+         const timelineRes = await api.get(`/documents/${id}/timeline`).catch(() => ({ data: [] }));
         setTimeline(Array.isArray(timelineRes.data) ? timelineRes.data : []);
 
         setLoading(false);
@@ -184,9 +184,9 @@ function DocumentDetailTailwind() {
     try {
       const form = new FormData();
       form.append("file", file);
-      await api.put(`/api/section-files/${doc.document_id}/sections/${section}`, form);
+      await api.put(`/section-files/${doc.document_id}/sections/${section}`, form);
 
-      const docRes = await api.get(`/api/documents/${id}`);
+      const docRes = await api.get(`/documents/${id}`);
       setDoc(docRes.data.document);
       setVideoFile(docRes.data.videoFile);
       setDownloadFiles(docRes.data.downloadFiles);
