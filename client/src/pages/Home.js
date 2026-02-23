@@ -367,7 +367,10 @@ const fetchAdminStats = async () => {
             </Typography>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {popularDocs.map((doc) => (
+              {popularDocs 
+              .sort((a, b) => (b.download_count || 0) - (a.download_count || 0))
+              .slice(0, 6)
+              .map((doc) => (
                 <Card
                   key={doc.document_id}
                   className="shadow-lg hover:shadow-2xl transition rounded-xl border border-brand-100/70"
@@ -376,19 +379,28 @@ const fetchAdminStats = async () => {
                     <Typography variant="h6" gutterBottom className="line-clamp-2 text-brand-800">
                       {doc.title}
                     </Typography>
+
                     <Typography variant="body2" color="text.secondary" className="mb-2">
                       หมวดหมู่: {docCategoryNames[doc.document_id] ?? "-"}
                     </Typography>
+
                     <Typography variant="body2" color="text.secondary" className="mb-2">
                       คำค้นหา: {doc.keywords || "ไม่ระบุ"}
                     </Typography>
+
                     <Typography variant="body2" color="text.secondary" className="mb-2">
                       ปีการศึกษา: {doc.academic_year || "ไม่ระบุ"}
                     </Typography>
+
                     <Typography variant="body2" color="text.secondary" className="mb-2">
-                      ดาวน์โหลด: {Number.isFinite(parseInt(doc.download_count)) ? parseInt(doc.download_count) : 0} ครั้ง
+                      ดาวน์โหลด:{" "}
+                      {Number.isFinite(parseInt(doc.download_count))
+                        ? parseInt(doc.download_count)
+                        : 0}{" "}
+                      ครั้ง
                     </Typography>
                   </CardContent>
+
                   <CardActions>
                     <Button
                       size="small"

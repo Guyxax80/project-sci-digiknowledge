@@ -6,8 +6,6 @@ import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
 // ✅ ตั้งค่า PDF.js worker แบบ local
-// วางไฟล์ให้ "เวอร์ชันตรงกับ pdfjs.version ของ react-pdf" (ตอนนี้คือ 5.4.296)
-// path: client/public/pdf.worker.min.mjs
 if (typeof window !== "undefined") {
   pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 }
@@ -41,7 +39,6 @@ function DocumentDetailTailwind() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // ✅ หัวข้อที่ "ควรมีให้ครบ" เพื่อให้อัปโหลดทีหลังได้ (แม้ยังไม่มีไฟล์)
-  // ปรับให้ตรงกับ REQUIRED_SECTIONS ฝั่ง server ของคุณ
   const REQUIRED_SECTIONS = useMemo(
     () => [
       "cover",
@@ -56,8 +53,7 @@ function DocumentDetailTailwind() {
       "bibliography",
       "appendix",
       "author_bio",
-      // ถ้าวิดีโอคุณแยกแสดงอยู่แล้ว จะใส่หรือไม่ใส่ก็ได้
-      // "presentation_video",
+      "presentation_video",
     ],
     []
   );
@@ -67,8 +63,6 @@ function DocumentDetailTailwind() {
     []
   );
 
-  // ✅ ถ้าจะใช้ cmaps แนะนำให้ชี้ไป local จะนิ่งกว่า
-  // แต่ของเดิมใช้ unpkg ก็ได้ (ถ้าไม่มีปัญหา)
   const pdfOptions = useMemo(
     () => ({
       cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
@@ -83,9 +77,14 @@ function DocumentDetailTailwind() {
     setScale((s) => Math.max(0.5, Number((s - 0.1).toFixed(2))));
   const zoomReset = () => setScale(1.0);
 
+  const normalizeSection = (s) => String(s || "").trim().toLowerCase();
+
+  // ✅ scroll ไปหน้าแบบไม่เพี้ยน
   const scrollToPage = (p) => {
+    const container = pdfScrollRef.current;
     const el = pageRefs.current[p];
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!container || !el) return;
+    container.scrollTo({ top: el.offsetTop, behavior: "smooth" });
   };
 
   const toggleFullscreen = () => {
@@ -103,53 +102,39 @@ function DocumentDetailTailwind() {
     const onFsChange = () =>
       setIsFullscreen(Boolean(window.document.fullscreenElement));
     window.document.addEventListener("fullscreenchange", onFsChange);
-    return () =>
-      window.document.removeEventListener("fullscreenchange", onFsChange);
+    return () => window.document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
 
   const getThaiSectionLabel = (sectionRaw) => {
     if (!sectionRaw) return "";
     const section = String(sectionRaw).toLowerCase();
+
     const sectionToThaiMap = {
       cover: "ปก",
-      "front-cover": "ปก",
-      frontcover: "ปก",
-      intro: "บทนำ",
-      introduction: "บทนำ",
       toc: "สารบัญ",
-      "table-of-contents": "สารบัญ",
-      table_of_contents: "สารบัญ",
       abstract: "บทคัดย่อ",
       acknowledgement: "กิตติกรรมประกาศ",
-      acknowledgements: "กิตติกรรมประกาศ",
-      acknowledgments: "กิตติกรรมประกาศ",
+      bibliography: "บรรณานุกรม",
+      appendix: "ภาคผนวก",
+      author_bio: "ประวัติผู้จัดทำปริญญานิพนธ์",
+
+      // ✅ เพิ่มชื่อไทยวิดีโอ
+      presentation_video: "วิดีโอนำเสนอ",
+
+      // เผื่อชื่ออื่น
       references: "บรรณานุกรม",
       reference: "บรรณานุกรม",
-      bibliography: "บรรณานุกรม",
-      "works-cited": "บรรณานุกรม",
-      works_cited: "บรรณานุกรม",
-      appendix: "ภาคผนวก",
-      appendices: "ภาคผนวก",
-      annex: "ภาคผนวก",
-      annexes: "ภาคผนวก",
+      acknowledgements: "กิตติกรรมประกาศ",
+      acknowledgments: "กิตติกรรมประกาศ",
       "author-bio": "ประวัติผู้จัดทำปริญญานิพนธ์",
-      author_bio: "ประวัติผู้จัดทำปริญญานิพนธ์",
-      author: "ประวัติผู้จัดทำปริญญานิพนธ์",
-      biography: "ประวัติผู้จัดทำปริญญานิพนธ์",
-      bio: "ประวัติผู้จัดทำปริญญานิพนธ์",
-      contributor: "ประวัติผู้จัดทำปริญญานิพนธ์",
-      contributors: "ประวัติผู้จัดทำปริญญานิพนธ์",
     };
+
     if (sectionToThaiMap[section]) return sectionToThaiMap[section];
 
     const chapterMatch = section.match(/chapter[\s\-_]*(\d+)/);
     if (chapterMatch) {
       const chapterNumber = Number(chapterMatch[1]);
-      if (
-        !Number.isNaN(chapterNumber) &&
-        chapterNumber >= 1 &&
-        chapterNumber <= 99
-      ) {
+      if (!Number.isNaN(chapterNumber) && chapterNumber >= 1 && chapterNumber <= 99) {
         return `บทที่${chapterNumber}`;
       }
     }
@@ -199,35 +184,40 @@ function DocumentDetailTailwind() {
     const statusOk = !["pending", "approved"].includes(status);
 
     const currentUserId = localStorage.getItem("userId");
-    const ownerOk =
-      currentUserId && String(currentUserId) === String(doc.user_id || "");
+    const ownerOk = currentUserId && String(currentUserId) === String(doc.user_id || "");
 
     return statusOk && ownerOk;
   };
 
   const triggerReplace = (section) => {
-    if (!fileInputsRef.current[section]) return;
-    setReplacingSection(section);
-    fileInputsRef.current[section].click();
+    const sec = normalizeSection(section);
+    if (!fileInputsRef.current[sec]) return;
+    setReplacingSection(sec);
+    fileInputsRef.current[sec].click();
   };
 
   const handleFileSelected = async (section, file) => {
     if (!file) return;
+
+    const sec = normalizeSection(section);
+
     try {
+      setReplacingSection(sec);
+
       const form = new FormData();
       form.append("file", file);
 
-      // ✅ สำคัญ: server route นี้ต้องรองรับ "อัปโหลดครั้งแรก/อัปเดต" (upsert)
-      await api.put(`/section-files/${doc.document_id}/sections/${section}`, form);
+      await api.put(`/section-files/${doc.document_id}/sections/${sec}`, form);
 
+      // ✅ รีเฟรชหลังอัปโหลด
       const docRes = await api.get(`/documents/${id}`);
       setDoc(docRes.data.document);
       setVideoFile(docRes.data.videoFile);
       setDownloadFiles(docRes.data.downloadFiles || []);
-      setReplacingSection(null);
     } catch (e) {
       console.error(e);
       alert("อัปโหลด/แทนที่ไฟล์ไม่สำเร็จ");
+    } finally {
       setReplacingSection(null);
     }
   };
@@ -236,14 +226,14 @@ function DocumentDetailTailwind() {
     if (!file) return false;
     const fileName = file.original_name || "";
     const fileType = file.file_type || "";
-    return (
-      fileName.toLowerCase().endsWith(".pdf") || fileType === "application/pdf"
-    );
+    return fileName.toLowerCase().endsWith(".pdf") || fileType === "application/pdf";
   };
+
+  const isVideoSection = (section) => normalizeSection(section) === "presentation_video";
 
   const handleDownload = async (file) => {
     try {
-      const res = await api.get(`/download/${file.document_file_id}`, {
+      const res = await api.get(`/../download/${file.document_file_id}`, {
         responseType: "blob",
       });
 
@@ -264,12 +254,38 @@ function DocumentDetailTailwind() {
     }
   };
 
+  const handleVideoDownload = async () => {
+  if (!videoFile?.document_file_id) return;
+
+  try {
+    // โหลดเป็น blob จาก endpoint เดียวกับที่ใช้เล่นวิดีโอ
+    const res = await api.get(`/../files/video/${videoFile.document_file_id}`, {
+      responseType: "blob",
+    });
+
+    const blob = new Blob([res.data], { type: res.headers?.["content-type"] || "video/mp4" });
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = videoFile.original_name || "presentation_video.mp4";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("Video download failed:", err);
+    alert("ดาวน์โหลดวิดีโอไม่สำเร็จ");
+  }
+};
+
   const openPdfViewer = (file) => {
     setViewingPdf(file);
     setNumPages(null);
     setCurrentPage(1);
     setScale(1.0);
-    pageRefs.current = {}; // ✅ ต้องเป็น object
+    pageRefs.current = {};
   };
 
   const closePdfViewer = () => {
@@ -283,74 +299,99 @@ function DocumentDetailTailwind() {
   const onDocumentLoadSuccess = ({ numPages }) => {
     setNumPages(numPages);
     setCurrentPage(1);
-
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       if (pdfScrollRef.current) pdfScrollRef.current.scrollTop = 0;
-    }, 0);
+    });
   };
 
-  // ✅ Observer ตัวเดียวพอ (แก้เลขหน้าเพี้ยน)
+  // ✅ เลขหน้านิ่ง 100% จาก scrollTop (ไม่ใช้ IntersectionObserver)
   useEffect(() => {
     if (!viewingPdf || !numPages) return;
 
     const container = pdfScrollRef.current;
     if (!container) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort(
-            (a, b) =>
-              (b.intersectionRatio || 0) - (a.intersectionRatio || 0)
-          )[0];
+    let rafId = null;
 
-        const p = visible?.target?.dataset?.page;
-        if (p) setCurrentPage(Number(p));
-      },
-      {
-        root: container,
-        threshold: [0.2, 0.35, 0.5, 0.65, 0.8],
-        rootMargin: "-30% 0px -55% 0px",
+    const computeCurrentPage = () => {
+      rafId = null;
+      const scrollTop = container.scrollTop;
+      const centerY = scrollTop + container.clientHeight / 2;
+
+      let bestPage = 1;
+      let bestDist = Infinity;
+
+      for (let p = 1; p <= numPages; p++) {
+        const el = pageRefs.current[p];
+        if (!el) continue;
+        const top = el.offsetTop;
+        const height = el.offsetHeight || 1;
+        const pageCenter = top + height / 2;
+        const dist = Math.abs(centerY - pageCenter);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestPage = p;
+        }
       }
-    );
 
-    for (let p = 1; p <= numPages; p++) {
-      const el = pageRefs.current[p];
-      if (el) observer.observe(el);
-    }
+      setCurrentPage(bestPage);
+    };
 
-    return () => observer.disconnect();
-  }, [viewingPdf, numPages]);
+    const onScroll = () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(computeCurrentPage);
+    };
+
+    container.addEventListener("scroll", onScroll, { passive: true });
+
+    requestAnimationFrame(() => {
+      container.scrollTop = 0;
+      setCurrentPage(1);
+      computeCurrentPage();
+    });
+
+    return () => {
+      container.removeEventListener("scroll", onScroll);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [viewingPdf, numPages, scale, isFullscreen]);
 
   const onDocumentLoadError = (error) => {
     console.error("Error loading PDF:", error);
     alert(`ไม่สามารถโหลดไฟล์ PDF ได้: ${error.message || "Unknown error"}`);
   };
 
-  // ====== ✅ ทำให้ "หัวข้อขึ้นครบ" โดย merge REQUIRED_SECTIONS + downloadFiles ======
-  const normalizeSection = (s) => String(s || "main").trim().toLowerCase();
-
+  // ✅ index file ตาม section + ใส่วิดีโอจาก videoFile เข้า map ด้วย
   const sectionIndex = useMemo(() => {
     const map = new Map();
+
     (downloadFiles || []).forEach((f) => {
       map.set(normalizeSection(f.section), f);
     });
+
+    if (videoFile) {
+      map.set("presentation_video", {
+        ...videoFile,
+        section: "presentation_video",
+        original_name:
+          videoFile.original_name ||
+          videoFile.file_name ||
+          videoFile.public_url ||
+          "presentation_video",
+        file_type: videoFile.file_type || videoFile.mime_type || "video/*",
+      });
+    }
+
     return map;
-  }, [downloadFiles]);
+  }, [downloadFiles, videoFile]);
 
+  // ✅ สร้าง list สำหรับ render: extras + required (ไม่มี main)
   const filesForRender = useMemo(() => {
-    // แถวพิเศษ: ไฟล์หลัก (ถ้ามีใน downloadFiles จะโชว์, ถ้าไม่มีจะขึ้นให้ “อัปโหลดไฟล์หลัก” ได้)
-    const mainFile = sectionIndex.get("main") || null;
-    const mainRow = { section: "main", file: mainFile };
-
-    // หัวข้อที่ต้องมีครบ
     const requiredRows = REQUIRED_SECTIONS.map((sec) => {
       const f = sectionIndex.get(normalizeSection(sec)) || null;
       return { section: sec, file: f };
     });
 
-    // ไฟล์อื่น ๆ ที่ไม่อยู่ใน required และไม่ใช่ main (กันหลุดตก)
     const extraRows = (downloadFiles || [])
       .filter((f) => {
         const sec = normalizeSection(f.section);
@@ -358,8 +399,7 @@ function DocumentDetailTailwind() {
       })
       .map((f) => ({ section: normalizeSection(f.section), file: f }));
 
-    // จัดลำดับ: main -> extras -> required
-    return [mainRow, ...extraRows, ...requiredRows];
+    return [...extraRows, ...requiredRows];
   }, [REQUIRED_SECTIONS, downloadFiles, sectionIndex]);
 
   if (loading) return <p className="text-center mt-10">กำลังโหลด...</p>;
@@ -367,6 +407,9 @@ function DocumentDetailTailwind() {
   if (!doc) return <p className="text-center mt-10">ไม่พบเอกสาร</p>;
 
   const baseWidth = Math.min(900, window.innerWidth - 80);
+
+  // ✅ ชื่อที่แสดงใน list: ถ้ามีชื่อไทย ใช้ไทย, ไม่มีก็ใช้ section เดิม
+  const displaySectionName = (section) => getThaiSectionLabel(section) || section;
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
@@ -389,19 +432,15 @@ function DocumentDetailTailwind() {
 
             <p>
               <span className="font-semibold">หมวดหมู่:</span>{" "}
-              {categories.length > 0
-                ? categories.map((c) => c.name).join(", ")
-                : "-"}
+              {categories.length > 0 ? categories.map((c) => c.name).join(", ") : "-"}
             </p>
 
             <p>
-              <span className="font-semibold">คำค้น:</span>{" "}
-              {doc.keywords || "-"}
+              <span className="font-semibold">คำค้น:</span> {doc.keywords || "-"}
             </p>
 
             <p>
-              <span className="font-semibold">ปีการศึกษา:</span>{" "}
-              {doc.academic_year || "-"}
+              <span className="font-semibold">ปีการศึกษา:</span> {doc.academic_year || "-"}
             </p>
 
             <p className="mt-2">
@@ -416,22 +455,16 @@ function DocumentDetailTailwind() {
 
           <ul className="space-y-2">
             {filesForRender.map(({ section, file }, index) => {
-              const label =
-                (section || "main") === "main"
-                  ? "ไฟล์หลัก"
-                  : `${section}${
-                      getThaiSectionLabel(section)
-                        ? ` (${getThaiSectionLabel(section)})`
-                        : ""
-                    }`;
+              const sec = normalizeSection(section);
+              const thaiName = displaySectionName(section);
 
               return (
                 <li
-                  key={`${section}-${index}`}
+                  key={`${sec}-${index}`}
                   className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-gray-50 p-2 rounded gap-2"
                 >
                   <span className="truncate">
-                    {label}:{" "}
+                    {thaiName}:{" "}
                     {file?.original_name ? (
                       file.original_name
                     ) : (
@@ -440,7 +473,8 @@ function DocumentDetailTailwind() {
                   </span>
 
                   <div className="flex items-center gap-2">
-                    {file && isPdfFile(file) && (
+                    {/* ✅ PDF เปิดอ่าน */}
+                    {file && isPdfFile(file) && !isVideoSection(sec) && (
                       <button
                         onClick={() => openPdfViewer(file)}
                         className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
@@ -449,7 +483,31 @@ function DocumentDetailTailwind() {
                       </button>
                     )}
 
-                    {file && (
+                    {/* ✅ วิดีโอ: ดูวิดีโอ */}
+                    {sec === "presentation_video" && videoFile && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                        className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                      >
+                        ดูวิดีโอ
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleVideoDownload}
+                        className="text-brand-700 hover:underline"
+                      >
+                        ดาวน์โหลดวิดีโอ
+                      </button>
+                    </>
+                  )}
+
+                    {/* ✅ ดาวน์โหลด (ยกเว้นวิดีโอ ถ้าคุณไม่อยากให้โหลดผ่าน /download) */}
+                    {file && sec !== "presentation_video" && (
                       <button
                         type="button"
                         onClick={() => handleDownload(file)}
@@ -459,14 +517,15 @@ function DocumentDetailTailwind() {
                       </button>
                     )}
 
+                    {/* ✅ อัปโหลด/แทนที่ */}
                     {canReplace() && (
                       <>
                         <button
                           className="text-sm px-2 py-1 bg-accent-600 text-white rounded hover:bg-accent-700"
-                          onClick={() => triggerReplace(section || "main")}
-                          disabled={replacingSection === (section || "main")}
+                          onClick={() => triggerReplace(sec)}
+                          disabled={replacingSection === sec}
                         >
-                          {replacingSection === (section || "main")
+                          {replacingSection === sec
                             ? "กำลังอัปโหลด..."
                             : file
                             ? "แทนที่ไฟล์"
@@ -475,16 +534,16 @@ function DocumentDetailTailwind() {
 
                         <input
                           type="file"
+                          accept={
+                            sec === "presentation_video"
+                              ? "video/*"
+                              : ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          }
                           style={{ display: "none" }}
                           ref={(el) => {
-                            fileInputsRef.current[section || "main"] = el;
+                            fileInputsRef.current[sec] = el;
                           }}
-                          onChange={(e) =>
-                            handleFileSelected(
-                              section || "main",
-                              e.target.files?.[0]
-                            )
-                          }
+                          onChange={(e) => handleFileSelected(sec, e.target.files?.[0])}
                         />
                       </>
                     )}
@@ -494,12 +553,12 @@ function DocumentDetailTailwind() {
             })}
           </ul>
 
-          {(!canReplace() && (String(doc.status || "").toLowerCase() === "pending" ||
-            String(doc.status || "").toLowerCase() === "approved")) && (
-            <p className="mt-3 text-sm text-gray-500">
-              * สถานะ {String(doc.status || "").toLowerCase()} ไม่อนุญาตให้แก้ไข/แทนที่ไฟล์
-            </p>
-          )}
+          {!canReplace() &&
+            ["pending", "approved"].includes(String(doc.status || "").toLowerCase()) && (
+              <p className="mt-3 text-sm text-gray-500">
+                * สถานะ {String(doc.status || "").toLowerCase()} ไม่อนุญาตให้แก้ไข/แทนที่ไฟล์
+              </p>
+            )}
         </div>
       </div>
 
@@ -519,7 +578,7 @@ function DocumentDetailTailwind() {
               </button>
             </div>
 
-            <div className="flex items-center justify-between gap-3 p-3 border-b bg-gray-50">
+            <div className="flex items-center justify-between gap-3 p-3 border-b bg-gray-50 sticky top-0 z-50">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-gray-700 font-medium">
                   หน้า {currentPage} / {numPages || "..."}
@@ -534,9 +593,7 @@ function DocumentDetailTailwind() {
                 </button>
 
                 <button
-                  onClick={() =>
-                    scrollToPage(Math.min(numPages || 1, currentPage + 1))
-                  }
+                  onClick={() => scrollToPage(Math.min(numPages || 1, currentPage + 1))}
                   className="px-3 py-1 rounded bg-white border hover:bg-gray-100 disabled:opacity-50"
                   disabled={!numPages || currentPage >= numPages}
                 >
