@@ -1,32 +1,33 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 
-import Navbar from './components/Navbar';
+import Navbar from "./components/Navbar";
 
-import Home from './pages/Home';
-import DocumentPage from './pages/DocumentPage';
-import DocumentDetailTailwind from './pages/DocumentDetailTailwind';
+import Home from "./pages/Home";
+import DocumentPage from "./pages/DocumentPage";
+import DocumentDetailTailwind from "./pages/DocumentDetailTailwind";
 
-import Login from './pages/Login';
-import Signup from './pages/Signup';
-import Profile from './pages/Profile';
-import Upload from './pages/Upload';
-import AdminCRUD from './pages/AdminDashboard';
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import Profile from "./pages/Profile";
+import Upload from "./pages/Upload";
+import AdminCRUD from "./pages/AdminDashboard";
 
-// ✅ เพิ่มหน้าเหล่านี้ถ้ามี/จะทำ
-// import PendingApprovals from './pages/PendingApprovals';
-// import DownloadPage from './pages/DownloadPage';
+// ✅ หน้า "ประวัติการอนุมัติ" (ที่เราสร้างไว้)
+import TeacherApprovalHistory from "./pages/TeacherApprovalHistory";
 
-import RequireAuth from './components/RequireAuth';
-import RequireStudent from './components/RequireStudent';
-// import RequireTeacher from './components/RequireTeacher'; // ถ้ามี role teacher
+// ✅ Guard สำหรับ role ครู
+import RequireAuth from "./components/RequireAuth";
+import RequireStudent from "./components/RequireStudent";
+import RequireTeacher from "./components/RequireTeacher";
 
-import './output.css';
+import "./output.css";
 
 function App() {
   return (
     <Router>
       <Navbar />
+
       <Routes>
         {/* ===== Public routes (ไม่ต้องล็อกอิน) ===== */}
         <Route path="/" element={<Home />} />
@@ -37,6 +38,7 @@ function App() {
         <Route path="/signup" element={<Signup />} />
 
         {/* ===== Protected routes ===== */}
+
         {/* นักศึกษาเท่านั้น: อัปโหลด/ส่งงาน */}
         <Route
           path="/upload"
@@ -57,7 +59,7 @@ function App() {
           }
         />
 
-        {/* แอดมิน/อาจารย์ (แล้วแต่ RequireAuth ของคุณตรวจ role ยังไง) */}
+        {/* แอดมิน (ถ้า RequireAuth ยังไม่แยก role แนะนำทำ RequireAdmin เพิ่มภายหลัง) */}
         <Route
           path="/admin"
           element={
@@ -67,29 +69,15 @@ function App() {
           }
         />
 
-        {/* ✅ ตัวอย่าง: หน้า “รออนุมัติ” สำหรับอาจารย์ */}
-        {/*
+        {/* ✅ ครู: ประวัติการอนุมัติ (Timeline) */}
         <Route
-          path="/approvals"
+          path="/teacher/history"
           element={
             <RequireTeacher>
-              <PendingApprovals />
+              <TeacherApprovalHistory />
             </RequireTeacher>
           }
         />
-        */}
-
-        {/* ✅ สำคัญ: ถ้าคุณมีปุ่มดาวน์โหลด ให้พาไป route นี้แล้วค่อยเรียก API ดาวน์โหลด (ล็อกอินก่อน) */}
-        {/*
-        <Route
-          path="/download/:fileId"
-          element={
-            <RequireAuth>
-              <DownloadPage />
-            </RequireAuth>
-          }
-        />
-        */}
 
         {/* ===== Fallback ===== */}
         <Route path="*" element={<Navigate to="/" replace />} />

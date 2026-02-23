@@ -96,6 +96,7 @@ app.use('/api/auth', authRoute);
 app.use('/api/admin', adminRoutes);
 app.use('/api/categories', categoriesRoute);
 app.use('/api/profile', profileRoute);
+app.use("/api/teacher", require("./routes/teacher"));
 
 // ⚠️ อันนี้น่าจะชน path เดิม (/api/documents)
 // ถ้า sectionFilesRoute เป็น route แยก แนะนำเปลี่ยน prefix ชัด ๆ เช่น /api/section-files

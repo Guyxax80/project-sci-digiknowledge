@@ -21,9 +21,7 @@ const Navbar = () => {
 
   const goAuth = (redirectTo) => {
     const redirect = encodeURIComponent(redirectTo || "/");
-    // จะไป login หรือ signup ก็ได้ แล้วแต่ระบบคุณ
     navigate(`/login?redirect=${redirect}`);
-    // ถ้าใช้ signup เป็นหน้าเดียว: navigate(`/signup?redirect=${redirect}`);
   };
 
   const handleUploadClick = (e) => {
@@ -46,20 +44,13 @@ const Navbar = () => {
     navigate("/admin");
   };
 
-  const handleApproveClick = (e) => {
+  // ✅ ครู: ไปหน้า "ประวัติการอนุมัติ"
+  const handleTeacherHistoryClick = (e) => {
     e.preventDefault();
-    if (!isLoggedIn) return goAuth("/approve");
+    if (!isLoggedIn) return goAuth("/teacher/history");
     if (!isTeacher) return alert("ต้องเป็น teacher เท่านั้น");
-    navigate("/approve");
+    navigate("/teacher/history");
   };
-
-
-
-  // ===== เมนูตามเงื่อนไขของคุณ =====
-  // ยังไม่ login: หน้าแรก / เอกสารทั้งหมด / อัปโหลดไฟล์ / Profile
-  // student: หน้าแรก / เอกสารทั้งหมด / อัปโหลดไฟล์ / Profile
-  // admin: หน้าแรก / เอกสารทั้งหมด / จัดการผู้ใช้งาน / Profile
-  // teacher: หน้าแรก / เอกสารทั้งหมด / อนุมัติผลงาน / Profile
 
   return (
     <nav className="backdrop-blur bg-brand-700/80 text-white px-4 md:px-6 py-4 shadow sticky top-0 left-0 w-full z-50 border-b border-white/10">
@@ -82,7 +73,6 @@ const Navbar = () => {
 
         {/* ===== Desktop ===== */}
         <div className="hidden md:flex flex-row items-center space-x-6">
-          {/* แสดงเสมอ */}
           <Link to="/home" className="hover:text-accent-200 transition-colors">
             หน้าแรก
           </Link>
@@ -91,7 +81,6 @@ const Navbar = () => {
             เอกสารทั้งหมด
           </Link>
 
-          {/* student หรือยังไม่ login: แสดง "อัปโหลดไฟล์" */}
           {(!isLoggedIn || isStudent) && (
             <Link
               to="/upload"
@@ -103,18 +92,17 @@ const Navbar = () => {
             </Link>
           )}
 
-          {/* teacher: แสดง "อนุมัติผลงาน" */}
+          {/* ✅ teacher: ประวัติการอนุมัติ */}
           {isTeacher && (
             <Link
-              to="/approve"
+              to="/teacher/history"
               className="hover:text-accent-200 transition-colors"
-              onClick={handleApproveClick}
+              onClick={handleTeacherHistoryClick}
             >
-              อนุมัติผลงาน
+              ประวัติการอนุมัติ
             </Link>
           )}
 
-          {/* admin: แสดง "จัดการผู้ใช้งาน" */}
           {isAdmin && (
             <Link
               to="/admin"
@@ -125,7 +113,6 @@ const Navbar = () => {
             </Link>
           )}
 
-          {/* แสดง Profile เสมอ */}
           <Link
             to="/profile"
             className="hover:text-accent-200 transition-colors"
@@ -133,16 +120,6 @@ const Navbar = () => {
           >
             Profile
           </Link>
-
-          {/* ปุ่มออกจากระบบ (แสดงเฉพาะตอน login) */}
-          {/*isLoggedIn && (
-            <button
-              onClick={handleLogout}
-              className="hover:text-accent-200 transition-colors"
-            >
-              ออกจากระบบ
-            </button>
-          )*/}
         </div>
 
         {/* ===== Mobile ===== */}
@@ -170,16 +147,17 @@ const Navbar = () => {
                 </Link>
               )}
 
+              {/* ✅ teacher: ประวัติการอนุมัติ */}
               {isTeacher && (
                 <Link
-                  to="/approve"
+                  to="/teacher/history"
                   className="block py-2"
                   onClick={(e) => {
                     setMobileOpen(false);
-                    handleApproveClick(e);
+                    handleTeacherHistoryClick(e);
                   }}
                 >
-                  อนุมัติผลงาน
+                  ประวัติการอนุมัติ
                 </Link>
               )}
 
@@ -206,18 +184,6 @@ const Navbar = () => {
               >
                 Profile
               </Link>
-
-              {/*isLoggedIn && (
-                <button
-                  className="block py-2 text-left w-full"
-                  onClick={(e) => {
-                    setMobileOpen(false);
-                    handleLogout(e);
-                  }}
-                >
-                  ออกจากระบบ
-                </button>
-              )*/}
             </div>
           </div>
         )}
