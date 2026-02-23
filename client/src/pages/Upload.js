@@ -134,13 +134,12 @@ export default function UploadDocument() {
   // ✅ เช็ค email ก่อน “ส่งให้ที่ปรึกษา”
   const mustHaveEmail = async () => {
     try {
-      // server: GET /api/profile/me
-      const res = await api.get("/api/profile/me");
-      const email = String(res?.data?.email || "").trim();
+      const res = await api.get("/api/auth/me"); // ✅ ใช้ตัวนี้เลย
+      const email = String(res?.data?.user?.email || "").trim();
 
       if (!email) {
         alert("ส่งให้ที่ปรึกษาไม่ได้: กรุณาเพิ่มอีเมลในโปรไฟล์ก่อน");
-        navigate("/profile"); // ✅ ตามที่คุณบอก
+        navigate("/profile");
         return false;
       }
       return true;

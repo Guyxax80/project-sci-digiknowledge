@@ -21,6 +21,7 @@
     "mysqldump": "^3.2.0",
     "nodemailer": "^6.10.1",
     "pg": "^8.18.0",
+    "resend": "^6.9.2",
     "zod": "^3.24.2"
   },
   "scripts": {
