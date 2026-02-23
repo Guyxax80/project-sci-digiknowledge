@@ -19,42 +19,50 @@ function requireTeacher(req, res) {
   return true;
 }
 
-// =========================
-// TIMELINE: ดูประวัติการอนุมัติของเอกสาร
-// GET /api/approvals/:documentId/timeline
-// =========================
-router.get('/:documentId/timeline', auth, async (req, res) => {
-  const documentId = Number(req.params.documentId);
-  if (!documentId) {
-    return res.status(400).json({ success: false, message: 'documentId ไม่ถูกต้อง' });
-  }
+// ✅ normalize status จาก approval_history (อาจเป็น Approved/Rejected) ให้เป็นตัวเล็ก
+function normalizeStatus(s) {
+  const v = String(s || '').trim().toLowerCase();
+  if (v === 'approved') return 'approved';
+  if (v === 'rejected') return 'rejected';
+  if (v === 'pending') return 'pending';
+  if (v === 'draft') return 'draft';
+  return v || 'draft';
+}
 
+// ✅ กัน email ล่ม/timeout ไม่ให้ API ล้ม
+async function safeNotify(payload) {
   try {
-    const { rows } = await db.query(
-      `
-      SELECT ah.approval_id,
-             ah.status,
-             ah.reason,
-             ah.approved_at,
-             u.username AS approver_name
-      FROM public.approval_history ah
-      LEFT JOIN public.users u ON u.user_id = ah.approver_id
-      WHERE ah.document_id = $1
-      ORDER BY ah.approved_at DESC
-      `,
-      [documentId]
-    );
-
-    return res.json({ success: true, timeline: rows });
-  } catch (err) {
-    console.error('GET /api/approvals/:documentId/timeline error', err);
-    return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาด' });
+    await notifyByEmail(payload);
+    return { ok: true };
+  } catch (e) {
+    console.error('[email] send failed (ignored)', {
+      message: e?.message,
+      code: e?.code,
+      response: e?.response,
+      hint: { userId: payload?.userId, documentId: payload?.documentId, subject: payload?.subject },
+    });
+    return { ok: false, error: e };
   }
-});
+}
+
+function getClient() {
+  const pool = db.pool || db; // รองรับทั้ง export pool หรือ export { pool }
+  if (!pool?.connect) throw new Error('DB pool is not configured (missing connect())');
+  return pool.connect();
+}
+
+/**
+ * =========================================================
+ * IMPORTANT: route order
+ * - ต้องวาง /pending ไว้ก่อน /:documentId/... ไม่งั้นชนกัน
+ * =========================================================
+ */
 
 // =========================
 // TEACHER: pending list (เฉพาะของตัวเอง)
 // GET /api/approvals/pending
+// ✅ คืนเฉพาะ documents.status = 'pending'
+// ✅ filter เฉพาะนักศึกษาที่ u.advisor_id = teacherId
 // =========================
 router.get('/pending', auth, async (req, res) => {
   if (!requireTeacher(req, res)) return;
@@ -64,13 +72,19 @@ router.get('/pending', auth, async (req, res) => {
   try {
     const { rows } = await db.query(
       `
-      SELECT d.document_id, d.title, d.status, d.uploaded_at, d.user_id,
-             u.username AS student_name, u.student_id
+      SELECT
+        d.document_id,
+        d.title,
+        d.status,
+        d.uploaded_at,
+        d.user_id,
+        u.username AS student_name,
+        u.student_id
       FROM public.documents d
       JOIN public.users u ON u.user_id = d.user_id
       WHERE d.status = 'pending'
         AND u.advisor_id = $1
-      ORDER BY d.uploaded_at ASC
+      ORDER BY d.uploaded_at DESC, d.document_id DESC
       `,
       [teacherId]
     );
@@ -78,6 +92,43 @@ router.get('/pending', auth, async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.error('GET /api/approvals/pending error', err);
+    return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาด' });
+  }
+});
+
+// =========================
+// TIMELINE: ดูประวัติการอนุมัติของเอกสาร
+// GET /api/approvals/:documentId/timeline
+// ✅ normalize status ให้ frontend ใช้ได้แน่นอน
+// =========================
+router.get('/:documentId/timeline', auth, async (req, res) => {
+  const documentId = Number(req.params.documentId);
+  if (!Number.isFinite(documentId) || documentId <= 0) {
+    return res.status(400).json({ success: false, message: 'documentId ไม่ถูกต้อง' });
+  }
+
+  try {
+    const { rows } = await db.query(
+      `
+      SELECT
+        ah.approval_id,
+        ah.status,
+        ah.reason,
+        ah.approved_at,
+        u.username AS approver_name
+      FROM public.approval_history ah
+      LEFT JOIN public.users u ON u.user_id = ah.approver_id
+      WHERE ah.document_id = $1
+      ORDER BY ah.approved_at DESC, ah.approval_id DESC
+      `,
+      [documentId]
+    );
+
+    const normalized = rows.map((r) => ({ ...r, status: normalizeStatus(r.status) }));
+
+    return res.json({ success: true, timeline: normalized });
+  } catch (err) {
+    console.error('GET /api/approvals/:documentId/timeline error', err);
     return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาด' });
   }
 });
@@ -92,14 +143,22 @@ router.post('/:documentId/approve', auth, async (req, res) => {
   const documentId = Number(req.params.documentId);
   const teacherId = req.user.user_id;
 
-  const client = await db.pool.connect();
+  if (!Number.isFinite(documentId) || documentId <= 0) {
+    return res.status(400).json({ success: false, message: 'documentId ไม่ถูกต้อง' });
+  }
+
+  const client = await getClient();
   try {
     await client.query('BEGIN');
 
     const docQ = await client.query(
       `
-      SELECT d.document_id, d.title, d.user_id, d.status,
-             u.advisor_id
+      SELECT
+        d.document_id,
+        d.title,
+        d.user_id,
+        d.status,
+        u.advisor_id
       FROM public.documents d
       JOIN public.users u ON u.user_id = d.user_id
       WHERE d.document_id = $1
@@ -125,7 +184,7 @@ router.post('/:documentId/approve', auth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'อนุมัติได้เฉพาะเอกสารรอตรวจ' });
     }
 
-    // ✅ approval_history enum เป็น Approved/Rejected (ตัวใหญ่)
+    // ✅ approval_history ใช้ 'Approved' ตัวใหญ่ (ตามของคุณ)
     await client.query(
       `
       INSERT INTO public.approval_history (document_id, approver_id, status, reason, approved_at)
@@ -134,7 +193,7 @@ router.post('/:documentId/approve', auth, async (req, res) => {
       [documentId, teacherId]
     );
 
-    // ✅ documents.status enum เป็น draft/pending/approved/rejected (ตัวเล็ก)
+    // ✅ documents.status เป็นตัวเล็ก
     await client.query(
       `UPDATE public.documents SET status = 'approved' WHERE document_id = $1`,
       [documentId]
@@ -143,7 +202,7 @@ router.post('/:documentId/approve', auth, async (req, res) => {
     await client.query('COMMIT');
 
     const link = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/document-detail/${documentId}`;
-    await notifyByEmail({
+    await safeNotify({
       userId: doc.user_id,
       documentId,
       subject: 'ผลงานของคุณได้รับการอนุมัติแล้ว',
@@ -169,20 +228,31 @@ router.post('/:documentId/reject', auth, async (req, res) => {
 
   const parsed = rejectSchema.safeParse(req.body || {});
   if (!parsed.success) {
-    return res.status(400).json({ success: false, message: parsed.error.issues[0].message });
+    return res.status(400).json({
+      success: false,
+      message: parsed.error.issues?.[0]?.message || 'ข้อมูลไม่ถูกต้อง',
+    });
   }
 
   const documentId = Number(req.params.documentId);
   const teacherId = req.user.user_id;
 
-  const client = await db.pool.connect();
+  if (!Number.isFinite(documentId) || documentId <= 0) {
+    return res.status(400).json({ success: false, message: 'documentId ไม่ถูกต้อง' });
+  }
+
+  const client = await getClient();
   try {
     await client.query('BEGIN');
 
     const docQ = await client.query(
       `
-      SELECT d.document_id, d.title, d.user_id, d.status,
-             u.advisor_id
+      SELECT
+        d.document_id,
+        d.title,
+        d.user_id,
+        d.status,
+        u.advisor_id
       FROM public.documents d
       JOIN public.users u ON u.user_id = d.user_id
       WHERE d.document_id = $1
@@ -224,7 +294,7 @@ router.post('/:documentId/reject', auth, async (req, res) => {
     await client.query('COMMIT');
 
     const link = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/document-detail/${documentId}`;
-    await notifyByEmail({
+    await safeNotify({
       userId: doc.user_id,
       documentId,
       subject: 'ผลงานถูกส่งกลับให้แก้ไข',
