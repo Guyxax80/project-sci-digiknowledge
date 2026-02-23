@@ -1,23 +1,6 @@
 // server/services/emailService.js
 const nodemailer = require("nodemailer");
 
-let Resend = null;
-function getResendClient() {
-  if (!Resend) {
-    // lazy require กันพังถ้ายังไม่ได้ติดตั้ง
-    // eslint-disable-next-line global-require
-    Resend = require("resend").Resend;
-  }
-  return new Resend(process.env.RESEND_API_KEY);
-}
-
-const EMAIL_PROVIDER = String(process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
-// smtp | resend
-
-function isResendConfigured() {
-  return Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
-}
-
 function isSmtpConfigured() {
   return Boolean(
     process.env.SMTP_HOST &&
@@ -29,102 +12,47 @@ function isSmtpConfigured() {
 }
 
 let cachedTransporter = null;
-let verifiedOnce = false;
 
 function getTransporter() {
   if (cachedTransporter) return cachedTransporter;
 
   const host = process.env.SMTP_HOST || "smtp.gmail.com";
-  const port = Number(process.env.SMTP_PORT || 587);
+  const port = Number(process.env.SMTP_PORT || 465);
+
+  // ✅ 465 = SSL, 587 = STARTTLS
+  const secure = port === 465;
 
   cachedTransporter = nodemailer.createTransport({
     host,
     port,
-    secure: false,
+    secure,
+
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
 
-    // ✅ timeout กัน ETIMEDOUT
+    // ✅ timeout กันค้างนาน
     connectionTimeout: 20000,
     greetingTimeout: 20000,
     socketTimeout: 30000,
 
-    requireTLS: true,
-    tls: { servername: host },
+    // ✅ ถ้า 587 ให้บังคับ STARTTLS
+    ...(secure ? {} : { requireTLS: true }),
+
+    tls: {
+      servername: host,
+    },
   });
 
   return cachedTransporter;
 }
 
-async function verifySmtpSafe() {
-  if (verifiedOnce) return { ok: true, skipped: true };
-
-  const t = getTransporter();
-  try {
-    await t.verify();
-    verifiedOnce = true;
-    console.info("[email] SMTP verify OK");
-    return { ok: true };
-  } catch (err) {
-    console.error("[email] SMTP verify failed", {
-      message: err?.message,
-      code: err?.code,
-      response: err?.response,
-    });
-    return { ok: false, error: err?.message, code: err?.code };
-  }
-}
-
 /**
- * sendEmail
- * - ไม่ทำให้ระบบพัง: ส่งไม่สำเร็จ -> skipped:true
+ * ✅ ไม่ verify แล้ว (เพราะ verify ชอบ timeout บน host ที่บล็อก)
+ * ถ้าจะ debug ค่อยเรียกเองตอน dev
  */
 async function sendEmail({ to, subject, text, html }) {
-  if (!to) {
-    console.warn('[email] Missing "to". Skip sending email.');
-    return { skipped: true };
-  }
-
-  // ======================
-  // ✅ RESEND (แนะนำ)
-  // ======================
-  if (EMAIL_PROVIDER === "resend") {
-    if (!isResendConfigured()) {
-      console.warn("[email] Resend not configured. Skip.", {
-        hasKey: Boolean(process.env.RESEND_API_KEY),
-        hasFrom: Boolean(process.env.EMAIL_FROM),
-      });
-      return { skipped: true };
-    }
-
-    try {
-      const resend = getResendClient();
-
-      const resp = await resend.emails.send({
-        from: process.env.EMAIL_FROM,
-        to,
-        subject: subject || "(no subject)",
-        text: text || undefined,
-        html: html || undefined,
-      });
-
-      console.info("[email] sent via Resend", { to, id: resp?.data?.id, error: resp?.error });
-      if (resp?.error) return { skipped: true, error: resp.error?.message || "resend error" };
-
-      return { skipped: false, messageId: resp?.data?.id };
-    } catch (err) {
-      console.error("[email] Resend send failed (ignored)", {
-        message: err?.message,
-      });
-      return { skipped: true, error: err?.message };
-    }
-  }
-
-  // ======================
-  // ✅ SMTP (เดิม)
-  // ======================
   if (!isSmtpConfigured()) {
     console.warn("[email] SMTP not configured. Skip sending email.", {
       hasHost: Boolean(process.env.SMTP_HOST),
@@ -136,10 +64,12 @@ async function sendEmail({ to, subject, text, html }) {
     return { skipped: true };
   }
 
-  const transporter = getTransporter();
+  if (!to) {
+    console.warn('[email] Missing "to". Skip sending email.');
+    return { skipped: true };
+  }
 
-  // verify ครั้งแรก เพื่อ log ชัด
-  await verifySmtpSafe();
+  const transporter = getTransporter();
 
   try {
     const info = await transporter.sendMail({
@@ -150,10 +80,17 @@ async function sendEmail({ to, subject, text, html }) {
       html: html || undefined,
     });
 
-    console.info("[email] sent via SMTP", { to, messageId: info?.messageId, response: info?.response });
+    console.info("[email] sent via SMTP", {
+      to,
+      messageId: info?.messageId,
+      response: info?.response,
+    });
+
     return { skipped: false, messageId: info?.messageId };
   } catch (err) {
     console.error("[email] send failed (ignored)", {
+      to,
+      subject,
       message: err?.message,
       code: err?.code,
       response: err?.response,
@@ -162,4 +99,4 @@ async function sendEmail({ to, subject, text, html }) {
   }
 }
 
-module.exports = { sendEmail, isSmtpConfigured, verifySmtpSafe };
+module.exports = { sendEmail, isSmtpConfigured };
