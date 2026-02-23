@@ -22,7 +22,6 @@ function DocumentDetailTailwind() {
   const [, setTimeline] = useState([]);
   const [replacingSection, setReplacingSection] = useState(null);
 
-
   const fileInputsRef = useRef({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -40,6 +39,28 @@ function DocumentDetailTailwind() {
   // ✅ UI controls
   const [scale, setScale] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // ✅ หัวข้อที่ "ควรมีให้ครบ" เพื่อให้อัปโหลดทีหลังได้ (แม้ยังไม่มีไฟล์)
+  // ปรับให้ตรงกับ REQUIRED_SECTIONS ฝั่ง server ของคุณ
+  const REQUIRED_SECTIONS = useMemo(
+    () => [
+      "cover",
+      "abstract",
+      "acknowledgement",
+      "toc",
+      "chapter1",
+      "chapter2",
+      "chapter3",
+      "chapter4",
+      "chapter5",
+      "bibliography",
+      "appendix",
+      "author_bio",
+      // ถ้าวิดีโอคุณแยกแสดงอยู่แล้ว จะใส่หรือไม่ใส่ก็ได้
+      // "presentation_video",
+    ],
+    []
+  );
 
   const API_BASE = useMemo(
     () => (process.env.REACT_APP_API_URL || "").replace(/\/+$/, ""),
@@ -124,7 +145,11 @@ function DocumentDetailTailwind() {
     const chapterMatch = section.match(/chapter[\s\-_]*(\d+)/);
     if (chapterMatch) {
       const chapterNumber = Number(chapterMatch[1]);
-      if (!Number.isNaN(chapterNumber) && chapterNumber >= 1 && chapterNumber <= 99) {
+      if (
+        !Number.isNaN(chapterNumber) &&
+        chapterNumber >= 1 &&
+        chapterNumber <= 99
+      ) {
         return `บทที่${chapterNumber}`;
       }
     }
@@ -142,7 +167,7 @@ function DocumentDetailTailwind() {
         const docRes = await api.get(`/documents/${id}`);
         setDoc(docRes.data.document);
         setVideoFile(docRes.data.videoFile);
-        setDownloadFiles(docRes.data.downloadFiles);
+        setDownloadFiles(docRes.data.downloadFiles || []);
 
         try {
           const catRes = await api.get(`/documents/${id}/categories`);
@@ -151,7 +176,9 @@ function DocumentDetailTailwind() {
           setCategories(docRes.data.categories || []);
         }
 
-         const timelineRes = await api.get(`/documents/${id}/timeline`).catch(() => ({ data: [] }));
+        const timelineRes = await api
+          .get(`/documents/${id}/timeline`)
+          .catch(() => ({ data: [] }));
         setTimeline(Array.isArray(timelineRes.data) ? timelineRes.data : []);
 
         setLoading(false);
@@ -164,12 +191,17 @@ function DocumentDetailTailwind() {
     fetchDocument();
   }, [id]);
 
+  // ✅ แทนที่ได้ทุกสถานะ ยกเว้น pending/approved
   const canReplace = () => {
     if (!doc) return false;
-    const statusOk = String(doc.status || "").toLowerCase() === "draft";
+
+    const status = String(doc.status || "").trim().toLowerCase();
+    const statusOk = !["pending", "approved"].includes(status);
+
     const currentUserId = localStorage.getItem("userId");
     const ownerOk =
       currentUserId && String(currentUserId) === String(doc.user_id || "");
+
     return statusOk && ownerOk;
   };
 
@@ -184,48 +216,53 @@ function DocumentDetailTailwind() {
     try {
       const form = new FormData();
       form.append("file", file);
+
+      // ✅ สำคัญ: server route นี้ต้องรองรับ "อัปโหลดครั้งแรก/อัปเดต" (upsert)
       await api.put(`/section-files/${doc.document_id}/sections/${section}`, form);
 
       const docRes = await api.get(`/documents/${id}`);
       setDoc(docRes.data.document);
       setVideoFile(docRes.data.videoFile);
-      setDownloadFiles(docRes.data.downloadFiles);
+      setDownloadFiles(docRes.data.downloadFiles || []);
       setReplacingSection(null);
     } catch (e) {
       console.error(e);
-      alert("แทนที่ไฟล์ไม่สำเร็จ");
+      alert("อัปโหลด/แทนที่ไฟล์ไม่สำเร็จ");
       setReplacingSection(null);
     }
   };
 
   const isPdfFile = (file) => {
+    if (!file) return false;
     const fileName = file.original_name || "";
     const fileType = file.file_type || "";
-    return fileName.toLowerCase().endsWith(".pdf") || fileType === "application/pdf";
+    return (
+      fileName.toLowerCase().endsWith(".pdf") || fileType === "application/pdf"
+    );
   };
 
   const handleDownload = async (file) => {
-  try {
-    const res = await api.get(`/download/${file.document_file_id}`, {
-      responseType: "blob",
-    });
+    try {
+      const res = await api.get(`/download/${file.document_file_id}`, {
+        responseType: "blob",
+      });
 
-    const blob = new Blob([res.data]);
-    const url = window.URL.createObjectURL(blob);
+      const blob = new Blob([res.data]);
+      const url = window.URL.createObjectURL(blob);
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = file.original_name || "download";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.original_name || "download";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
 
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error("Download failed:", err);
-    alert("ดาวน์โหลดไม่สำเร็จ");
-  }
-};
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed:", err);
+      alert("ดาวน์โหลดไม่สำเร็จ");
+    }
+  };
 
   const openPdfViewer = (file) => {
     setViewingPdf(file);
@@ -261,10 +298,12 @@ function DocumentDetailTailwind() {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        // เลือกหน้าที่เห็น “มากสุด”
         const visible = entries
           .filter((e) => e.isIntersecting)
-          .sort((a, b) => (b.intersectionRatio || 0) - (a.intersectionRatio || 0))[0];
+          .sort(
+            (a, b) =>
+              (b.intersectionRatio || 0) - (a.intersectionRatio || 0)
+          )[0];
 
         const p = visible?.target?.dataset?.page;
         if (p) setCurrentPage(Number(p));
@@ -272,7 +311,7 @@ function DocumentDetailTailwind() {
       {
         root: container,
         threshold: [0.2, 0.35, 0.5, 0.65, 0.8],
-        rootMargin: "-30% 0px -55% 0px", // ✅ โฟกัสกลางจอ
+        rootMargin: "-30% 0px -55% 0px",
       }
     );
 
@@ -288,6 +327,40 @@ function DocumentDetailTailwind() {
     console.error("Error loading PDF:", error);
     alert(`ไม่สามารถโหลดไฟล์ PDF ได้: ${error.message || "Unknown error"}`);
   };
+
+  // ====== ✅ ทำให้ "หัวข้อขึ้นครบ" โดย merge REQUIRED_SECTIONS + downloadFiles ======
+  const normalizeSection = (s) => String(s || "main").trim().toLowerCase();
+
+  const sectionIndex = useMemo(() => {
+    const map = new Map();
+    (downloadFiles || []).forEach((f) => {
+      map.set(normalizeSection(f.section), f);
+    });
+    return map;
+  }, [downloadFiles]);
+
+  const filesForRender = useMemo(() => {
+    // แถวพิเศษ: ไฟล์หลัก (ถ้ามีใน downloadFiles จะโชว์, ถ้าไม่มีจะขึ้นให้ “อัปโหลดไฟล์หลัก” ได้)
+    const mainFile = sectionIndex.get("main") || null;
+    const mainRow = { section: "main", file: mainFile };
+
+    // หัวข้อที่ต้องมีครบ
+    const requiredRows = REQUIRED_SECTIONS.map((sec) => {
+      const f = sectionIndex.get(normalizeSection(sec)) || null;
+      return { section: sec, file: f };
+    });
+
+    // ไฟล์อื่น ๆ ที่ไม่อยู่ใน required และไม่ใช่ main (กันหลุดตก)
+    const extraRows = (downloadFiles || [])
+      .filter((f) => {
+        const sec = normalizeSection(f.section);
+        return sec !== "main" && !REQUIRED_SECTIONS.includes(sec);
+      })
+      .map((f) => ({ section: normalizeSection(f.section), file: f }));
+
+    // จัดลำดับ: main -> extras -> required
+    return [mainRow, ...extraRows, ...requiredRows];
+  }, [REQUIRED_SECTIONS, downloadFiles, sectionIndex]);
 
   if (loading) return <p className="text-center mt-10">กำลังโหลด...</p>;
   if (error) return <p className="text-center mt-10 text-red-500">{error}</p>;
@@ -316,45 +389,58 @@ function DocumentDetailTailwind() {
 
             <p>
               <span className="font-semibold">หมวดหมู่:</span>{" "}
-              {categories.length > 0 ? categories.map((c) => c.name).join(", ") : "-"}
+              {categories.length > 0
+                ? categories.map((c) => c.name).join(", ")
+                : "-"}
             </p>
 
             <p>
-              <span className="font-semibold">คำค้น:</span> {doc.keywords || "-"}
+              <span className="font-semibold">คำค้น:</span>{" "}
+              {doc.keywords || "-"}
             </p>
 
             <p>
               <span className="font-semibold">ปีการศึกษา:</span>{" "}
               {doc.academic_year || "-"}
             </p>
+
+            <p className="mt-2">
+              <span className="font-semibold">สถานะ:</span>{" "}
+              <span className="uppercase">{doc.status || "-"}</span>
+            </p>
           </div>
         </div>
 
-
         <div className="flex-1 bg-white p-4 md:p-6 rounded-lg shadow-md">
           <h3 className="text-xl font-semibold mb-4">ไฟล์ทั้งหมดของเอกสารนี้</h3>
-          {downloadFiles.length === 0 ? (
-            <p className="text-gray-500">ไม่มีไฟล์ให้ดาวน์โหลด</p>
-          ) : (
-            <ul className="space-y-2">
-              {downloadFiles.map((file, index) => (
+
+          <ul className="space-y-2">
+            {filesForRender.map(({ section, file }, index) => {
+              const label =
+                (section || "main") === "main"
+                  ? "ไฟล์หลัก"
+                  : `${section}${
+                      getThaiSectionLabel(section)
+                        ? ` (${getThaiSectionLabel(section)})`
+                        : ""
+                    }`;
+
+              return (
                 <li
-                  key={index}
+                  key={`${section}-${index}`}
                   className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-gray-50 p-2 rounded gap-2"
                 >
                   <span className="truncate">
-                    {(file.section || "main") === "main"
-                      ? "ไฟล์หลัก"
-                      : `${file.section}${
-                          getThaiSectionLabel(file.section)
-                            ? ` (${getThaiSectionLabel(file.section)})`
-                            : ""
-                        }`}
-                    : {file.original_name}
+                    {label}:{" "}
+                    {file?.original_name ? (
+                      file.original_name
+                    ) : (
+                      <span className="text-gray-400">ยังไม่ได้อัปโหลด</span>
+                    )}
                   </span>
 
                   <div className="flex items-center gap-2">
-                    {isPdfFile(file) && (
+                    {file && isPdfFile(file) && (
                       <button
                         onClick={() => openPdfViewer(file)}
                         className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
@@ -363,6 +449,7 @@ function DocumentDetailTailwind() {
                       </button>
                     )}
 
+                    {file && (
                       <button
                         type="button"
                         onClick={() => handleDownload(file)}
@@ -370,35 +457,48 @@ function DocumentDetailTailwind() {
                       >
                         ดาวน์โหลด
                       </button>
+                    )}
 
                     {canReplace() && (
                       <>
                         <button
                           className="text-sm px-2 py-1 bg-accent-600 text-white rounded hover:bg-accent-700"
-                          onClick={() => triggerReplace(file.section || "main")}
-                          disabled={replacingSection === (file.section || "main")}
+                          onClick={() => triggerReplace(section || "main")}
+                          disabled={replacingSection === (section || "main")}
                         >
-                          {replacingSection === (file.section || "main")
+                          {replacingSection === (section || "main")
                             ? "กำลังอัปโหลด..."
-                            : "แทนที่ไฟล์"}
+                            : file
+                            ? "แทนที่ไฟล์"
+                            : "อัปโหลดไฟล์"}
                         </button>
 
                         <input
                           type="file"
                           style={{ display: "none" }}
                           ref={(el) => {
-                            fileInputsRef.current[file.section || "main"] = el;
+                            fileInputsRef.current[section || "main"] = el;
                           }}
                           onChange={(e) =>
-                            handleFileSelected(file.section || "main", e.target.files?.[0])
+                            handleFileSelected(
+                              section || "main",
+                              e.target.files?.[0]
+                            )
                           }
                         />
                       </>
                     )}
                   </div>
                 </li>
-              ))}
-            </ul>
+              );
+            })}
+          </ul>
+
+          {(!canReplace() && (String(doc.status || "").toLowerCase() === "pending" ||
+            String(doc.status || "").toLowerCase() === "approved")) && (
+            <p className="mt-3 text-sm text-gray-500">
+              * สถานะ {String(doc.status || "").toLowerCase()} ไม่อนุญาตให้แก้ไข/แทนที่ไฟล์
+            </p>
           )}
         </div>
       </div>
@@ -434,7 +534,9 @@ function DocumentDetailTailwind() {
                 </button>
 
                 <button
-                  onClick={() => scrollToPage(Math.min(numPages || 1, currentPage + 1))}
+                  onClick={() =>
+                    scrollToPage(Math.min(numPages || 1, currentPage + 1))
+                  }
                   className="px-3 py-1 rounded bg-white border hover:bg-gray-100 disabled:opacity-50"
                   disabled={!numPages || currentPage >= numPages}
                 >
@@ -486,9 +588,7 @@ function DocumentDetailTailwind() {
               className="flex-1 overflow-auto p-4 bg-gray-100"
               style={{ scrollBehavior: "smooth" }}
             >
-              
               <div className="mx-auto w-fit">
-              
                 <Document
                   file={`${API_BASE}/files/view/${viewingPdf.document_file_id}`}
                   options={pdfOptions}

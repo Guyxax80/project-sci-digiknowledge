@@ -98,9 +98,8 @@ app.use('/api/categories', categoriesRoute);
 app.use('/api/profile', profileRoute);
 app.use("/api/teacher", require("./routes/teacher"));
 
-// ⚠️ อันนี้น่าจะชน path เดิม (/api/documents)
-// ถ้า sectionFilesRoute เป็น route แยก แนะนำเปลี่ยน prefix ชัด ๆ เช่น /api/section-files
-app.use('/api/documents', sectionFilesRoute);
+// ✅ แยก prefix ชัด ๆ ไม่ชน /api/documents
+app.use('/api/section-files', sectionFilesRoute);
 
 app.use('/files', filesRoute);
 app.use('/download', downloadRoute);

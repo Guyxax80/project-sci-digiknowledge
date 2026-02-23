@@ -1,447 +1,437 @@
 const express = require('express');
-const router = express.Router();
+const multer = require('multer');
 const db = require('../db');
-const bcrypt = require('bcrypt'); // ✅ เพิ่มให้ครบ
+const cloudinary = require('../config/cloudinary');
+const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
+const supabase = require('../config/supabase');
 
-// =========================
-// helpers: check columns exists (กันพังถ้ายังไม่มีคอลัมน์)
-// =========================
-async function getExistingColumns(tableName, wantedCols) {
-  const { rows } = await db.query(
-    `
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_schema='public'
-      AND table_name=$1
-      AND column_name = ANY($2::text[])
-    `,
-    [tableName, wantedCols]
-  );
-  const set = new Set(rows.map(r => r.column_name));
-  return wantedCols.filter(c => set.has(c));
+const router = express.Router();
+
+const BUCKET = process.env.SUPABASE_BUCKET_DOCUMENTS || 'documents';
+
+// Cloudinary Free plan supports video uploads up to 100MB.
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+
+const envPreview = (value) => {
+  const v = String(value || '');
+  if (!v) return '<missing>';
+  if (v.length < 8) return `${v[0]}***`;
+  return `${v.slice(0, 4)}***${v.slice(-4)}`;
+};
+
+const requiredSupabaseEnv = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
+for (const key of requiredSupabaseEnv) {
+  if (!process.env[key]) {
+    throw new Error(`[sections] Missing required env: ${key}`);
+  }
 }
 
-async function ensureUsersHasAdvisorId() {
-  const cols = await getExistingColumns('users', ['advisor_id']);
-  return cols.includes('advisor_id');
-}
+const cloudinaryEnv = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
 
-// =========================
-// USERS
-// =========================
-router.get('/users', async (_req, res) => {
-  try {
-    // อยากได้ fields เพิ่ม แต่ถ้าไม่มีคอลัมน์ก็ไม่พัง
-    const existing = await getExistingColumns('users', [
-      'email',
-      'class_group',
-      'level',
-      'advisor_id',
-      'created_at',
-    ]);
+console.log('[sections] BUCKET =', BUCKET);
+console.log('[sections] SUPABASE_URL =', process.env.SUPABASE_URL);
+console.log('[sections] SUPABASE_SERVICE_ROLE_KEY =', envPreview(process.env.SUPABASE_SERVICE_ROLE_KEY));
+console.log('[sections] CLOUDINARY_CLOUD_NAME =', envPreview(process.env.CLOUDINARY_CLOUD_NAME));
 
-    const selectParts = [
-      'user_id',
-      'username',
-      'role',
-      'student_id',
-      existing.includes('email') ? 'email' : 'NULL::text AS email',
-      existing.includes('class_group') ? 'class_group' : 'NULL::text AS class_group',
-      existing.includes('level') ? 'level' : 'NULL::text AS level',
-      existing.includes('advisor_id') ? 'advisor_id' : 'NULL::int AS advisor_id',
-      existing.includes('created_at') ? 'created_at' : 'NOW() AS created_at',
-    ];
+// ===== Allowed sections (กันยิง section แปลกๆ) =====
+// ปรับให้ตรงกับฝั่ง client + DB ของคุณ
+const ALLOWED_SECTIONS = new Set([
+  'main',
+  'cover',
+  'abstract',
+  'acknowledgement',
+  'toc',
+  'chapter1',
+  'chapter2',
+  'chapter3',
+  'chapter4',
+  'chapter5',
+  'reference',
+  'bibliography',
+  'appendix',
+  'author_bio',
+  'presentation_video',
+]);
 
-    const { rows } = await db.query(
-      `SELECT ${selectParts.join(', ')} FROM users ORDER BY user_id DESC`
-    );
-    res.json(rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'DB error' });
-  }
-});
+const normalizeSection = (s) => String(s || '').trim().toLowerCase();
 
-router.post('/users', async (req, res) => {
-  const { username, password, role, student_id } = req.body;
-  if (!username || !password || !role) return res.status(400).json({ error: 'กรอกข้อมูลไม่ครบ' });
-  if (role === 'student' && !student_id) return res.status(400).json({ error: 'กรุณาระบุ Student ID สำหรับนักศึกษา' });
+// ✅ แก้ไขได้ทุกสถานะ ยกเว้น pending/approved
+const canEditStatus = (statusRaw) => {
+  const status = String(statusRaw || '').trim().toLowerCase();
+  return !['pending', 'approved'].includes(status);
+};
 
-  try {
-    if (student_id) {
-      const chk = await db.query('SELECT 1 FROM student_codes WHERE student_id = $1 LIMIT 1', [student_id]);
-      if (!chk.rows.length) return res.status(400).json({ error: 'Student ID ไม่พบในระบบ' });
-    }
+// ===== multer =====
+const storage = multer.memoryStorage();
 
-    const hashed = await bcrypt.hash(password, 10);
-    await db.query(
-      'INSERT INTO users (username, student_id, password, role) VALUES ($1, $2, $3, $4)',
-      [username, student_id || null, hashed, role]
-    );
+// POST multi-fields (upload many sections at once)
+const sectionFields = [
+  { name: 'cover', maxCount: 1 },
+  { name: 'abstract', maxCount: 1 },
+  { name: 'acknowledgement', maxCount: 1 },
+  { name: 'toc', maxCount: 1 },
+  { name: 'chapter1', maxCount: 1 },
+  { name: 'chapter2', maxCount: 1 },
+  { name: 'chapter3', maxCount: 1 },
+  { name: 'chapter4', maxCount: 1 },
+  { name: 'chapter5', maxCount: 1 },
+  { name: 'reference', maxCount: 1 },
+  { name: 'bibliography', maxCount: 1 },
+  { name: 'appendix', maxCount: 1 },
+  { name: 'author_bio', maxCount: 1 },
+  { name: 'presentation_video', maxCount: 1 },
+];
 
-    res.json({ message: 'เพิ่มผู้ใช้สำเร็จ' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'DB insert error' });
-  }
-});
+const upload = multer({ storage, limits: { fileSize: MAX_VIDEO_BYTES } });
 
-router.put('/users/:user_id', async (req, res) => {
-  const { username, role, student_id } = req.body;
-  const userId = req.params.user_id;
+const uploadSectionFields = (req, res, next) => {
+  upload.fields(sectionFields)(req, res, (err) => {
+    if (!err) return next();
 
-  try {
-    const current = await db.query('SELECT student_id FROM users WHERE user_id = $1 LIMIT 1', [userId]);
-    if (!current.rows.length) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+    console.error('[sections] multer upload error:', err);
 
-    const targetStudentId =
-      typeof student_id === 'undefined' ? current.rows[0].student_id : (student_id || null);
-
-    if (role === 'student' && !targetStudentId)
-      return res.status(400).json({ error: 'กรุณาระบุ Student ID สำหรับนักศึกษา' });
-
-    if (targetStudentId) {
-      await db.query(
-        'INSERT INTO student_codes (student_id) VALUES ($1) ON CONFLICT (student_id) DO NOTHING',
-        [targetStudentId]
-      );
-    }
-
-    await db.query(
-      'UPDATE users SET username = $1, role = $2, student_id = $3 WHERE user_id = $4',
-      [username, role, targetStudentId, userId]
-    );
-
-    res.json({ message: 'อัปเดตผู้ใช้สำเร็จ' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'DB update error' });
-  }
-});
-
-router.delete('/users/:user_id', async (req, res) => {
-  try {
-    await db.query('UPDATE documents SET user_id = NULL WHERE user_id = $1', [req.params.user_id]);
-    await db.query('DELETE FROM users WHERE user_id = $1', [req.params.user_id]);
-    res.json({ message: 'ลบผู้ใช้สำเร็จ (ผลงานยังอยู่)' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'ไม่สามารถลบผู้ใช้ได้' });
-  }
-});
-
-// =========================
-// ✅ ADVISOR: teachers/students + set advisor
-// =========================
-
-// GET /api/admin/teachers
-router.get('/teachers', async (_req, res) => {
-  try {
-    const existing = await getExistingColumns('users', ['email']);
-    const selectParts = [
-      'user_id',
-      'username',
-      'role',
-      existing.includes('email') ? 'email' : 'NULL::text AS email',
-    ];
-
-    const { rows } = await db.query(
-      `SELECT ${selectParts.join(', ')}
-       FROM users
-       WHERE role='teacher'
-       ORDER BY user_id DESC`
-    );
-    res.json(rows);
-  } catch (err) {
-    console.error('admin/teachers error:', err);
-    res.status(500).json({ error: 'DB error' });
-  }
-});
-
-// GET /api/admin/students
-router.get('/students', async (_req, res) => {
-  try {
-    const existing = await getExistingColumns('users', [
-      'email',
-      'class_group',
-      'level',
-      'advisor_id',
-    ]);
-
-    const selectParts = [
-      'user_id',
-      'username',
-      'role',
-      'student_id',
-      existing.includes('email') ? 'email' : 'NULL::text AS email',
-      existing.includes('class_group') ? 'class_group' : 'NULL::text AS class_group',
-      existing.includes('level') ? 'level' : 'NULL::text AS level',
-      existing.includes('advisor_id') ? 'advisor_id' : 'NULL::int AS advisor_id',
-    ];
-
-    const { rows } = await db.query(
-      `SELECT ${selectParts.join(', ')}
-       FROM users
-       WHERE role='student'
-       ORDER BY user_id DESC`
-    );
-    res.json(rows);
-  } catch (err) {
-    console.error('admin/students error:', err);
-    res.status(500).json({ error: 'DB error' });
-  }
-});
-
-// PUT /api/admin/students/:id/advisor  { advisor_id }
-router.put('/students/:id/advisor', async (req, res) => {
-  try {
-    const studentUserId = Number(req.params.id);
-    const { advisor_id } = req.body;
-
-    if (!advisor_id) return res.status(400).json({ error: 'advisor_id required' });
-
-    // ✅ กันพังถ้ายังไม่มีคอลัมน์ advisor_id
-    const hasAdvisorId = await ensureUsersHasAdvisorId();
-    if (!hasAdvisorId) {
-      return res.status(400).json({
-        error:
-          "ตาราง users ยังไม่มีคอลัมน์ advisor_id กรุณารัน SQL: ALTER TABLE public.users ADD COLUMN advisor_id integer;",
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        success: false,
+        message: 'ไฟล์ใหญ่เกิน 100MB',
+        field: err.field,
       });
     }
 
-    // เช็คว่า student มีจริงและเป็น role student
-    const stu = await db.query(
-      `SELECT user_id FROM users WHERE user_id=$1 AND role='student' LIMIT 1`,
-      [studentUserId]
-    );
-    if (!stu.rows.length) return res.status(404).json({ error: 'ไม่พบนักศึกษา' });
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  });
+};
 
-    // เช็คว่า advisor เป็น teacher จริง
-    const t = await db.query(
-      `SELECT user_id FROM users WHERE user_id=$1 AND role='teacher' LIMIT 1`,
-      [advisor_id]
+// --- fix filename thai mojibake (optional) ---
+const fixOriginalName = (name) => {
+  if (!name) return name;
+  if (!name.includes('à¸') && !name.includes('à¹') && !name.includes('â') && !name.includes('Ã')) return name;
+  try {
+    const fixed = Buffer.from(name, 'latin1').toString('utf8');
+    return fixed || name;
+  } catch {
+    return name;
+  }
+};
+
+// ✅ ห้ามเอาชื่อไฟล์จริงไปเป็น key (กัน Invalid key แบบชัวร์)
+const getExt = (originalName, mimeType) => {
+  const n = String(originalName || '');
+  const lastDot = n.lastIndexOf('.');
+  if (lastDot > -1 && lastDot < n.length - 1) {
+    const ext = n.slice(lastDot + 1).toLowerCase();
+    if (ext && ext.length <= 10) return ext;
+  }
+
+  if (mimeType === 'application/pdf') return 'pdf';
+  if (mimeType === 'application/msword') return 'doc';
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+  if (mimeType?.startsWith('image/')) return (mimeType.split('/')[1] || 'img').toLowerCase();
+
+  return 'bin';
+};
+
+const uploadVideo = (buffer) =>
+  new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { resource_type: 'video', folder: 'documents/videos' },
+      (error, result) => (error ? reject(error) : resolve(result)),
     );
-    if (!t.rows.length) return res.status(400).json({ error: 'advisor ต้องเป็น teacher' });
+    stream.end(buffer);
+  });
+
+const isLikelyJson = (contentType, text) => {
+  const body = String(text || '').trim();
+  if (!body) return false;
+  if (String(contentType || '').toLowerCase().includes('application/json')) return true;
+  return body.startsWith('{') || body.startsWith('[');
+};
+
+const parseJsonIfPossible = (contentType, text) => {
+  if (!isLikelyJson(contentType, text)) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
+
+const uploadToSupabaseStorageRest = async ({ objectPath, mimeType, buffer }) => {
+  const storageUploadUrl = `${process.env.SUPABASE_URL}/storage/v1/object/${BUCKET}/${objectPath}`;
+  const method = 'PUT';
+
+  try {
+    const upstreamRes = await fetch(storageUploadUrl, {
+      method,
+      headers: {
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+        'Content-Type': mimeType || 'application/octet-stream',
+      },
+      body: buffer,
+    });
+
+    const responseText = await upstreamRes.text();
+    const parsedJson = parseJsonIfPossible(upstreamRes.headers.get('content-type'), responseText);
+
+    if (!upstreamRes.ok) {
+      console.error('[sections] Supabase upload failed', {
+        method,
+        fullUrl: storageUploadUrl,
+        status: upstreamRes.status,
+        responseText,
+      });
+
+      const upstreamMessage = parsedJson?.message || parsedJson?.error || null;
+      const e = new Error(upstreamMessage || `Supabase upload failed with status ${upstreamRes.status}`);
+      e.status = upstreamRes.status;
+      e.responseText = responseText;
+      throw e;
+    }
+
+    return parsedJson;
+  } catch (error) {
+    if (!error?.status) {
+      console.error('[sections] Supabase upload request error', {
+        method,
+        fullUrl: storageUploadUrl,
+        status: error?.status || null,
+        responseText: error?.responseText || error?.message || null,
+      });
+    }
+    throw error;
+  }
+};
+
+async function persistFile(documentId, sectionNameRaw, file) {
+  const sectionName = normalizeSection(sectionNameRaw);
+
+  if (!ALLOWED_SECTIONS.has(sectionName)) {
+    const e = new Error(`section ไม่ถูกต้อง: ${sectionName}`);
+    e.status = 400;
+    throw e;
+  }
+
+  const originalName = fixOriginalName(file.originalname);
+  const mimeType = file.mimetype;
+
+  // ===== VIDEO -> Cloudinary =====
+  if (sectionName === 'presentation_video') {
+    for (const key of cloudinaryEnv) {
+      if (!process.env[key]) {
+        throw new Error(`[sections] Missing required env for video upload: ${key}`);
+      }
+    }
+
+    console.log('[sections] upload target', {
+      provider: 'cloudinary',
+      folder: 'documents/videos',
+      cloudNamePreview: envPreview(process.env.CLOUDINARY_CLOUD_NAME),
+    });
+
+    if (!mimeType?.startsWith('video/')) {
+      const e = new Error('ไฟล์วิดีโอต้องเป็น mimetype video/*');
+      e.status = 415;
+      throw e;
+    }
+
+    const result = await uploadVideo(file.buffer);
 
     await db.query(
-      `UPDATE users SET advisor_id=$1 WHERE user_id=$2`,
-      [advisor_id, studentUserId]
+      `INSERT INTO public.document_files
+        (document_id, file_path, original_name, file_type, section, uploaded_at,
+         provider, public_url, cloudinary_public_id, mime_type, size_bytes)
+       VALUES
+        ($1,$2,$3,$4,$5,NOW(),
+         'cloudinary',$6,$7,$8,$9)`,
+      [
+        documentId,
+        result.secure_url,
+        originalName,
+        mimeType,
+        sectionName,
+        result.secure_url,
+        result.public_id,
+        mimeType,
+        file.size || null,
+      ],
     );
 
-    res.json({ success: true });
-  } catch (err) {
-    console.error('admin set advisor error:', err);
-    res.status(500).json({ error: 'DB error' });
+    return;
   }
-});
 
-// =========================
-// STATS
-// =========================
-router.get('/stats', async (req, res) => {
-  const days = Math.max(1, Math.min(Number(req.query.days || 7), 365));
+  // ===== FILES -> Supabase Storage =====
+  const ext = getExt(originalName, mimeType);
+
+  // ✅ key เป็น ASCII ล้วนแน่นอน
+  const objectPath = `${documentId}/${sectionName}/${Date.now()}-${Math.round(Math.random() * 1e9)}.${ext}`;
+
+  console.log('[sections] upload target', {
+    provider: 'supabase',
+    bucket: BUCKET,
+    objectPath,
+    storageUploadUrl: `${process.env.SUPABASE_URL}/storage/v1/object/${BUCKET}/${objectPath}`,
+  });
+
+  await uploadToSupabaseStorageRest({
+    objectPath,
+    mimeType,
+    buffer: file.buffer,
+  });
+
+  const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(objectPath);
+  const publicUrl = pub?.publicUrl || null;
+
+  await db.query(
+    `INSERT INTO public.document_files
+      (document_id, file_path, original_name, file_type, section, uploaded_at,
+       provider, bucket, storage_path, public_url, mime_type, size_bytes)
+     VALUES
+      ($1,$2,$3,$4,$5,NOW(),
+       'supabase',$6,$7,$8,$9,$10)`,
+    [
+      documentId,
+      publicUrl || objectPath, // compat
+      originalName,
+      mimeType,
+      sectionName,
+      BUCKET,
+      objectPath,
+      publicUrl,
+      mimeType,
+      file.size || null,
+    ],
+  );
+}
+
+// ===============
+// POST /api/(...)/:documentId/sections  (upload many sections)
+// ===============
+router.post('/:documentId/sections', auth, requireRole('student'), uploadSectionFields, async (req, res) => {
+  const documentId = Number(req.params.documentId);
+
+  if (!req.files || !Object.keys(req.files).length) {
+    return res.status(400).json({ success: false, message: 'ไม่มีไฟล์ที่อัปโหลด' });
+  }
+
+  // validate incoming fields (กันส่ง field แปลก)
+  for (const sectionName of Object.keys(req.files)) {
+    const s = normalizeSection(sectionName);
+    if (!ALLOWED_SECTIONS.has(s)) {
+      return res.status(400).json({ success: false, message: `section ไม่ถูกต้อง: ${sectionName}` });
+    }
+  }
 
   try {
-    // ----- Core totals -----
-    const usersQ = await db.query('SELECT COUNT(*)::int AS count FROM users');
-    const documentsQ = await db.query('SELECT COUNT(*)::int AS count FROM documents');
-    const downloadsQ = await db.query('SELECT COALESCE(SUM(download_count),0)::int AS count FROM documents');
-    const usersByRoleQ = await db.query('SELECT role, COUNT(*)::int AS count FROM users GROUP BY role');
-
-    // ----- Detect timestamp column (uploaded_at preferred) -----
-    const tsColQ = await db.query(
-      `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema='public'
-        AND table_name='documents'
-        AND column_name IN ('uploaded_at','created_at')
-      ORDER BY CASE column_name WHEN 'uploaded_at' THEN 0 ELSE 1 END
-      LIMIT 1
-      `
+    const ownerCheck = await db.query(
+      'SELECT user_id, status FROM public.documents WHERE document_id = $1 LIMIT 1',
+      [documentId]
     );
-    const tsCol = tsColQ.rows?.[0]?.column_name || 'uploaded_at';
-
-    // ----- Upload count in last N days -----
-    const uploadCountQ = await db.query(
-      `SELECT COUNT(*)::int AS count
-       FROM documents
-       WHERE ${tsCol} >= NOW() - ($1 || ' days')::interval`,
-      [days]
-    );
-
-    // ----- Daily series in last N days (fill missing days) -----
-    const uploadsSeriesQ = await db.query(
-      `
-      WITH dd AS (
-        SELECT generate_series(
-          date_trunc('day', NOW()) - ($1::int - 1) * interval '1 day',
-          date_trunc('day', NOW()),
-          interval '1 day'
-        ) AS day
-      )
-      SELECT to_char(dd.day, 'YYYY-MM-DD') AS date,
-             COALESCE(COUNT(d.document_id), 0)::int AS count
-      FROM dd
-      LEFT JOIN documents d
-        ON date_trunc('day', d.${tsCol}) = dd.day
-      GROUP BY 1
-      ORDER BY 1
-      `,
-      [days]
-    );
-
-    // ----- topCategories (ตรงกับ schema คุณ) -----
-    let topCategoriesRows = [];
-    try {
-      const hasCategoriesTableQ = await db.query(
-        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='categories' LIMIT 1`
-      );
-      const hasJoinTableQ = await db.query(
-        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='document_categories' LIMIT 1`
-      );
-
-      if (hasCategoriesTableQ.rows.length && hasJoinTableQ.rows.length) {
-        const topCategoriesQ = await db.query(
-          `
-          SELECT
-            c.categorie_id AS category_id,
-            c.name AS category_name,
-            COUNT(dc.document_id)::int AS count
-          FROM document_categories dc
-          JOIN categories c
-            ON c.categorie_id = dc.categorie_id
-          JOIN documents d
-            ON d.document_id = dc.document_id
-          WHERE d.${tsCol} >= NOW() - ($1 || ' days')::interval
-          GROUP BY c.categorie_id, c.name
-          ORDER BY count DESC
-          LIMIT 5
-          `,
-          [days]
-        );
-        topCategoriesRows = topCategoriesQ.rows;
-      }
-    } catch (e) {
-      console.error('topCategories error:', e);
-      topCategoriesRows = [];
+    if (!ownerCheck.rows.length) {
+      return res.status(404).json({ success: false, message: 'ไม่พบเอกสาร' });
     }
 
-    // ----- Top downloads -----
-    const topDocumentsQ = await db.query(
-      `
-      SELECT document_id, title, COALESCE(download_count,0)::int AS download_count
-      FROM documents
-      ORDER BY COALESCE(download_count,0) DESC, ${tsCol} DESC
-      LIMIT 20
-      `
-    );
+    if (Number(ownerCheck.rows[0].user_id) !== Number(req.user.user_id)) {
+      return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์แก้ไขเอกสารนี้' });
+    }
 
-    const topFilesQ = await db.query(
-      `
-      SELECT df.document_file_id, df.document_id, df.section, df.original_name,
-             COALESCE(df.download_count,0)::int AS download_count,
-             d.title
-      FROM document_files df
-      JOIN documents d ON d.document_id = df.document_id
-      ORDER BY COALESCE(df.download_count,0) DESC
-      LIMIT 20
-      `
-    );
+    if (!canEditStatus(ownerCheck.rows[0].status)) {
+      return res.status(403).json({ success: false, message: 'แก้ไขไม่ได้เมื่ออยู่สถานะ pending หรือ approved' });
+    }
 
-    res.json({
-      users: usersQ.rows[0].count,
-      documents: documentsQ.rows[0].count,
-      downloads: downloadsQ.rows[0].count,
-      usersByRole: usersByRoleQ.rows,
+    for (const [sectionName, fileArray] of Object.entries(req.files)) {
+      await persistFile(documentId, sectionName, fileArray[0]);
+    }
 
-      days,
-      tsCol,
-      uploadCount7d: uploadCountQ.rows[0].count,
-      uploads7dSeries: uploadsSeriesQ.rows,
-      topCategories: topCategoriesRows,
+    return res.json({ success: true, message: 'อัปโหลดไฟล์รายส่วนสำเร็จ' });
+  } catch (err) {
+    console.error('DB error (section files):', err);
 
-      topDocuments: topDocumentsQ.rows,
-      topFiles: topFilesQ.rows,
+    const status = Number(err?.status || err?.statusCode);
+    const upstreamStatus = Number(err?.originalError?.status || err?.cause?.status || err?.cause?.statusCode);
+
+    const normalizedStatus = [400, 401, 403, 404, 409, 413, 415, 422].includes(status)
+      ? status
+      : [400, 401, 403, 404, 409, 413, 415, 422].includes(upstreamStatus)
+        ? upstreamStatus
+        : 500;
+
+    return res.status(normalizedStatus).json({
+      success: false,
+      message: normalizedStatus === 404
+        ? 'อัปโหลดล้มเหลว: ปลายทางจัดเก็บไฟล์ไม่พบ endpoint (404) กรุณาตรวจ SUPABASE_URL/Cloudinary config'
+        : 'อัปโหลดไฟล์รายส่วนไม่สำเร็จ กรุณาตรวจการตั้งค่า Storage และลองใหม่',
+      error: err.message,
+      providerStatus: status || upstreamStatus || null,
     });
-  } catch (err) {
-    console.error('admin stats error:', err);
-    res.status(500).json({ error: 'DB error' });
   }
 });
 
-// =========================
-// FILE DOWNLOADS (per document)
-// =========================
-router.get('/documents/:documentId/file-downloads', async (req, res) => {
+// ===============
+// PUT /api/(...)/:documentId/sections/:section  (replace / upload single section)
+// ===============
+router.put('/:documentId/sections/:section', auth, requireRole('student'), upload.single('file'), async (req, res) => {
+  const documentId = Number(req.params.documentId);
+  const sectionName = normalizeSection(req.params.section);
+
+  if (!ALLOWED_SECTIONS.has(sectionName)) {
+    return res.status(400).json({ success: false, message: `section ไม่ถูกต้อง: ${req.params.section}` });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: 'กรุณาเลือกไฟล์' });
+  }
+
   try {
-    const { rows } = await db.query(
-      `SELECT document_file_id, section, original_name, COALESCE(download_count,0) AS download_count
-       FROM document_files
-       WHERE document_id = $1 AND COALESCE(download_count,0) > 0
-       ORDER BY download_count DESC, document_file_id ASC`,
-      [req.params.documentId]
+    const doc = await db.query(
+      'SELECT user_id, status FROM public.documents WHERE document_id = $1 LIMIT 1',
+      [documentId]
     );
-    res.json(rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'DB error' });
-  }
-});
-
-// =========================
-// BACKUP
-// =========================
-router.get('/backup', (_req, res) => {
-  res.status(501).json({ error: 'Use Supabase backup tools / pg_dump outside API server.' });
-});
-
-// =========================
-// STUDENT CODES
-// =========================
-router.get('/student-codes', async (_req, res) => {
-  try {
-    const { rows } = await db.query(
-      'SELECT student_code_id, student_id FROM student_codes ORDER BY student_code_id DESC'
-    );
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: 'DB error' });
-  }
-});
-
-router.post('/student-codes', async (req, res) => {
-  const raw = req.body.student_ids;
-  if (!raw) return res.status(400).json({ error: 'กรุณาระบุ Student ID' });
-
-  const ids = (Array.isArray(raw) ? raw : String(raw).split(/[\n,]/))
-    .map((s) => String(s).trim())
-    .filter(Boolean);
-
-  if (!ids.length) return res.status(400).json({ error: 'ไม่มี Student ID ที่เพิ่มได้' });
-
-  try {
-    let inserted = 0;
-    for (const id of ids) {
-      const r = await db.query(
-        'INSERT INTO student_codes (student_id) VALUES ($1) ON CONFLICT (student_id) DO NOTHING RETURNING student_code_id',
-        [id]
-      );
-      if (r.rows.length) inserted += 1;
+    if (!doc.rows.length) {
+      return res.status(404).json({ success: false, message: 'ไม่พบเอกสาร' });
     }
-    res.json({ success: true, inserted, totalSubmitted: ids.length });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'เพิ่มรหัสนักศึกษาไม่สำเร็จ' });
-  }
-});
 
-router.delete('/student-codes/:student_code_id', async (req, res) => {
-  try {
-    await db.query('DELETE FROM student_codes WHERE student_code_id = $1', [req.params.student_code_id]);
-    res.json({ success: true });
-  } catch (_err) {
-    res.status(500).json({ error: 'DB delete error' });
+    if (Number(doc.rows[0].user_id) !== Number(req.user.user_id)) {
+      return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์แก้ไขเอกสารนี้' });
+    }
+
+    if (!canEditStatus(doc.rows[0].status)) {
+      return res.status(403).json({ success: false, message: 'แก้ไขไม่ได้เมื่ออยู่สถานะ pending หรือ approved' });
+    }
+
+    // ✅ replace แบบง่าย: ลบของเดิมเฉพาะ section นี้ แล้ว insert ใหม่
+    await db.query(
+      'DELETE FROM public.document_files WHERE document_id = $1 AND section = $2',
+      [documentId, sectionName]
+    );
+
+    await persistFile(documentId, sectionName, req.file);
+
+    return res.json({ success: true, message: 'อัปโหลด/แทนที่ไฟล์สำเร็จ' });
+  } catch (err) {
+    console.error('section replace error:', err);
+
+    const status = Number(err?.status || err?.statusCode);
+    const upstreamStatus = Number(err?.originalError?.status || err?.cause?.status || err?.cause?.statusCode);
+
+    const normalizedStatus = [400, 401, 403, 404, 409, 413, 415, 422].includes(status)
+      ? status
+      : [400, 401, 403, 404, 409, 413, 415, 422].includes(upstreamStatus)
+        ? upstreamStatus
+        : 500;
+
+    return res.status(normalizedStatus).json({
+      success: false,
+      message: normalizedStatus === 404
+        ? 'อัปโหลดล้มเหลว: ปลายทางจัดเก็บไฟล์ไม่พบ endpoint (404) กรุณาตรวจ SUPABASE_URL/Cloudinary config'
+        : 'อัปโหลด/แทนที่ไฟล์ไม่สำเร็จ กรุณาลองใหม่',
+      error: err.message,
+      providerStatus: status || upstreamStatus || null,
+    });
   }
 });
 
