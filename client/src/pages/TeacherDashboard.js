@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Typography, Card, CardContent } from "@mui/material";
-import Navbar from "../components/Navbar";
 import api from "../services/api";
 
 function formatThaiDateTime(iso) {
@@ -49,7 +48,6 @@ const TeacherDashboard = () => {
 
   return (
     <div>
-      <Navbar />
 
       <div className="p-6 mt-16">
         <Typography variant="h4" gutterBottom>
