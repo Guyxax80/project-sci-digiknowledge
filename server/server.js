@@ -37,7 +37,7 @@ const allowedOrigins = [
   'http://localhost:3001',
   process.env.FRONTEND_URL,
   'https://project-sci-digiknowledge1.onrender.com',
-  'https://project-sci-digiknowledge.vercel.app',
+  'https://www.sci-digiknowledge.com',
   ...envAllowlist,
 ].filter(Boolean);
 
