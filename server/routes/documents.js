@@ -41,6 +41,7 @@ const REQUIRED_SECTIONS = [
   'presentation_video',
 ];
 
+// ===== Base list SQL =====
 const baseListSql = `
   SELECT
     d.document_id, d.title, d.keywords, d.academic_year, d.uploaded_at, d.status, d.user_id,
@@ -57,16 +58,14 @@ const baseListSql = `
 `;
 
 // ===== helpers =====
+// approval_history.status เป็น enum Approved/Rejected (ตัวใหญ่)
+// แต่ frontend อยากใช้ตัวเล็ก ให้ normalize ตอนอ่าน timeline
 function normalizeStatus(s) {
   const v = String(s || '').trim().toLowerCase();
   if (v === 'approved') return 'approved';
   if (v === 'rejected') return 'rejected';
   if (v === 'pending') return 'pending';
   if (v === 'draft') return 'draft';
-  // รองรับ Approved/Rejected/Pending (ตัวใหญ่)
-  if (v === 'approved') return 'approved';
-  if (v === 'rejected') return 'rejected';
-  if (v === 'pending') return 'pending';
   return v || 'draft';
 }
 
@@ -181,7 +180,8 @@ router.get('/by-user/:userId', auth, async (req, res) => {
 // - ต้องมีไฟล์ครบทุก section (REQUIRED_SECTIONS)
 // - ต้องมี email ก่อนส่ง
 // - advisor_id ต้องเป็น teacher เท่านั้น
-// - ใช้ Transaction + เขียน approval_history (Pending)
+// - ใช้ Transaction
+// ⚠️ approval_history.status enum มีแค่ Approved/Rejected => ห้าม insert Pending
 // =======================================================
 router.post('/:id/submit', auth, async (req, res) => {
   const documentId = Number(req.params.id);
@@ -215,7 +215,7 @@ router.post('/:id/submit', auth, async (req, res) => {
       return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์ส่งเอกสารนี้' });
     }
 
-    // ✅ ต้องมีอีเมลก่อนส่ง (ตาม requirement)
+    // ✅ ต้องมีอีเมลก่อนส่ง
     const meQ = await client.query(
       `SELECT email FROM public.users WHERE user_id = $1 LIMIT 1`,
       [doc.user_id]
@@ -293,20 +293,15 @@ router.post('/:id/submit', auth, async (req, res) => {
       });
     }
 
-    // ✅ 3) เปลี่ยนสถานะเป็น pending
-    await client.query(`UPDATE public.documents SET status = 'pending' WHERE document_id = $1`, [documentId]);
-
-    // ✅ 4) เขียน timeline ว่า "ส่งตรวจ" (ใช้ Pending ตัวใหญ่ให้เข้ากับ Approved/Rejected ที่คุณใช้)
-    // ถ้าคอลัมน์ status ใน approval_history เป็น text -> ใช้ได้เลย
+    // ✅ 3) เปลี่ยนสถานะเป็น pending (รอบเดียวพอ)
     await client.query(
-      `INSERT INTO public.approval_history (document_id, approver_id, status, reason, approved_at)
-       VALUES ($1, $2, 'Pending', NULL, NOW())`,
-      [documentId, doc.user_id]
+      `UPDATE public.documents SET status = 'pending' WHERE document_id = $1`,
+      [documentId]
     );
 
     await client.query('COMMIT');
 
-    // ✅ 5) แจ้งเตือน "เฉพาะ" ที่ปรึกษาที่ถูกผูกไว้ (email ล่มไม่ทำให้ submit ล้ม)
+    // ✅ 4) แจ้งเตือนเฉพาะที่ปรึกษาที่ถูกผูกไว้
     const link = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/document-detail/${documentId}`;
     await safeNotify({
       userId: advisorId,
@@ -379,7 +374,7 @@ router.get('/:id/timeline', auth, async (req, res) => {
 
     const timeline = rows.map(r => ({
       ...r,
-      status: normalizeStatus(r.status),
+      status: normalizeStatus(r.status), // Approved -> approved
     }));
 
     return res.json({ success: true, timeline });
