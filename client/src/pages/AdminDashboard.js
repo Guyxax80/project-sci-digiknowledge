@@ -1008,8 +1008,6 @@ export default function AdminDashboard() {
                           }}
                         >
                           <MenuItem value="download">ดาวน์โหลดทันที (Download)</MenuItem>
-                          <MenuItem value="server">เก็บบน Server (ชั่วคราว)</MenuItem>
-                          <MenuItem value="supabase">เก็บบน Supabase Storage</MenuItem>
                         </TextField>
                       </Stack>
 
