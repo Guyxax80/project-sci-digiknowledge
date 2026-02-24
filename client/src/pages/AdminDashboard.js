@@ -98,6 +98,25 @@ function StatCard({ icon, label, value, sub }) {
   );
 }
 
+// ✅ normalize mode กันหลุดเป็น "full" หรือค่าอื่น
+const normalizeRestoreMode = (mode) => {
+  const m = String(mode || "").trim().toLowerCase();
+
+  // ค่าใหม่ที่ backend รองรับ
+  if (m === "overwrite_public" || m === "overwrite_tables") return m;
+
+  // legacy/เผื่อพลาด
+  const map = {
+    full: "overwrite_public",
+    public: "overwrite_public",
+    tables: "overwrite_tables",
+    overwritepublic: "overwrite_public",
+    overwritetables: "overwrite_tables",
+  };
+
+  return map[m] || "overwrite_public";
+};
+
 export default function AdminDashboard() {
   const [tab, setTab] = useState(0);
 
@@ -125,7 +144,7 @@ export default function AdminDashboard() {
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreFile, setRestoreFile] = useState(null);
 
-  // ✅ Restore options (NEW)
+  // ✅ Restore options
   const [restoreMode, setRestoreMode] = useState("overwrite_public"); // overwrite_public | overwrite_tables
   const [restoreTables, setRestoreTables] = useState([]); // ตารางที่เลือกตอน restore แบบ overwrite_tables
 
@@ -413,7 +432,7 @@ export default function AdminDashboard() {
   };
 
   // =========================
-  // RESTORE (แก้ให้เลือก mode + tables)
+  // RESTORE (✅ แก้หลัก: normalize mode ก่อนส่ง)
   // =========================
   const restoreDatabase = async () => {
     if (!restoreFile) {
@@ -421,14 +440,16 @@ export default function AdminDashboard() {
       return;
     }
 
-    // validate restore mode
-    if (restoreMode === "overwrite_tables" && restoreTables.length === 0) {
+    const apiMode = normalizeRestoreMode(restoreMode);
+
+    // ถ้า normalize แล้วเป็น tables แต่ยังไม่เลือก table
+    if (apiMode === "overwrite_tables" && restoreTables.length === 0) {
       toast("กรุณาเลือกตารางที่ต้องการทับ (Restore เฉพาะตาราง)", "warning");
       return;
     }
 
     const confirmText =
-      restoreMode === "overwrite_public"
+      apiMode === "overwrite_public"
         ? "⚠️ ยืนยันกู้คืนแบบ “ทับทั้งระบบ (public ทั้งหมด)” ?\n\nการทำงานนี้จะลบข้อมูลเดิมใน public ทั้งหมด แล้วนำเข้าจากไฟล์ .sql"
         : "⚠️ ยืนยันกู้คืนแบบ “ทับเฉพาะตารางที่เลือก” ?\n\nระบบจะล้างข้อมูลในตารางที่เลือก (TRUNCATE) แล้วนำเข้าจากไฟล์ .sql";
 
@@ -440,13 +461,16 @@ export default function AdminDashboard() {
       const fd = new FormData();
       fd.append("file", restoreFile);
 
-      // ✅ ส่ง mode ให้ backend
-      fd.append("mode", restoreMode);
+      // ✅ ส่ง mode ให้ backend (ค่าถูก normalize แล้ว)
+      fd.append("mode", apiMode);
 
       // ✅ ส่ง tables ถ้าเป็น overwrite_tables (ส่งเป็น comma string)
-      if (restoreMode === "overwrite_tables") {
+      if (apiMode === "overwrite_tables") {
         fd.append("tables", restoreTables.join(","));
       }
+
+      // ✅ debug: ดูค่าที่ส่งจริง (เปิดได้ถ้าต้องการ)
+      // console.log("RESTORE PAYLOAD:", Array.from(fd.entries()));
 
       await api.post(`${ADMIN_BASE}/restore`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -1106,14 +1130,14 @@ export default function AdminDashboard() {
                           onChange={(e) => {
                             const v = e.target.value;
                             setRestoreMode(v);
-                            if (v !== "overwrite_tables") setRestoreTables([]);
+                            if (normalizeRestoreMode(v) !== "overwrite_tables") setRestoreTables([]);
                           }}
                         >
                           <MenuItem value="overwrite_public">ทับทั้งระบบ (public ทั้งหมด)</MenuItem>
                           <MenuItem value="overwrite_tables">ทับเฉพาะตารางที่เลือก</MenuItem>
                         </TextField>
 
-                        {restoreMode === "overwrite_tables" ? (
+                        {normalizeRestoreMode(restoreMode) === "overwrite_tables" ? (
                           <TextField
                             select
                             fullWidth
@@ -1133,12 +1157,7 @@ export default function AdminDashboard() {
                             ))}
                           </TextField>
                         ) : (
-                          <TextField
-                            fullWidth
-                            disabled
-                            label="เลือกตาราง (Restore)"
-                            value="โหมดนี้จะทับทั้ง public schema"
-                          />
+                          <TextField fullWidth disabled label="เลือกตาราง (Restore)" value="โหมดนี้จะทับทั้ง public schema" />
                         )}
                       </Stack>
 
@@ -1170,7 +1189,7 @@ export default function AdminDashboard() {
                           !restoreFile ||
                           restoreBusy ||
                           backupBusy ||
-                          (restoreMode === "overwrite_tables" && restoreTables.length === 0)
+                          (normalizeRestoreMode(restoreMode) === "overwrite_tables" && restoreTables.length === 0)
                         }
                         sx={{ mt: 1 }}
                       >
