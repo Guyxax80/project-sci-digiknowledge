@@ -1,9 +1,20 @@
 FROM node:20-bookworm
 
-# ✅ ติดตั้ง pg_dump/psql เวอร์ชัน 17 ให้ตรงกับ server 17.x
+# ติดตั้งเครื่องมือสำหรับเพิ่ม repo (curl/gnupg/ca-certificates)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends postgresql-client-17 ca-certificates \
+ && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
  && rm -rf /var/lib/apt/lists/*
+
+# เพิ่ม PostgreSQL APT repo (PGDG) เพื่อให้ติดตั้ง postgresql-client-17 ได้
+RUN set -eux; \
+  install -d /usr/share/postgresql-common/pgdg; \
+  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    | gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg; \
+  echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+    > /etc/apt/sources.list.d/pgdg.list; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends postgresql-client-17; \
+  rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -11,14 +22,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# คัดลอกโค้ดทั้งหมดใน server
+# คัดลอกโค้ดทั้งหมด
 COPY . .
 
-# Railway ส่ง PORT มาให้เอง (เช่น 8080) — ไม่ต้อง fix ค่า แต่ใส่ไว้เป็น default ได้
 ENV PORT=8080
 EXPOSE 8080
-
-# (ทางเลือก) ยืนยันเวอร์ชันใน log ตอน build/run
-# RUN pg_dump --version && psql --version
 
 CMD ["node", "server.js"]
