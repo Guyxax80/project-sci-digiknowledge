@@ -84,6 +84,76 @@ async function insertDocumentFileWithOptionalPublicId(payload) {
   );
 }
 
+// ✅ NEW: upsert by (document_id, section) กัน section ซ้ำ
+async function upsertDocumentFileBySection(payload) {
+  const { client, documentId, filePath, originalName, fileType, section, publicId } = payload;
+  const queryClient = client || db;
+
+  const existing = await queryClient.query(
+    `SELECT document_file_id
+     FROM public.document_files
+     WHERE document_id = $1 AND LOWER(COALESCE(section,'')) = LOWER($2)
+     LIMIT 1`,
+    [documentId, section],
+  );
+
+  if (existing.rows.length) {
+    const documentFileId = existing.rows[0].document_file_id;
+
+    // ถ้ามี cloudinary_public_id column และมี publicId -> อัปเดตด้วย
+    const canPublicId = publicId && (await supportsCloudinaryPublicId());
+
+    if (canPublicId) {
+      const up = await queryClient.query(
+        `UPDATE public.document_files
+         SET file_path = $1,
+             original_name = $2,
+             file_type = $3,
+             uploaded_at = NOW(),
+             cloudinary_public_id = $4
+         WHERE document_file_id = $5
+         RETURNING *`,
+        [filePath, originalName || null, fileType || null, publicId, documentFileId],
+      );
+      return up.rows[0];
+    }
+
+    const up = await queryClient.query(
+      `UPDATE public.document_files
+       SET file_path = $1,
+           original_name = $2,
+           file_type = $3,
+           uploaded_at = NOW()
+       WHERE document_file_id = $4
+       RETURNING *`,
+      [filePath, originalName || null, fileType || null, documentFileId],
+    );
+    return up.rows[0];
+  }
+
+  // ไม่เจอของเดิม -> insert
+  await insertDocumentFileWithOptionalPublicId({
+    client: queryClient,
+    documentId,
+    filePath,
+    originalName,
+    fileType,
+    section,
+    publicId,
+  });
+
+  const last = await queryClient.query(
+    `SELECT *
+     FROM public.document_files
+     WHERE document_id = $1 AND LOWER(COALESCE(section,'')) = LOWER($2)
+     ORDER BY document_file_id DESC
+     LIMIT 1`,
+    [documentId, section],
+  );
+
+  return last.rows[0] || null;
+}
+
 const parseCategorieIds = (rawCategorieIds) => {
   if (rawCategorieIds === undefined || rawCategorieIds === null || rawCategorieIds === '') {
     return [];
@@ -326,6 +396,186 @@ router.post(
       }
 
       console.error('Upload error:', err);
+      return res.status(err.status || 500).json({
+        success: false,
+        message: err.message || 'เกิดข้อผิดพลาด',
+        error: { details: err.details || null },
+      });
+    } finally {
+      client.release();
+    }
+  },
+);
+
+// =======================================================
+// ✅ NEW: POST /api/upload/documents/:documentId/sections
+// อัปโหลดไฟล์สำหรับ section (cover/chapter1/.../presentation_video)
+// - PDF/DOC/DOCX -> Supabase
+// - VIDEO -> Cloudinary
+// - บันทึกลง document_files โดย upsert ตาม (document_id, section)
+// =======================================================
+router.post(
+  '/documents/:documentId/sections',
+  auth,
+  requireVerifiedStudent,
+  (req, res, next) => {
+    uploadSingleFile(req, res, (err) => {
+      if (!err) return next();
+
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            success: false,
+            message: `ขนาดไฟล์เกินกำหนด (${Math.floor(MAX_UPLOAD_SIZE_BYTES / (1024 * 1024))}MB)`,
+          });
+        }
+
+        return res.status(400).json({
+          success: false,
+          message: `Multer error: ${err.message}`,
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: err.message || 'ไม่สามารถอ่านไฟล์ที่อัปโหลดได้',
+      });
+    });
+  },
+  async (req, res) => {
+    const client = await db.pool.connect();
+
+    try {
+      const documentId = Number(req.params.documentId);
+      if (!Number.isFinite(documentId) || documentId <= 0) {
+        return res.status(400).json({ success: false, message: 'documentId ไม่ถูกต้อง' });
+      }
+
+      const section = String(req.body.section || '').trim();
+      if (!section) {
+        return res.status(400).json({ success: false, message: 'ต้องระบุ section' });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: 'ต้องแนบไฟล์ (field: file)' });
+      }
+
+      const userId = Number(req.user.user_id);
+
+      await client.query('BEGIN');
+
+      // ✅ ตรวจว่าเอกสารเป็นของ user นี้จริง
+      const docQ = await client.query(
+        `SELECT document_id, user_id
+         FROM public.documents
+         WHERE document_id = $1
+         LIMIT 1
+         FOR UPDATE`,
+        [documentId],
+      );
+      if (!docQ.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ success: false, message: 'ไม่พบเอกสาร' });
+      }
+
+      const ownerId = Number(docQ.rows[0].user_id);
+      if (ownerId !== userId) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์อัปโหลดให้เอกสารนี้' });
+      }
+
+      const mimeType = req.file.mimetype;
+
+      // ===== A) VIDEO -> Cloudinary =====
+      if (isVideo(mimeType)) {
+        const uploaded = await uploadVideoToCloudinary(req.file, userId);
+
+        const saved = await upsertDocumentFileBySection({
+          client,
+          documentId,
+          filePath: uploaded.secure_url,
+          originalName: req.file.originalname,
+          fileType: mimeType,
+          section,
+          publicId: uploaded.public_id,
+        });
+
+        await client.query('COMMIT');
+
+        return res.json({
+          success: true,
+          message: 'อัปโหลด section (video) สำเร็จ',
+          documentId,
+          section,
+          file: saved,
+        });
+      }
+
+      // ===== B) PDF/DOC/DOCX -> Supabase Storage =====
+      if (isDoc(mimeType)) {
+        const bucket = 'documents';
+        const ext = extFromMime(mimeType);
+        const filename = `${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+        const storagePath = `users/${userId}/${documentId}/sections/${section}/${filename}`;
+
+        const { error: upErr } = await supabase.storage
+          .from(bucket)
+          .upload(storagePath, req.file.buffer, {
+            contentType: mimeType,
+            upsert: false,
+          });
+
+        if (upErr) {
+          console.error('Supabase upload error:', upErr);
+          const e = new Error('อัปโหลดขึ้น Supabase ไม่สำเร็จ');
+          e.status = 500;
+          e.details = upErr;
+          throw e;
+        }
+
+        const { data: pub } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+        const publicUrl = pub?.publicUrl;
+
+        if (!publicUrl) {
+          const e = new Error('สร้าง Public URL ไม่สำเร็จ (เช็คว่า bucket เป็น Public)');
+          e.status = 500;
+          throw e;
+        }
+
+        const saved = await upsertDocumentFileBySection({
+          client,
+          documentId,
+          filePath: publicUrl,
+          originalName: req.file.originalname,
+          fileType: mimeType,
+          section,
+          publicId: null,
+        });
+
+        await client.query('COMMIT');
+
+        return res.json({
+          success: true,
+          message: 'อัปโหลด section (document) สำเร็จ',
+          documentId,
+          section,
+          file: saved,
+        });
+      }
+
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        message: 'ชนิดไฟล์ไม่รองรับ (รองรับ PDF/DOC/DOCX และ VIDEO)',
+      });
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackErr) {
+        console.error('Upload section rollback error:', rollbackErr);
+      }
+
+      console.error('Upload section error:', err);
       return res.status(err.status || 500).json({
         success: false,
         message: err.message || 'เกิดข้อผิดพลาด',

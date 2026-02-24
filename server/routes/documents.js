@@ -174,6 +174,106 @@ router.get('/by-user/:userId', auth, async (req, res) => {
 });
 
 // =======================================================
+// ✅ ADD / UPDATE SECTION FILE METADATA (แก้ 404 ของคุณ)
+// POST /api/documents/:id/sections
+//
+// ใช้กรณีที่ frontend อัปโหลดไฟล์ไป storage แล้ว (Supabase/Cloudinary)
+// แล้วส่ง file_path มาให้ backend บันทึกลง document_files
+//
+// หมายเหตุ: ถ้าคุณส่งไฟล์จริง (multipart) แนะนำให้ใช้ /api/section-files แทน
+// =======================================================
+router.post('/:id/sections', auth, async (req, res) => {
+  try {
+    const documentId = Number(req.params.id);
+    if (!Number.isFinite(documentId) || documentId <= 0) {
+      return res.status(400).json({ success: false, message: 'documentId ไม่ถูกต้อง' });
+    }
+
+    // ✅ ตรวจว่าเอกสารมีอยู่ และเป็นเจ้าของ (หรือ admin/teacher ตามที่คุณต้องการ)
+    const docQ = await db.query(
+      `SELECT document_id, user_id, status
+       FROM public.documents
+       WHERE document_id = $1
+       LIMIT 1`,
+      [documentId]
+    );
+    if (!docQ.rows.length) {
+      return res.status(404).json({ success: false, message: 'ไม่พบเอกสาร' });
+    }
+
+    const doc = docQ.rows[0];
+    const requesterId = Number(req.user.user_id);
+    const ownerId = Number(doc.user_id);
+
+    // owner เท่านั้น (ถ้าคุณอยากให้ teacher/admin ทำได้ด้วย ค่อยขยาย)
+    if (requesterId !== ownerId && !isAdmin(req)) {
+      return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์' });
+    }
+
+    // ✅ รับข้อมูลจาก frontend (ปรับ field ตามที่คุณส่งจริง)
+    const section = String(req.body.section || '').trim();
+    const file_path = String(req.body.file_path || '').trim();
+    const original_name = String(req.body.original_name || '').trim();
+    const file_type = String(req.body.file_type || '').trim();
+
+    if (!section) {
+      return res.status(400).json({ success: false, message: 'ต้องระบุ section' });
+    }
+    if (!file_path) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'ต้องส่ง file_path (ถ้าคุณอัปโหลดไฟล์จริง ให้ใช้ endpoint /api/section-files)',
+      });
+    }
+
+    // ✅ กัน section แปลก ๆ (optional) — ถ้าคุณอยากให้เฉพาะชุดนี้เท่านั้น
+    // const allowed = new Set(REQUIRED_SECTIONS);
+    // if (!allowed.has(section)) {
+    //   return res.status(400).json({ success: false, message: 'section ไม่ถูกต้อง' });
+    // }
+
+    // ✅ ถ้ามี section เดิมอยู่แล้ว ให้ update แทน insert (กันซ้ำ)
+    const existing = await db.query(
+      `SELECT document_file_id
+       FROM public.document_files
+       WHERE document_id = $1 AND LOWER(COALESCE(section,'')) = LOWER($2)
+       LIMIT 1`,
+      [documentId, section]
+    );
+
+    let saved;
+    if (existing.rows.length) {
+      const documentFileId = existing.rows[0].document_file_id;
+      const up = await db.query(
+        `UPDATE public.document_files
+         SET file_path = $1,
+             original_name = $2,
+             file_type = $3,
+             uploaded_at = NOW()
+         WHERE document_file_id = $4
+         RETURNING *`,
+        [file_path, original_name || null, file_type || null, documentFileId]
+      );
+      saved = up.rows[0];
+    } else {
+      const ins = await db.query(
+        `INSERT INTO public.document_files (document_id, file_path, original_name, file_type, section, uploaded_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         RETURNING *`,
+        [documentId, file_path, original_name || null, file_type || null, section]
+      );
+      saved = ins.rows[0];
+    }
+
+    return res.status(201).json({ success: true, message: 'บันทึก section สำเร็จ', file: saved });
+  } catch (err) {
+    console.error('POST /:id/sections error:', err);
+    return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาด' });
+  }
+});
+
+// =======================================================
 // SUBMIT
 // =======================================================
 router.post('/:id/submit', auth, async (req, res) => {
@@ -428,7 +528,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
           file_path: file.file_path,
           section,
           original_name: file.original_name || 'video',
-          file_type: file.file_type || null, // ✅ เพิ่ม
+          file_type: file.file_type || null,
         };
       } else {
         downloadFiles.push({
@@ -436,7 +536,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
           file_path: file.file_path,
           section,
           original_name: file.original_name || 'file',
-          file_type: file.file_type || null, // ✅ เพิ่ม
+          file_type: file.file_type || null,
         });
       }
     }
