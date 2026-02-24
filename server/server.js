@@ -128,6 +128,15 @@ app.use((err, req, res, _next) => {
   return res.status(500).json({ message: 'Internal server error' });
 });
 
+const { execSync } = require("child_process");
+
+try {
+  console.log("[diag] pg_dump:", execSync("pg_dump --version").toString().trim());
+  console.log("[diag] psql:", execSync("psql --version").toString().trim());
+} catch (e) {
+  console.log("[diag] cannot run pg_dump/psql:", e.message);
+}
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);
