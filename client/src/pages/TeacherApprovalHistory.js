@@ -99,7 +99,7 @@ export default function TeacherApprovalHistory() {
   }, []);
 
   // =========================
-  // TAB 0: PENDING (ย้ายมาจาก Profile)
+  // TAB 0: PENDING
   // =========================
   const [pendingDocs, setPendingDocs] = useState([]);
   const [pendingLoading, setPendingLoading] = useState(true);
@@ -171,7 +171,9 @@ export default function TeacherApprovalHistory() {
 
   // ===== Teacher: timeline (lazy) =====
   const toggleTimeline = async (documentId) => {
-    const current = timelineByDoc[documentId] || {
+    const docKey = String(documentId);
+
+    const current = timelineByDoc[docKey] || {
       open: false,
       loading: false,
       error: null,
@@ -182,15 +184,15 @@ export default function TeacherApprovalHistory() {
 
     setTimelineByDoc((prev) => ({
       ...prev,
-      [documentId]: { ...(prev[documentId] || current), open: nextOpen },
+      [docKey]: { ...(prev[docKey] || current), open: nextOpen },
     }));
 
     if (!nextOpen || current.items) return;
 
     setTimelineByDoc((prev) => ({
       ...prev,
-      [documentId]: {
-        ...(prev[documentId] || current),
+      [docKey]: {
+        ...(prev[docKey] || current),
         open: true,
         loading: true,
         error: null,
@@ -199,12 +201,12 @@ export default function TeacherApprovalHistory() {
     }));
 
     try {
-      const res = await api.get(`/approvals/${documentId}/timeline`);
+      const res = await api.get(`/approvals/${docKey}/timeline`);
       const items = res.data?.timeline || [];
       setTimelineByDoc((prev) => ({
         ...prev,
-        [documentId]: {
-          ...(prev[documentId] || current),
+        [docKey]: {
+          ...(prev[docKey] || current),
           open: true,
           loading: false,
           error: null,
@@ -215,8 +217,8 @@ export default function TeacherApprovalHistory() {
       console.error("load timeline error:", err?.response?.data || err.message);
       setTimelineByDoc((prev) => ({
         ...prev,
-        [documentId]: {
-          ...(prev[documentId] || current),
+        [docKey]: {
+          ...(prev[docKey] || current),
           open: true,
           loading: false,
           error: "โหลด Timeline ไม่สำเร็จ",
@@ -228,8 +230,10 @@ export default function TeacherApprovalHistory() {
   };
 
   const TimelineBlock = ({ documentId, docStatus }) => {
+    const docKey = String(documentId);
+
     const state =
-      timelineByDoc[documentId] || { open: false, loading: false, error: null, items: null };
+      timelineByDoc[docKey] || { open: false, loading: false, error: null, items: null };
     const items = Array.isArray(state.items) ? state.items : [];
     const normalizedDocStatus = String(docStatus || "draft").toLowerCase();
 
@@ -243,7 +247,7 @@ export default function TeacherApprovalHistory() {
           />
           <button
             type="button"
-            onClick={() => toggleTimeline(documentId)}
+            onClick={() => toggleTimeline(docKey)}
             className="text-sm text-blue-600 hover:underline"
           >
             {state.open ? "ซ่อน Timeline" : "ดู Timeline"}
@@ -256,7 +260,7 @@ export default function TeacherApprovalHistory() {
             {state.error && <p className="text-sm text-red-600">{state.error}</p>}
 
             {!state.loading && !state.error && (
-              <>
+              <React.Fragment>
                 {items.length === 0 ? (
                   <p className="text-sm text-gray-500">ยังไม่มีประวัติการอนุมัติ</p>
                 ) : (
@@ -264,7 +268,7 @@ export default function TeacherApprovalHistory() {
                     <h3 className="font-semibold mb-4 text-lg">Timeline การอนุมัติ</h3>
 
                     <div className="relative border-l-2 border-gray-200 ml-2">
-                      {items.map((item) => {
+                      {items.map((item, idx) => {
                         const status = (item.status || "").toLowerCase();
                         const statusStyles = {
                           approved: "bg-green-100 text-green-700 border-green-400",
@@ -275,8 +279,13 @@ export default function TeacherApprovalHistory() {
                         const style =
                           statusStyles[status] || "bg-gray-100 text-gray-600 border-gray-400";
 
+                        const rowKey =
+                          item.approval_id != null
+                            ? `tl-${item.approval_id}`
+                            : `tl-${docKey}-${item.approved_at || "no-date"}-${idx}`;
+
                         return (
-                          <div key={item.approval_id} className="mb-6 ml-6 relative">
+                          <div key={rowKey} className="mb-6 ml-6 relative">
                             <span
                               className={`absolute -left-3 top-1 w-5 h-5 rounded-full border-2 ${style}`}
                             ></span>
@@ -306,7 +315,7 @@ export default function TeacherApprovalHistory() {
                     </div>
                   </div>
                 )}
-              </>
+              </React.Fragment>
             )}
           </div>
         )}
@@ -350,7 +359,7 @@ export default function TeacherApprovalHistory() {
   }, [ensureEmailOrGoProfile, loadPendingDocs, pickErrMessage, rejectReason, rejectingDoc, toast]);
 
   // =========================
-  // TAB 1: HISTORY (ของเดิมคุณ)
+  // TAB 1: HISTORY
   // =========================
   const [items, setItems] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -375,31 +384,47 @@ export default function TeacherApprovalHistory() {
   }, [items]);
 
   // 🔹 group ตาม student
+  // 🔹 group ตาม student
   const grouped = useMemo(() => {
     const map = new Map();
 
     for (const it of sorted) {
-      const sid = it.student_id;
+      // ✅ รองรับทั้ง student_* และ owner_* และ fallback
+      const sid =
+        it.student_user_id ??
+        it.owner_id ??
+        it.user_id ??
+        it.student_id ??
+        "unknown";
 
       if (!map.has(sid)) {
         map.set(sid, {
-          student_id: sid,
-          student_name: it.student_name,
-          class_group: it.class_group,
-          level: it.level,
+          student_id: it.student_id ?? it.owner_student_id ?? null,
+          student_name: it.student_name ?? it.owner_name ?? null,
+          class_group: it.class_group ?? it.owner_class_group ?? null,
+          level: it.level ?? it.owner_level ?? null,
           documents: {},
         });
       }
 
       const cur = map.get(sid);
-      if (!cur.student_name && it.student_name) cur.student_name = it.student_name;
-      if (!cur.class_group && it.class_group) cur.class_group = it.class_group;
-      if (!cur.level && it.level) cur.level = it.level;
 
-      if (!cur.documents[it.document_id]) {
-        cur.documents[it.document_id] = [];
+      if (!cur.student_name && (it.student_name || it.owner_name)) {
+        cur.student_name = it.student_name || it.owner_name;
       }
-      cur.documents[it.document_id].push(it);
+      if (!cur.student_id && (it.student_id || it.owner_student_id)) {
+        cur.student_id = it.student_id || it.owner_student_id;
+      }
+      if (!cur.class_group && (it.class_group || it.owner_class_group)) {
+        cur.class_group = it.class_group || it.owner_class_group;
+      }
+      if (!cur.level && (it.level || it.owner_level)) {
+        cur.level = it.level || it.owner_level;
+      }
+
+      const docId = it.document_id;
+      if (!cur.documents[docId]) cur.documents[docId] = [];
+      cur.documents[docId].push(it);
     }
 
     return Array.from(map.entries());
@@ -409,17 +434,19 @@ export default function TeacherApprovalHistory() {
   const [openDocs, setOpenDocs] = useState(new Set());
 
   const toggleStudent = (id) => {
+    const key = String(id);
     setOpenStudents((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
   };
 
   const toggleDoc = (id) => {
+    const key = String(id);
     setOpenDocs((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
   };
@@ -432,7 +459,12 @@ export default function TeacherApprovalHistory() {
         </Typography>
 
         <div className="flex gap-2">
-          <Button variant="outlined" onClick={() => { loadPendingDocs(); }}>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              loadPendingDocs();
+            }}
+          >
             รีเฟรชรายการรออนุมัติ
           </Button>
         </div>
@@ -440,12 +472,7 @@ export default function TeacherApprovalHistory() {
 
       <Card className="border border-slate-200 shadow-sm bg-white rounded-xl">
         <CardContent>
-          <Tabs
-            value={tab}
-            onChange={(_, v) => setTab(v)}
-            variant="scrollable"
-            scrollButtons="auto"
-          >
+          <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
             <Tab label="รายการรออนุมัติ" />
             <Tab label="ประวัติการอนุมัติ" />
           </Tabs>
@@ -455,7 +482,7 @@ export default function TeacherApprovalHistory() {
       <Box className="mt-6">
         {/* ================= TAB 0: Pending ================= */}
         {tab === 0 && (
-          <>
+          <React.Fragment>
             <Typography variant="h6" className="!text-slate-900 !font-bold mb-3">
               รายการรออนุมัติ (เฉพาะนักศึกษาที่คุณเป็นที่ปรึกษา)
             </Typography>
@@ -473,7 +500,10 @@ export default function TeacherApprovalHistory() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {pendingDocs.map((doc) => (
-                <Card key={doc.document_id} className="rounded-xl border border-slate-200">
+                <Card
+                  key={`pending-${doc.document_id ?? `${doc.title}-${doc.student_id}`}`}
+                  className="rounded-xl border border-slate-200"
+                >
                   <CardContent>
                     <Typography variant="subtitle1" className="!font-bold !text-slate-900">
                       {doc.title}
@@ -521,12 +551,12 @@ export default function TeacherApprovalHistory() {
                 </Card>
               ))}
             </div>
-          </>
+          </React.Fragment>
         )}
 
         {/* ================= TAB 1: History ================= */}
         {tab === 1 && (
-          <>
+          <React.Fragment>
             <Typography variant="h6" className="!text-slate-900 !font-bold mb-3">
               ประวัติการอนุมัติ
             </Typography>
@@ -534,13 +564,18 @@ export default function TeacherApprovalHistory() {
             {historyLoading && <div className="text-slate-700">กำลังโหลด...</div>}
 
             {!historyLoading &&
-              grouped.map(([studentId, data]) => {
-                const studentOpen = openStudents.has(studentId);
+              grouped.map(([studentId, data], idx) => {
+                const studentKey =
+                  data?.student_id != null && String(data.student_id).trim() !== ""
+                    ? `stu-${String(data.student_id).trim()}`
+                    : `stu-unknown-${idx}`;
+
+                const studentOpen = openStudents.has(String(studentId));
                 const displayName = prettifyName(data.student_name, data.student_id);
 
                 return (
                   <Card
-                    key={studentId}
+                    key={studentKey}
                     className="mb-6 border border-slate-200 shadow-sm bg-white rounded-xl"
                   >
                     <CardContent>
@@ -552,10 +587,7 @@ export default function TeacherApprovalHistory() {
                               {displayName?.[0] || "N"}
                             </div>
                             <div className="min-w-0">
-                              <Typography
-                                variant="h6"
-                                className="!text-slate-900 !font-bold truncate"
-                              >
+                              <Typography variant="h6" className="!text-slate-900 !font-bold truncate">
                                 {displayName}
                               </Typography>
 
@@ -580,7 +612,7 @@ export default function TeacherApprovalHistory() {
                         </div>
 
                         <button
-                          onClick={() => toggleStudent(studentId)}
+                          onClick={() => toggleStudent(String(studentId))}
                           className="shrink-0 px-3 py-1 text-sm rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
                         >
                           {studentOpen ? "ย่อ" : "ดูเอกสาร"}
@@ -591,26 +623,27 @@ export default function TeacherApprovalHistory() {
                       {studentOpen && (
                         <div className="mt-5 space-y-4">
                           {Object.entries(data.documents).map(([docId, events]) => {
-                            const docOpen = openDocs.has(docId);
-                            const latest = events[0];
+                            const docKey = String(docId);
+                            const docOpen = openDocs.has(docKey);
+                            const latest = Array.isArray(events) ? events[0] : null;
 
                             return (
                               <div
-                                key={docId}
+                                key={`doc-${studentKey}-${docKey}`}
                                 className="border border-slate-200 rounded-xl p-4 bg-slate-50"
                               >
                                 <div className="flex justify-between items-center gap-3">
                                   <div className="min-w-0">
                                     <div className="font-semibold text-slate-900 truncate">
-                                      {latest.document_title}
+                                      {latest.document_title || latest.title || "-"}
                                     </div>
                                     <div className="text-sm text-slate-600">
-                                      ล่าสุด: {formatThaiDateTime(latest.approved_at)}
+                                      ล่าสุด: {formatThaiDateTime(latest?.approved_at)}
                                     </div>
                                   </div>
 
                                   <button
-                                    onClick={() => toggleDoc(docId)}
+                                    onClick={() => toggleDoc(docKey)}
                                     className="shrink-0 px-3 py-1 text-sm rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800"
                                   >
                                     {docOpen ? "ซ่อนประวัติ" : "ดูประวัติ"}
@@ -619,24 +652,33 @@ export default function TeacherApprovalHistory() {
 
                                 {docOpen && (
                                   <div className="mt-3 space-y-2">
-                                    {events.map((it) => (
-                                      <div
-                                        key={it.approval_id}
-                                        className="p-3 bg-white border border-slate-200 rounded-lg"
-                                      >
-                                        <div className="text-sm text-slate-700">
-                                          {formatThaiDateTime(it.approved_at)} —{" "}
-                                          <span className="font-medium">
-                                            {approvalStatusTH[String(it.status || "").toLowerCase()] || it.status}
-                                          </span>
-                                        </div>
-                                        {it.reason && (
-                                          <div className="text-sm text-red-600 mt-1">
-                                            เหตุผล: {it.reason}
+                                    {(Array.isArray(events) ? events : []).map((it, eIdx) => {
+                                      const rowKey =
+                                        it?.approval_id != null
+                                          ? `appr-${it.approval_id}`
+                                          : `appr-${studentKey}-${docKey}-${it?.approved_at || "no-date"}-${eIdx}`;
+
+                                      return (
+                                        <div
+                                          key={rowKey}
+                                          className="p-3 bg-white border border-slate-200 rounded-lg"
+                                        >
+                                          <div className="text-sm text-slate-700">
+                                            {formatThaiDateTime(it?.approved_at)} —{" "}
+                                            <span className="font-medium">
+                                              {approvalStatusTH[String(it?.status || "").toLowerCase()] ||
+                                                it?.status ||
+                                                "-"}
+                                            </span>
                                           </div>
-                                        )}
-                                      </div>
-                                    ))}
+                                          {it?.reason && (
+                                            <div className="text-sm text-red-600 mt-1">
+                                              เหตุผล: {it.reason}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>
@@ -648,7 +690,7 @@ export default function TeacherApprovalHistory() {
                   </Card>
                 );
               })}
-          </>
+          </React.Fragment>
         )}
       </Box>
 

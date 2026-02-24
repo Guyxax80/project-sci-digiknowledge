@@ -27,20 +27,32 @@ router.get("/approval-history", auth, requireRole("teacher"), async (req, res) =
         ah.reason,
         ah.approved_at,
 
-        -- เจ้าของเอกสาร (นักศึกษา) + ที่ปรึกษา
+        -- เจ้าของเอกสาร (นักศึกษา)
         u_owner.user_id AS owner_id,
         u_owner.username AS owner_name,
+        u_owner.student_id AS owner_student_id,
+        u_owner.class_group AS owner_class_group,
+        u_owner.level AS owner_level,
+
+        -- ✅ alias แบบ student_* เพื่อให้ frontend อ่านง่าย/ตรง
+        u_owner.user_id AS student_user_id,
+        u_owner.username AS student_name,
+        u_owner.student_id AS student_id,
+        u_owner.class_group AS class_group,
+        u_owner.level AS level,
+
+        -- ที่ปรึกษา
         u_owner.advisor_id AS advisor_id
 
       FROM public.approval_history ah
       JOIN public.documents d
         ON d.document_id = ah.document_id
 
-      -- ✅ owner ของเอกสาร (นักศึกษา)
-      LEFT JOIN public.users u_owner
+      -- owner ของเอกสาร (นักศึกษา)
+      JOIN public.users u_owner
         ON u_owner.user_id = d.user_id
 
-      -- ✅ approver (คนที่กด)
+      -- approver (คนที่กด)
       JOIN public.users u_approver
         ON u_approver.user_id = ah.approver_id
 
