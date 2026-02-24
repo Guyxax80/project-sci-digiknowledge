@@ -16,12 +16,6 @@ function mustEnabled(res) {
   return true;
 }
 
-function getDbUrl() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("Missing DATABASE_URL");
-  return url;
-}
-
 /**
  * IMPORTANT:
  * - Node/pg may accept extra query params (e.g. uselibpqcompat) but pg_dump/psql (libpq) will FAIL.
@@ -59,7 +53,7 @@ function safeUnlink(p) {
 
 const upload = multer({
   dest: TMP_DIR,
-  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB (ปรับได้)
+  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
   fileFilter: (_req, file, cb) => {
     const ok = String(file.originalname || "").toLowerCase().endsWith(".sql");
     if (!ok) return cb(new Error("Only .sql files are allowed"));
@@ -147,28 +141,19 @@ async function backup(req, res) {
     return res.status(400).json({ error: "เลือกตารางอย่างน้อย 1 ตาราง" });
   }
 
-  // ✅ default: dump ทั้ง public schema
   const args = ["--no-owner", "--no-privileges", "--format=plain"];
 
-// ===== scope: all (schema + data) =====
-if (normalizedScope === "all") {
-  // dump เฉพาะ public schema (ทั้ง schema+data)
-  // ✅ ใส่ clean เพื่อให้ restore ง่าย ไม่ชน "already exists"
-  args.push("--clean", "--if-exists");
-  args.push("--schema=public");
-}
+  if (normalizedScope === "all") {
+    args.push("--clean", "--if-exists");
+    args.push("--schema=public");
+  }
 
-// ===== scope: tables (data-only) =====
-if (normalizedScope === "tables") {
-  // ✅ data-only: ไม่มี CREATE TABLE / CREATE TYPE
-  args.push("--data-only", "--column-inserts"); // หรือใช้ "--inserts" ก็ได้
+  if (normalizedScope === "tables") {
+    args.push("--data-only", "--column-inserts");
+    wantedTables.forEach((t) => args.push("--table", `public.${t}`));
+  }
 
-  // ระบุรายตาราง
-  wantedTables.forEach((t) => args.push("--table", `public.${t}`));
-}
-
-// ใส่ dbUrl ไว้ท้ายสุด (ชัดเจน)
-args.push(`--dbname=${dbUrl}`);
+  args.push(`--dbname=${dbUrl}`);
 
   const stamp = nowStamp();
   const filename =
@@ -176,7 +161,6 @@ args.push(`--dbname=${dbUrl}`);
       ? `backup-public-${stamp}.sql`
       : `backup-${wantedTables.join("_")}-${stamp}.sql`;
 
-  // 1) DOWNLOAD: stream directly
   if (normalizedDest === "download") {
     res.setHeader("Content-Type", "application/sql; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -186,7 +170,6 @@ args.push(`--dbname=${dbUrl}`);
 
     let errText = "";
     child.stderr.on("data", (d) => (errText += d.toString()));
-
     child.on("close", (code) => {
       if (code !== 0) console.error("pg_dump failed:", errText);
     });
@@ -194,7 +177,6 @@ args.push(`--dbname=${dbUrl}`);
     return;
   }
 
-  // 2) SERVER / SUPABASE: write to file first
   const outPath = path.join(TMP_DIR, filename);
   const outStream = fs.createWriteStream(outPath);
 
@@ -260,7 +242,6 @@ async function restore(req, res) {
   const dbUrl = dbUrlForCli();
   const ct = String(req.headers["content-type"] || "");
 
-  // -------- JSON restore from Supabase storage --------
   if (ct.includes("application/json")) {
     const { source, path: sbPath, mode = "overwrite_public", tables = [] } = req.body || {};
 
@@ -287,10 +268,8 @@ async function restore(req, res) {
   return res.status(400).json({ error: "ต้องส่งแบบ multipart/form-data (file) หรือ JSON (source=supabase)" });
 }
 
-// middleware สำหรับ multipart restore
 const restoreUploadMiddleware = upload.single("file");
 
-// multipart handler wrapper
 function restoreFromUpload(req, res) {
   if (!mustEnabled(res)) return;
 
@@ -308,7 +287,6 @@ function restoreFromUpload(req, res) {
 // Restore helpers
 // ---------------------
 function quoteIdent(name) {
-  // allow only safe identifiers (กัน SQL injection)
   if (!/^[a-zA-Z0-9_]+$/.test(String(name))) return null;
   return `"${name}"`;
 }
@@ -351,10 +329,55 @@ function importSqlFile({ filePath, dbUrl, res, mode, tables }) {
   });
 }
 
+/**
+ * Build a "safe wipe" SQL:
+ * - DELETE FROM each chosen table (no TRUNCATE)
+ * - restart identity sequences (best-effort)
+ *
+ * Why DELETE?
+ * - TRUNCATE will fail if inbound FK exists (like users -> student_codes)
+ * - DELETE respects ON DELETE actions (e.g. SET NULL)
+ */
+function buildDeleteAndResetSql(tableNames) {
+  const arrLiteral = tableNames.map((t) => `'${t.replace(/'/g, "''")}'`).join(", ");
+
+  return `
+DO $$
+DECLARE
+  t text;
+  seq text;
+BEGIN
+  -- delete rows (safe with FK rules)
+  FOREACH t IN ARRAY ARRAY[${arrLiteral}] LOOP
+    EXECUTE format('DELETE FROM public.%I;', t);
+
+    -- restart identity/serial sequences for this table (best-effort)
+    FOR seq IN
+      SELECT pg_get_serial_sequence(format('public.%I', t), a.attname)
+      FROM pg_attribute a
+      JOIN pg_class c ON c.oid = a.attrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = t
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+        AND (
+          a.attidentity IN ('a','d')
+          OR (a.atttypid::regtype::text IN ('int2','int4','int8') AND a.attname ~* '(_id|id)$')
+        )
+    LOOP
+      IF seq IS NOT NULL THEN
+        EXECUTE format('ALTER SEQUENCE %s RESTART WITH 1;', seq);
+      END IF;
+    END LOOP;
+  END LOOP;
+END $$;
+`;
+}
+
 function runRestoreFromFile({ filePath, dbUrl, res, mode = "overwrite_public", tables = [] }) {
   const normalizedMode = String(mode).toLowerCase();
 
-  // ✅ 1) ทับทั้งระบบ public
   if (normalizedMode === "overwrite_public") {
     const sql = `
 DO $$
@@ -378,7 +401,6 @@ END $$;
     });
   }
 
-  // ✅ 2) ทับเฉพาะบางตาราง (เช่น users)
   if (normalizedMode === "overwrite_tables") {
     const list = Array.isArray(tables)
       ? tables.map((t) => String(t).trim()).filter(Boolean)
@@ -392,17 +414,18 @@ END $$;
       return res.status(400).json({ error: "ต้องระบุ tables อย่างน้อย 1 ตาราง (mode=overwrite_tables)" });
     }
 
-    const quoted = [];
+    // Validate table names
     for (const t of list) {
       const qi = quoteIdent(t);
       if (!qi) {
         safeUnlink(filePath);
         return res.status(400).json({ error: `Invalid table name: ${t}` });
       }
-      quoted.push(`public.${qi}`);
     }
 
-    const sql = `TRUNCATE TABLE public."student_codes" RESTART IDENTITY;`;
+    // ✅ IMPORTANT: do NOT hardcode student_codes here
+    // We "delete & reset" only the chosen tables
+    const sql = buildDeleteAndResetSql(list);
 
     return runPsqlSql({
       dbUrl,
@@ -410,7 +433,7 @@ END $$;
       cb: (code, errText) => {
         if (code !== 0) {
           safeUnlink(filePath);
-          return res.status(500).json({ error: "Truncate tables failed", detail: errText.slice(0, 1600) });
+          return res.status(500).json({ error: "Pre-clean tables failed", detail: errText.slice(0, 1600) });
         }
         return importSqlFile({ filePath, dbUrl, res, mode: "overwrite_tables", tables: list });
       },
