@@ -22,6 +22,36 @@ function getDbUrl() {
   return url;
 }
 
+/**
+ * IMPORTANT:
+ * - Node/pg may accept extra query params (e.g. uselibpqcompat) but pg_dump/psql (libpq) will FAIL.
+ * - For CLI tools we sanitize the URL:
+ *   - remove uselibpqcompat
+ *   - ensure sslmode=require (recommended for Supabase)
+ */
+function dbUrlForCli() {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) throw new Error("Missing DATABASE_URL");
+
+  let u;
+  try {
+    u = new URL(raw);
+  } catch (e) {
+    // If it's not a valid URL, just return raw (will fail with clear error from pg_dump/psql)
+    return raw;
+  }
+
+  // pg_dump/psql (libpq) doesn't recognize this param
+  u.searchParams.delete("uselibpqcompat");
+
+  // Supabase/Cloud DB: force SSL for CLI tools
+  if (!u.searchParams.get("sslmode")) {
+    u.searchParams.set("sslmode", "require");
+  }
+
+  return u.toString();
+}
+
 const TMP_DIR = path.join(process.cwd(), "tmp");
 if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
 
@@ -32,7 +62,7 @@ function safeUnlink(p) {
 
 const upload = multer({
   dest: TMP_DIR,
-  limits: { fileSize: 80 * 1024 * 1024 }, // 80MB (ปรับได้)
+  limits: { fileSize: 80 * 1024 * 1024 }, // 80MB
   fileFilter: (_req, file, cb) => {
     const ok = String(file.originalname || "").toLowerCase().endsWith(".sql");
     if (!ok) return cb(new Error("Only .sql files are allowed"));
@@ -63,7 +93,7 @@ async function uploadToSupabase({ localFilePath, destPath }) {
   });
   if (upErr) throw new Error(upErr.message);
 
-  // สร้าง signed URL (1 ชั่วโมง)
+  // signed URL 1 hour
   const { data, error: signErr } = await sb.storage.from(bucket).createSignedUrl(destPath, 60 * 60);
   if (signErr) throw new Error(signErr.message);
 
@@ -110,27 +140,21 @@ async function backup(req, res) {
   if (!mustEnabled(res)) return;
 
   const { scope = "all", tables = [], destination = "download" } = req.body || {};
-  const dbUrl = getDbUrl();
+
+  // Use sanitized URL for pg_dump
+  const dbUrl = dbUrlForCli();
 
   const normalizedScope = String(scope).toLowerCase();
   const normalizedDest = String(destination).toLowerCase();
 
-  // ตรวจ tables
   const wantedTables = Array.isArray(tables) ? tables.map((t) => String(t).trim()).filter(Boolean) : [];
   if (normalizedScope === "tables" && wantedTables.length === 0) {
     return res.status(400).json({ error: "เลือกตารางอย่างน้อย 1 ตาราง" });
   }
 
-  // สร้าง args ของ pg_dump
-  const args = [
-    "--no-owner",
-    "--no-privileges",
-    "--format=plain",
-    `--dbname=${dbUrl}`,
-  ];
+  const args = ["--no-owner", "--no-privileges", "--format=plain", `--dbname=${dbUrl}`];
 
   if (normalizedScope === "tables") {
-    // ใส่ --table public.<table>
     wantedTables.forEach((t) => args.push("--table", `public.${t}`));
   }
 
@@ -140,7 +164,7 @@ async function backup(req, res) {
       ? `backup-all-${stamp}.sql`
       : `backup-${wantedTables.join("_")}-${stamp}.sql`;
 
-  // 1) DOWNLOAD: stream ตรง
+  // 1) DOWNLOAD: stream directly
   if (normalizedDest === "download") {
     res.setHeader("Content-Type", "application/sql; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -158,7 +182,7 @@ async function backup(req, res) {
     return;
   }
 
-  // 2) SERVER / SUPABASE: ต้องเขียนลงไฟล์ก่อน
+  // 2) SERVER / SUPABASE: write to file first
   const outPath = path.join(TMP_DIR, filename);
   const outStream = fs.createWriteStream(outPath);
 
@@ -179,13 +203,12 @@ async function backup(req, res) {
 
     try {
       if (normalizedDest === "server") {
-        // NOTE: Railway filesystem ไม่ถาวร (รีสตาร์ทหาย) ใช้ชั่วคราวเท่านั้น
         return res.json({
           ok: true,
           destination: "server",
           filename,
           localPath: outPath,
-          note: "Railway filesystem may be ephemeral. Prefer Supabase Storage.",
+          note: "Filesystem may be ephemeral. Prefer Supabase Storage.",
         });
       }
 
@@ -200,7 +223,7 @@ async function backup(req, res) {
           filename,
           bucket: up.bucket,
           path: up.path,
-          signedUrl: up.signedUrl, // ใช้โหลดภายใน 1 ชม.
+          signedUrl: up.signedUrl,
         });
       }
 
@@ -222,9 +245,9 @@ async function backup(req, res) {
 async function restore(req, res) {
   if (!mustEnabled(res)) return;
 
-  const dbUrl = getDbUrl();
+  // Use sanitized URL for psql
+  const dbUrl = dbUrlForCli();
 
-  // ถ้าเป็น JSON restore from Supabase
   const ct = String(req.headers["content-type"] || "");
   if (ct.includes("application/json")) {
     const { source, path: sbPath } = req.body || {};
@@ -239,7 +262,6 @@ async function restore(req, res) {
     const { data, error } = await sb.storage.from(bucket).download(sbPath);
     if (error) return res.status(400).json({ error: error.message });
 
-    // data เป็น Blob-like (ใน node เป็น ReadableStream บางเวอร์ชัน) -> เขียนเป็น buffer
     const arrayBuffer = await data.arrayBuffer();
     const buf = Buffer.from(arrayBuffer);
 
@@ -249,7 +271,6 @@ async function restore(req, res) {
     return runRestoreFromFile({ filePath: tmpFile, dbUrl, res });
   }
 
-  // ไม่ใช่ json -> ให้ไปทาง multipart (file upload)
   return res.status(400).json({ error: "ต้องส่งแบบ multipart/form-data (file) หรือ JSON (source=supabase)" });
 }
 
@@ -257,7 +278,6 @@ async function restore(req, res) {
 const restoreUploadMiddleware = upload.single("file");
 
 function runRestoreFromFile({ filePath, dbUrl, res }) {
-  // ใช้ psql รันไฟล์
   const child = spawn("psql", [`--dbname=${dbUrl}`], { env: process.env, stdio: ["pipe", "pipe", "pipe"] });
 
   fs.createReadStream(filePath).pipe(child.stdin);
@@ -280,7 +300,7 @@ function runRestoreFromFile({ filePath, dbUrl, res }) {
 function restoreFromUpload(req, res) {
   if (!mustEnabled(res)) return;
 
-  const dbUrl = getDbUrl();
+  const dbUrl = dbUrlForCli();
   const file = req.file;
   if (!file) return res.status(400).json({ error: "Missing file" });
 
