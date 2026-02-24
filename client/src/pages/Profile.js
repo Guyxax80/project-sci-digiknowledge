@@ -60,6 +60,7 @@ function Profile() {
     student_id: '',
     class_group: '',
     level: '',
+    advisor_name: '',
     email: '',
     password: '',
   });
@@ -146,6 +147,7 @@ function Profile() {
           student_id: mergedUser.student_id || '',
           class_group: mergedUser.class_group || '',
           level: mergedUser.level || '',
+          advisor_name: mergedUser.advisor_name || '',
           email: mergedUser.email || '',
           password: '',
         });
@@ -423,13 +425,24 @@ function Profile() {
           {!editProfile ? (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div>Username: <strong>{user.username}</strong></div>
-                <div>Role: <strong>{user.role}</strong></div>
-                <div>Student ID: <strong>{user.student_id || '-'}</strong></div>
-                <div>Class Group: <strong>{user.class_group || '-'}</strong></div>
-                <div>Level: <strong>{user.level || '-'}</strong></div>
-                <div>Email: <strong>{user.email || '-'}</strong></div>
-              </div>
+              <div>ชื่อผู้ใช้: <strong>{user.username}</strong></div>
+              <div>บทบาท: <strong>{user.role}</strong></div>
+              <div>รหัสนักศึกษา: <strong>{user.student_id || '-'}</strong></div>
+              <div>กลุ่มเรียน: <strong>{user.class_group || '-'}</strong></div>
+              <div>ชั้นปี: <strong>{user.level || '-'}</strong></div>
+              <div>อีเมล: <strong>{user.email || '-'}</strong></div>
+
+              {user.role === 'student' && (
+                <div>
+                  อาจารย์ที่ปรึกษา:{' '}
+                  <strong>
+                    {user.advisor_name
+                      ? `${user.advisor_name}`
+                      : 'ยังไม่ผูกที่ปรึกษา'}
+                  </strong>
+                </div>
+              )}
+            </div>
 
               <div className="mt-4 flex gap-2 flex-wrap">
                 {!isAdmin && (
@@ -493,7 +506,11 @@ function Profile() {
                     {/* ✅ แสดงชื่ออาจารย์ที่ปรึกษา (อ่านอย่างเดียว) */}
                     <TextField
                       label="อาจารย์ที่ปรึกษา"
-                      value={user?.advisor_name ? user.advisor_name : 'ยังไม่ผูกที่ปรึกษา'}
+                      value={
+                        profileForm.advisor_name
+                          ? `${profileForm.advisor_name}${profileForm.advisor_email ? ` (${profileForm.advisor_email})` : ''}`
+                          : 'ยังไม่ผูกที่ปรึกษา'
+                      }
                       fullWidth
                       margin="normal"
                       InputLabelProps={{ shrink: true }}
@@ -536,6 +553,7 @@ function Profile() {
                       student_id: user.student_id || '',
                       class_group: user.class_group || '',
                       level: user.level || '',
+                      advisor_name: user.advisor_name || '',
                       email: user.email || '',
                       password: '',
                     });
