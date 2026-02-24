@@ -402,7 +402,7 @@ END $$;
       quoted.push(`public.${qi}`);
     }
 
-    const sql = `TRUNCATE TABLE ${quoted.join(", ")} RESTART IDENTITY CASCADE;\n`;
+    const sql = `TRUNCATE TABLE public."student_codes" RESTART IDENTITY;`;
 
     return runPsqlSql({
       dbUrl,
