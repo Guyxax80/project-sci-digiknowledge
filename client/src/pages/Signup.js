@@ -101,7 +101,7 @@ export default function Signup() {
         >
           {/* Username */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">ชื่อผู้ใช้</label>
             <input
               type="text"
               value={formData.username}
@@ -120,7 +120,7 @@ export default function Signup() {
 
           {/* Password */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">รหัสผ่าน</label>
             <input
               type="password"
               value={formData.password}
@@ -139,7 +139,7 @@ export default function Signup() {
 
           {/* Student ID */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Student ID (ถ้ามี)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">รหัสนักศึกษา</label>
             <input
               type="text"
               value={formData.student_id}
@@ -151,7 +151,7 @@ export default function Signup() {
 
           {/* Class Group */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Class_Group</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">กลุ่มชั้นเรียน</label>
             <input
               type="text"
               value={formData.class_group}
@@ -163,7 +163,7 @@ export default function Signup() {
 
           {/* Level */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Level</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">ชั้นปี</label>
             <input
               type="number"
               value={formData.level}

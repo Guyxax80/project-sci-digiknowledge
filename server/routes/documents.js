@@ -1,3 +1,4 @@
+// routes/documents.js
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
@@ -58,8 +59,6 @@ const baseListSql = `
 `;
 
 // ===== helpers =====
-// approval_history.status เป็น enum Approved/Rejected (ตัวใหญ่)
-// แต่ frontend อยากใช้ตัวเล็ก ให้ normalize ตอนอ่าน timeline
 function normalizeStatus(s) {
   const v = String(s || '').trim().toLowerCase();
   if (v === 'approved') return 'approved';
@@ -176,12 +175,6 @@ router.get('/by-user/:userId', auth, async (req, res) => {
 
 // =======================================================
 // SUBMIT
-// - ส่งได้เฉพาะ owner และ status ต้องเป็น draft หรือ rejected
-// - ต้องมีไฟล์ครบทุก section (REQUIRED_SECTIONS)
-// - ต้องมี email ก่อนส่ง
-// - advisor_id ต้องเป็น teacher เท่านั้น
-// - ใช้ Transaction
-// ⚠️ approval_history.status enum มีแค่ Approved/Rejected => ห้าม insert Pending
 // =======================================================
 router.post('/:id/submit', auth, async (req, res) => {
   const documentId = Number(req.params.id);
@@ -209,13 +202,11 @@ router.post('/:id/submit', auth, async (req, res) => {
 
     const doc = docQ.rows[0];
 
-    // ✅ ต้องเป็นเจ้าของเท่านั้น
     if (Number(doc.user_id) !== Number(req.user.user_id)) {
       await client.query('ROLLBACK');
       return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์ส่งเอกสารนี้' });
     }
 
-    // ✅ ต้องมีอีเมลก่อนส่ง
     const meQ = await client.query(
       `SELECT email FROM public.users WHERE user_id = $1 LIMIT 1`,
       [doc.user_id]
@@ -232,7 +223,6 @@ router.post('/:id/submit', auth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'ส่งได้เฉพาะ draft หรือ rejected' });
     }
 
-    // ✅ 1) ตรวจไฟล์ครบทุก section
     const filesQ = await client.query(
       `SELECT DISTINCT LOWER(COALESCE(NULLIF(section,''),'main')) AS section
        FROM public.document_files
@@ -251,7 +241,6 @@ router.post('/:id/submit', auth, async (req, res) => {
       });
     }
 
-    // ✅ 2) หา advisor ที่ถูกผูกไว้ (ต้องเป็น teacher เท่านั้น)
     const stuQ = await client.query(
       `SELECT user_id, advisor_id
        FROM public.users
@@ -293,7 +282,6 @@ router.post('/:id/submit', auth, async (req, res) => {
       });
     }
 
-    // ✅ 3) เปลี่ยนสถานะเป็น pending (รอบเดียวพอ)
     await client.query(
       `UPDATE public.documents SET status = 'pending' WHERE document_id = $1`,
       [documentId]
@@ -301,7 +289,6 @@ router.post('/:id/submit', auth, async (req, res) => {
 
     await client.query('COMMIT');
 
-    // ✅ 4) แจ้งเตือนเฉพาะที่ปรึกษาที่ถูกผูกไว้
     const link = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/document-detail/${documentId}`;
     await safeNotify({
       userId: advisorId,
@@ -321,12 +308,7 @@ router.post('/:id/submit', auth, async (req, res) => {
 });
 
 // =======================================================
-// TIMELINE
-// GET /api/documents/:id/timeline
-// - owner ดูได้
-// - admin ดูได้
-// - teacher ดูได้เฉพาะเอกสารของนักศึกษาที่ advisor_id = teacher.user_id
-// ✅ LEFT JOIN + normalize status + return {success:true, timeline:[...]}
+// TIMELINE (auth เท่านั้น)
 // =======================================================
 router.get('/:id/timeline', auth, async (req, res) => {
   try {
@@ -374,7 +356,7 @@ router.get('/:id/timeline', auth, async (req, res) => {
 
     const timeline = rows.map(r => ({
       ...r,
-      status: normalizeStatus(r.status), // Approved -> approved
+      status: normalizeStatus(r.status),
     }));
 
     return res.json({ success: true, timeline });
@@ -385,7 +367,8 @@ router.get('/:id/timeline', auth, async (req, res) => {
 });
 
 // =======================================================
-// GET DOCUMENT DETAIL
+// GET DOCUMENT DETAIL (public ได้ เฉพาะ approved)
+// ✅ แก้: ส่ง file_type ให้ frontend
 // =======================================================
 router.get('/:id', optionalAuth, async (req, res) => {
   try {
@@ -445,6 +428,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
           file_path: file.file_path,
           section,
           original_name: file.original_name || 'video',
+          file_type: file.file_type || null, // ✅ เพิ่ม
         };
       } else {
         downloadFiles.push({
@@ -452,6 +436,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
           file_path: file.file_path,
           section,
           original_name: file.original_name || 'file',
+          file_type: file.file_type || null, // ✅ เพิ่ม
         });
       }
     }
@@ -463,8 +448,46 @@ router.get('/:id', optionalAuth, async (req, res) => {
   }
 });
 
-router.get('/:id/categories', async (req, res) => {
+// =======================================================
+// GET CATEGORIES (แก้ให้ปลอดภัย: optionalAuth + เช็คสิทธิ์)
+// =======================================================
+router.get('/:id/categories', optionalAuth, async (req, res) => {
   try {
+    const documentId = Number(req.params.id);
+    if (!Number.isFinite(documentId) || documentId <= 0) {
+      return res.status(400).json({ message: 'documentId ไม่ถูกต้อง' });
+    }
+
+    const docRes = await db.query(
+      'SELECT document_id, user_id, status FROM public.documents WHERE document_id = $1 LIMIT 1',
+      [documentId]
+    );
+    if (!docRes.rows.length) return res.status(404).json({ message: 'ไม่พบเอกสาร' });
+
+    const doc = docRes.rows[0];
+    const status = String(doc.status || '').toLowerCase();
+    const isPublic = status === PUBLIC_STATUS;
+
+    const requesterId = Number(req.user?.user_id || 0);
+    const ownerId = Number(doc.user_id || 0);
+    const isOwner = requesterId && requesterId === ownerId;
+
+    if (!isPublic && !isOwner) {
+      if (isAdmin(req)) {
+        // ok
+      } else if (isTeacher(req)) {
+        const chk = await db.query(
+          `SELECT 1 FROM public.users WHERE user_id = $1 AND advisor_id = $2 LIMIT 1`,
+          [ownerId, requesterId]
+        );
+        if (!chk.rows.length) {
+          return res.status(403).json({ message: 'ไม่มีสิทธิ์' });
+        }
+      } else {
+        return res.status(403).json({ message: 'ไม่มีสิทธิ์' });
+      }
+    }
+
     const { rows } = await db.query(
       `
       SELECT c.categorie_id, c.name
@@ -473,7 +496,7 @@ router.get('/:id/categories', async (req, res) => {
       WHERE dc.document_id = $1
       ORDER BY c.name ASC
       `,
-      [req.params.id]
+      [documentId]
     );
     return res.json(rows);
   } catch (err) {

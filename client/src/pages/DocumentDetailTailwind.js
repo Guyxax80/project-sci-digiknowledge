@@ -1,5 +1,6 @@
+// src/pages/DocumentDetailTailwind.js
 import React, { useEffect, useRef, useState, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Document, Page, pdfjs } from "react-pdf";
 import api from "../services/api";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -12,12 +13,14 @@ if (typeof window !== "undefined") {
 
 function DocumentDetailTailwind() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [doc, setDoc] = useState(null);
   const [videoFile, setVideoFile] = useState(null);
   const [downloadFiles, setDownloadFiles] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [, setTimeline] = useState([]);
+  const [timeline, setTimeline] = useState([]);
   const [replacingSection, setReplacingSection] = useState(null);
 
   const fileInputsRef = useRef({});
@@ -38,7 +41,7 @@ function DocumentDetailTailwind() {
   const [scale, setScale] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // ✅ หัวข้อที่ "ควรมีให้ครบ" เพื่อให้อัปโหลดทีหลังได้ (แม้ยังไม่มีไฟล์)
+  // ✅ หัวข้อที่ "ควรมีให้ครบ"
   const REQUIRED_SECTIONS = useMemo(
     () => [
       "cover",
@@ -71,6 +74,18 @@ function DocumentDetailTailwind() {
     []
   );
 
+  // ✅ login check
+  const isLoggedIn = () => {
+    const token = localStorage.getItem("token");
+    const userId = localStorage.getItem("userId");
+    return Boolean(token && userId);
+  };
+
+  // ✅ ไปหน้า login/signup และจำหน้าที่กลับมา
+  const goLogin = () => navigate("/login", { state: { from: location.pathname } });
+  const goSignup = () => navigate("/signup", { state: { from: location.pathname } });
+
+  // ✅ (แก้แล้ว) ฟังก์ชัน zoom ที่ถูกต้อง — ไม่ทำให้ re-render loop
   const zoomIn = () =>
     setScale((s) => Math.min(2.5, Number((s + 0.1).toFixed(2))));
   const zoomOut = () =>
@@ -117,11 +132,8 @@ function DocumentDetailTailwind() {
       bibliography: "บรรณานุกรม",
       appendix: "ภาคผนวก",
       author_bio: "ประวัติผู้จัดทำปริญญานิพนธ์",
-
-      // ✅ เพิ่มชื่อไทยวิดีโอ
       presentation_video: "วิดีโอนำเสนอ",
 
-      // เผื่อชื่ออื่น
       references: "บรรณานุกรม",
       reference: "บรรณานุกรม",
       acknowledgements: "กิตติกรรมประกาศ",
@@ -141,6 +153,9 @@ function DocumentDetailTailwind() {
     return "";
   };
 
+  // =========================
+  // ✅ FETCH: doc detail (public ได้)
+  // =========================
   useEffect(() => {
     const fetchDocument = async () => {
       if (!id) {
@@ -148,35 +163,42 @@ function DocumentDetailTailwind() {
         setLoading(false);
         return;
       }
+
       try {
+        setLoading(true);
+        setError(null);
+
         const docRes = await api.get(`/documents/${id}`);
         setDoc(docRes.data.document);
         setVideoFile(docRes.data.videoFile);
         setDownloadFiles(docRes.data.downloadFiles || []);
+        setCategories(docRes.data.categories || []);
 
-        try {
-          const catRes = await api.get(`/documents/${id}/categories`);
-          setCategories(catRes.data || []);
-        } catch (_) {
-          setCategories(docRes.data.categories || []);
+        // ✅ timeline เป็น auth เท่านั้น → โหลดเฉพาะตอน login
+        if (isLoggedIn()) {
+          const timelineRes = await api
+            .get(`/documents/${id}/timeline`)
+            .catch(() => ({ data: { success: true, timeline: [] } }));
+
+          const tl = timelineRes.data?.timeline || [];
+          setTimeline(Array.isArray(tl) ? tl : []);
+        } else {
+          setTimeline([]);
         }
-
-        const timelineRes = await api
-          .get(`/documents/${id}/timeline`)
-          .catch(() => ({ data: [] }));
-        setTimeline(Array.isArray(timelineRes.data) ? timelineRes.data : []);
-
-        setLoading(false);
       } catch (err) {
         console.error("Error fetching document details:", err);
-        setError("ไม่สามารถดึงรายละเอียดเอกสารได้");
+        const msg = err?.response?.data?.message || "ไม่สามารถดึงรายละเอียดเอกสารได้";
+        setError(msg);
+      } finally {
         setLoading(false);
       }
     };
+
     fetchDocument();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // ✅ แทนที่ได้ทุกสถานะ ยกเว้น pending/approved
+  // ✅ แทนที่ได้ทุกสถานะ ยกเว้น pending/approved + ต้องเป็นเจ้าของ
   const canReplace = () => {
     if (!doc) return false;
 
@@ -199,6 +221,12 @@ function DocumentDetailTailwind() {
   const handleFileSelected = async (section, file) => {
     if (!file) return;
 
+    if (!isLoggedIn()) {
+      alert("ต้องเข้าสู่ระบบก่อนอัปโหลด/แทนที่ไฟล์");
+      goLogin();
+      return;
+    }
+
     const sec = normalizeSection(section);
 
     try {
@@ -214,6 +242,7 @@ function DocumentDetailTailwind() {
       setDoc(docRes.data.document);
       setVideoFile(docRes.data.videoFile);
       setDownloadFiles(docRes.data.downloadFiles || []);
+      setCategories(docRes.data.categories || []);
     } catch (e) {
       console.error(e);
       alert("อัปโหลด/แทนที่ไฟล์ไม่สำเร็จ");
@@ -228,57 +257,6 @@ function DocumentDetailTailwind() {
     const fileType = file.file_type || "";
     return fileName.toLowerCase().endsWith(".pdf") || fileType === "application/pdf";
   };
-
-  const isVideoSection = (section) => normalizeSection(section) === "presentation_video";
-
-  const handleDownload = async (file) => {
-    try {
-      const res = await api.get(`/../download/${file.document_file_id}`, {
-        responseType: "blob",
-      });
-
-      const blob = new Blob([res.data]);
-      const url = window.URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = file.original_name || "download";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Download failed:", err);
-      alert("ดาวน์โหลดไม่สำเร็จ");
-    }
-  };
-
-  const handleVideoDownload = async () => {
-  if (!videoFile?.document_file_id) return;
-
-  try {
-    // โหลดเป็น blob จาก endpoint เดียวกับที่ใช้เล่นวิดีโอ
-    const res = await api.get(`/../files/video/${videoFile.document_file_id}`, {
-      responseType: "blob",
-    });
-
-    const blob = new Blob([res.data], { type: res.headers?.["content-type"] || "video/mp4" });
-    const url = window.URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = videoFile.original_name || "presentation_video.mp4";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error("Video download failed:", err);
-    alert("ดาวน์โหลดวิดีโอไม่สำเร็จ");
-  }
-};
 
   const openPdfViewer = (file) => {
     setViewingPdf(file);
@@ -304,7 +282,7 @@ function DocumentDetailTailwind() {
     });
   };
 
-  // ✅ เลขหน้านิ่ง 100% จาก scrollTop (ไม่ใช้ IntersectionObserver)
+  // ✅ เลขหน้านิ่ง 100% จาก scrollTop
   useEffect(() => {
     if (!viewingPdf || !numPages) return;
 
@@ -361,7 +339,68 @@ function DocumentDetailTailwind() {
     alert(`ไม่สามารถโหลดไฟล์ PDF ได้: ${error.message || "Unknown error"}`);
   };
 
-  // ✅ index file ตาม section + ใส่วิดีโอจาก videoFile เข้า map ด้วย
+  // ✅ ดาวน์โหลดไฟล์: ต้อง login
+  const handleDownload = async (file) => {
+    if (!isLoggedIn()) {
+      alert("ต้องเข้าสู่ระบบ/สมัครสมาชิกก่อนดาวน์โหลดเอกสาร");
+      goLogin();
+      return;
+    }
+
+    try {
+      const res = await api.get(`/files/download/${file.document_file_id}`, {
+        responseType: "blob",
+      });
+
+      const blob = new Blob([res.data]);
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.original_name || "download";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed:", err);
+      alert("ดาวน์โหลดไม่สำเร็จ");
+    }
+  };
+
+  const handleVideoDownload = async () => {
+    if (!videoFile?.document_file_id) return;
+
+    if (!isLoggedIn()) {
+      alert("ต้องเข้าสู่ระบบ/สมัครสมาชิกก่อนดาวน์โหลดวิดีโอ");
+      goLogin();
+      return;
+    }
+
+    try {
+      const res = await api.get(`/files/download/${videoFile.document_file_id}`, {
+        responseType: "blob",
+      });
+
+      const blob = new Blob([res.data], {
+        type: res.headers?.["content-type"] || "video/mp4",
+      });
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = videoFile.original_name || "presentation_video.mp4";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Video download failed:", err);
+      alert("ดาวน์โหลดวิดีโอไม่สำเร็จ");
+    }
+  };
+
+  // ✅ section index (รวม video)
   const sectionIndex = useMemo(() => {
     const map = new Map();
 
@@ -385,7 +424,7 @@ function DocumentDetailTailwind() {
     return map;
   }, [downloadFiles, videoFile]);
 
-  // ✅ สร้าง list สำหรับ render: extras + required (ไม่มี main)
+  // ✅ render list
   const filesForRender = useMemo(() => {
     const requiredRows = REQUIRED_SECTIONS.map((sec) => {
       const f = sectionIndex.get(normalizeSection(sec)) || null;
@@ -407,12 +446,22 @@ function DocumentDetailTailwind() {
   if (!doc) return <p className="text-center mt-10">ไม่พบเอกสาร</p>;
 
   const baseWidth = Math.min(900, window.innerWidth - 80);
-
-  // ✅ ชื่อที่แสดงใน list: ถ้ามีชื่อไทย ใช้ไทย, ไม่มีก็ใช้ section เดิม
   const displaySectionName = (section) => getThaiSectionLabel(section) || section;
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
+      {!isLoggedIn() && (
+        <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+          ผู้เยี่ยมชมสามารถดูรายละเอียดและเปิดอ่านเอกสารได้ แต่การดาวน์โหลดต้องเข้าสู่ระบบ/สมัครสมาชิก
+          <button onClick={goLogin} className="ml-2 underline font-medium">
+            เข้าสู่ระบบ
+          </button>
+          <button onClick={goSignup} className="ml-2 underline font-medium">
+            สมัครสมาชิก
+          </button>
+        </div>
+      )}
+
       {videoFile && (
         <div className="w-full">
           <video
@@ -420,7 +469,7 @@ function DocumentDetailTailwind() {
             controls
             src={`${API_BASE}/files/video/${videoFile.document_file_id}`}
           >
-            Your browser does not support the video tag.
+            เบราว์เซอร์ของคุณไม่รองรับแท็กวิดีโอ
           </video>
         </div>
       )}
@@ -447,6 +496,22 @@ function DocumentDetailTailwind() {
               <span className="font-semibold">สถานะ:</span>{" "}
               <span className="uppercase">{doc.status || "-"}</span>
             </p>
+
+            {isLoggedIn() && timeline?.length > 0 && (
+              <div className="mt-4">
+                <div className="font-semibold mb-2">ประวัติการอนุมัติ</div>
+                <ul className="text-sm text-gray-700 space-y-1">
+                  {timeline.map((t) => (
+                    <li key={t.approval_id}>
+                      • {String(t.status || "").toUpperCase()}{" "}
+                      {t.approver_name ? `โดย ${t.approver_name}` : ""}{" "}
+                      {t.approved_at ? `(${new Date(t.approved_at).toLocaleString("th-TH")})` : ""}
+                      {t.reason ? ` - เหตุผล: ${t.reason}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
 
@@ -457,6 +522,9 @@ function DocumentDetailTailwind() {
             {filesForRender.map(({ section, file }, index) => {
               const sec = normalizeSection(section);
               const thaiName = displaySectionName(section);
+
+              const isVideoSec = sec === "presentation_video";
+              const hasVideo = Boolean(videoFile);
 
               return (
                 <li
@@ -473,9 +541,9 @@ function DocumentDetailTailwind() {
                   </span>
 
                   <div className="flex items-center gap-2">
-                    {/* ✅ PDF เปิดอ่าน */}
-                    {file && isPdfFile(file) && !isVideoSection(sec) && (
+                    {file && isPdfFile(file) && !isVideoSec && (
                       <button
+                        type="button"
                         onClick={() => openPdfViewer(file)}
                         className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
                       >
@@ -483,45 +551,63 @@ function DocumentDetailTailwind() {
                       </button>
                     )}
 
-                    {/* ✅ วิดีโอ: ดูวิดีโอ */}
-                    {sec === "presentation_video" && videoFile && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          window.scrollTo({ top: 0, behavior: "smooth" });
-                        }}
-                        className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
-                      >
-                        ดูวิดีโอ
-                      </button>
+                    {isVideoSec && hasVideo && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                          className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                        >
+                          ดูวิดีโอ
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={handleVideoDownload}
-                        className="text-brand-700 hover:underline"
-                      >
-                        ดาวน์โหลดวิดีโอ
-                      </button>
-                    </>
-                  )}
-
-                    {/* ✅ ดาวน์โหลด (ยกเว้นวิดีโอ ถ้าคุณไม่อยากให้โหลดผ่าน /download) */}
-                    {file && sec !== "presentation_video" && (
-                      <button
-                        type="button"
-                        onClick={() => handleDownload(file)}
-                        className="text-brand-700 hover:underline"
-                      >
-                        ดาวน์โหลด
-                      </button>
+                        {isLoggedIn() ? (
+                          <button
+                            type="button"
+                            onClick={handleVideoDownload}
+                            className="text-brand-700 hover:underline"
+                          >
+                            ดาวน์โหลดวิดีโอ
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={goLogin}
+                            className="text-gray-500 hover:text-gray-700 underline"
+                            title="ต้องเข้าสู่ระบบเพื่อดาวน์โหลด"
+                          >
+                            ดาวน์โหลดวิดีโอ (เข้าสู่ระบบก่อน)
+                          </button>
+                        )}
+                      </>
                     )}
 
-                    {/* ✅ อัปโหลด/แทนที่ */}
+                    {file && !isVideoSec && (
+                      isLoggedIn() ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDownload(file)}
+                          className="text-brand-700 hover:underline"
+                        >
+                          ดาวน์โหลด
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={goLogin}
+                          className="text-gray-500 hover:text-gray-700 underline"
+                          title="ต้องเข้าสู่ระบบเพื่อดาวน์โหลด"
+                        >
+                          ดาวน์โหลด (เข้าสู่ระบบก่อน)
+                        </button>
+                      )
+                    )}
+
                     {canReplace() && (
                       <>
                         <button
-                          className="text-sm px-2 py-1 bg-accent-600 text-white rounded hover:bg-accent-700"
+                          type="button"
+                          className="text-sm px-2 py-1 bg-accent-600 text-white rounded hover:bg-accent-700 disabled:opacity-50"
                           onClick={() => triggerReplace(sec)}
                           disabled={replacingSection === sec}
                         >

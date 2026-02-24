@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Tabs,
   Tab,
@@ -14,6 +14,7 @@ import {
   TableRow,
   MenuItem,
   Select,
+  Chip,
 } from "@mui/material";
 import api from "../services/api";
 
@@ -37,7 +38,23 @@ export default function AdminDashboard() {
   // ===== TAB 4: Advisor =====
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
-  const [advisorMap, setAdvisorMap] = useState({});
+  const [advisorMap, setAdvisorMap] = useState({}); // studentUserId -> advisorId
+  const [editingAdvisor, setEditingAdvisor] = useState({}); // studentUserId -> true/false
+  const [savingAdvisorId, setSavingAdvisorId] = useState(null); // studentUserId ที่กำลังบันทึก
+
+  // ===== Toast helper (เหมือนหน้าอื่น ๆ) =====
+  const toast = (message, severity = "info") => {
+    if (!message) return;
+    try {
+      window.dispatchEvent(
+        new CustomEvent("app-toast", {
+          detail: { severity, message },
+        })
+      );
+    } catch (_) {
+      alert(message);
+    }
+  };
 
   // =========================
   // FETCH: Users
@@ -48,6 +65,7 @@ export default function AdminDashboard() {
       setUsers(res.data || []);
     } catch (err) {
       console.error("โหลดข้อมูลผู้ใช้ล้มเหลว", err?.response?.data || err.message);
+      toast("โหลดข้อมูลผู้ใช้ไม่สำเร็จ", "error");
     }
   };
 
@@ -61,6 +79,7 @@ export default function AdminDashboard() {
     } catch (err) {
       console.error("โหลด student codes ล้มเหลว", err?.response?.data || err.message);
       setStudentCodes([]);
+      toast("โหลดรหัสนักศึกษาไม่สำเร็จ", "error");
     }
   };
 
@@ -97,17 +116,50 @@ export default function AdminDashboard() {
       nextMap[s.user_id] = s.advisor_id || "";
     });
     setAdvisorMap(nextMap);
+
+    // รีเซ็ตโหมดแก้ไขทุกคนตอนโหลดใหม่ (กันหลุด state)
+    setEditingAdvisor({});
+    setSavingAdvisorId(null);
+  };
+
+  // แปลง teacher list เป็น map เพื่อโชว์ชื่อที่ปรึกษาปัจจุบันได้เร็ว
+  const teacherById = useMemo(() => {
+    const m = new Map();
+    teachers.forEach((t) => m.set(String(t.user_id), t));
+    return m;
+  }, [teachers]);
+
+  const advisorLabelOf = (advisorId) => {
+    if (!advisorId) return "ยังไม่กำหนด";
+    const t = teacherById.get(String(advisorId));
+    if (!t) return `อาจารย์ ID: ${advisorId}`;
+    return `${t.username}${t.email ? ` (${t.email})` : ""}`;
   };
 
   const saveAdvisor = async (studentUserId) => {
     const advisor_id = advisorMap[studentUserId];
-    if (!advisor_id) return alert("กรุณาเลือกอาจารย์ที่ปรึกษา");
+    if (!advisor_id) {
+      toast("กรุณาเลือกอาจารย์ที่ปรึกษา", "warning");
+      return;
+    }
 
     try {
+      setSavingAdvisorId(studentUserId);
+
       await api.put(`${ADMIN_BASE}/students/${studentUserId}/advisor`, { advisor_id });
+
+      toast("บันทึกที่ปรึกษาสำเร็จ", "success");
+
+      // โหลดใหม่ให้ข้อมูลตรงกับ DB
       await loadAdvisorData();
+
+      // ปิดโหมดแก้ไขของคนนั้น
+      setEditingAdvisor((prev) => ({ ...prev, [studentUserId]: false }));
     } catch (err) {
-      alert(err?.response?.data?.error || "บันทึกไม่สำเร็จ");
+      console.error(err);
+      toast(err?.response?.data?.error || "บันทึกไม่สำเร็จ", "error");
+    } finally {
+      setSavingAdvisorId(null);
     }
   };
 
@@ -118,6 +170,7 @@ export default function AdminDashboard() {
     fetchUsers();
     fetchStudentCodes();
     fetchStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // โหลด Advisor เฉพาะตอนเปิดแท็บ Advisor (ประหยัด API)
@@ -125,8 +178,10 @@ export default function AdminDashboard() {
     if (tab === 3) {
       loadAdvisorData().catch((err) => {
         console.error("โหลดข้อมูล advisor ไม่สำเร็จ", err?.response?.data || err.message);
+        toast("โหลดข้อมูลที่ปรึกษาไม่สำเร็จ", "error");
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
   useEffect(() => {
@@ -152,6 +207,7 @@ export default function AdminDashboard() {
           role: form.role,
           student_id: form.student_id || null,
         });
+        toast("อัปเดตผู้ใช้สำเร็จ", "success");
       } else {
         await api.post(`${ADMIN_BASE}/users`, {
           username: form.username,
@@ -159,6 +215,7 @@ export default function AdminDashboard() {
           role: form.role,
           student_id: form.student_id || null,
         });
+        toast("เพิ่มผู้ใช้สำเร็จ", "success");
       }
 
       setForm({ username: "", password: "", role: "", student_id: "" });
@@ -167,7 +224,7 @@ export default function AdminDashboard() {
       fetchStudentCodes();
     } catch (err) {
       console.error("บันทึกล้มเหลว:", err?.response?.data || err.message);
-      alert(err?.response?.data?.error || "บันทึกไม่สำเร็จ");
+      toast(err?.response?.data?.error || "บันทึกไม่สำเร็จ", "error");
     }
   };
 
@@ -178,10 +235,11 @@ export default function AdminDashboard() {
     if (!window.confirm("ยืนยันการลบผู้ใช้นี้?")) return;
     try {
       await api.delete(`${ADMIN_BASE}/users/${user_id}`);
+      toast("ลบผู้ใช้สำเร็จ", "success");
       fetchUsers();
     } catch (err) {
       console.error("ลบผู้ใช้ล้มเหลว", err?.response?.data || err.message);
-      alert(err?.response?.data?.error || "ลบผู้ใช้ไม่สำเร็จ");
+      toast(err?.response?.data?.error || "ลบผู้ใช้ไม่สำเร็จ", "error");
     }
   };
 
@@ -197,9 +255,10 @@ export default function AdminDashboard() {
       link.setAttribute("download", "backup.sql");
       document.body.appendChild(link);
       link.click();
+      toast("เริ่มดาวน์โหลดไฟล์สำรองแล้ว", "success");
     } catch (err) {
       console.error("สำรองฐานข้อมูลล้มเหลว", err?.response?.data || err.message);
-      alert("ตอนนี้ระบบ backup ผ่าน API ยังไม่เปิดใช้งาน (501)");
+      toast("ตอนนี้ระบบ backup ผ่าน API ยังไม่เปิดใช้งาน (501)", "warning");
     }
   };
 
@@ -212,9 +271,10 @@ export default function AdminDashboard() {
       await api.post(`${ADMIN_BASE}/student-codes`, payload);
       setNewCodesText("");
       fetchStudentCodes();
+      toast("เพิ่มรหัสนักศึกษาสำเร็จ", "success");
     } catch (err) {
       console.error("เพิ่ม student codes ล้มเหลว", err?.response?.data || err.message);
-      alert(err?.response?.data?.error || "เพิ่มรหัสนักศึกษาไม่สำเร็จ");
+      toast(err?.response?.data?.error || "เพิ่มรหัสนักศึกษาไม่สำเร็จ", "error");
     }
   };
 
@@ -223,24 +283,20 @@ export default function AdminDashboard() {
     try {
       await api.delete(`${ADMIN_BASE}/student-codes/${id}`);
       fetchStudentCodes();
+      toast("ลบรหัสสำเร็จ", "success");
     } catch (err) {
       console.error("ลบ student code ล้มเหลว", err?.response?.data || err.message);
-      alert(err?.response?.data?.error || "ลบไม่สำเร็จ");
+      toast(err?.response?.data?.error || "ลบไม่สำเร็จ", "error");
     }
   };
 
   return (
     <Box p={4}>
-      <Tabs
-        value={tab}
-        onChange={(e, newValue) => setTab(newValue)}
-        textColor="primary"
-        indicatorColor="primary"
-      >
+      <Tabs value={tab} onChange={(e, newValue) => setTab(newValue)} textColor="primary" indicatorColor="primary">
         <Tab label="จัดการผู้ใช้" />
         <Tab label="จัดการรหัสนักศึกษา" />
         <Tab label="สำรองฐานข้อมูล" />
-        <Tab label="จัดการที่ปรึกษา" /> {/* ✅ เพิ่มแท็บ Advisor */}
+        <Tab label="จัดการที่ปรึกษา" />
       </Tabs>
 
       <Box mt={3}>
@@ -256,7 +312,7 @@ export default function AdminDashboard() {
                 <div className="flex flex-col gap-2">
                   <input
                     type="text"
-                    placeholder="Username"
+                    placeholder="ชื่อผู้ใช้"
                     className="border p-2 rounded"
                     value={form.username}
                     onChange={(e) => setForm({ ...form, username: e.target.value })}
@@ -266,7 +322,7 @@ export default function AdminDashboard() {
                   {!editingUser && (
                     <input
                       type="password"
-                      placeholder="Password"
+                      placeholder="รหัสผ่าน"
                       className="border p-2 rounded"
                       value={form.password}
                       onChange={(e) => setForm({ ...form, password: e.target.value })}
@@ -290,7 +346,7 @@ export default function AdminDashboard() {
                   {form.role === "student" && (
                     <input
                       type="text"
-                      placeholder="Student ID"
+                      placeholder="รหัสนักศึกษา"
                       className="border p-2 rounded"
                       value={form.student_id}
                       onChange={(e) => setForm({ ...form, student_id: e.target.value })}
@@ -365,7 +421,7 @@ export default function AdminDashboard() {
                 <textarea
                   className="border p-2 rounded w-full"
                   rows={3}
-                  placeholder="วาง Student ID ได้หลายบรรทัด หรือคั่นด้วย ,"
+                  placeholder="วางรหัสนักศึกษาได้หลายบรรทัด หรือคั่นด้วย ,"
                   value={newCodesText}
                   onChange={(e) => setNewCodesText(e.target.value)}
                 />
@@ -378,8 +434,8 @@ export default function AdminDashboard() {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>ID</TableCell>
-                      <TableCell>Student ID</TableCell>
+                      <TableCell>ไอดี</TableCell>
+                      <TableCell>รหัสนักศึกษา</TableCell>
                       <TableCell></TableCell>
                     </TableRow>
                   </TableHead>
@@ -414,7 +470,7 @@ export default function AdminDashboard() {
           </Box>
         )}
 
-        {/* ===== TAB 4 (NEW): Advisor ===== */}
+        {/* ===== TAB 4: Advisor ===== */}
         {tab === 3 && (
           <Box sx={{ maxWidth: 1200, mx: "auto", mt: 2 }}>
             <Card>
@@ -427,48 +483,99 @@ export default function AdminDashboard() {
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell>Username</TableCell>
-                        <TableCell>Student ID</TableCell>
-                        <TableCell>Class</TableCell>
-                        <TableCell>Level</TableCell>
-                        <TableCell>Email</TableCell>
-                        <TableCell>Advisor</TableCell>
-                        <TableCell>Action</TableCell>
+                        <TableCell>ชื่อผู้ใช้</TableCell>
+                        <TableCell>รหัสนักศึกษา</TableCell>
+                        <TableCell>กลุ่มเรียน</TableCell>
+                        <TableCell>ชั้นปี</TableCell>
+                        <TableCell>อีเมล</TableCell>
+                        <TableCell>ที่ปรึกษาปัจจุบัน</TableCell>
+                        <TableCell>จัดการ</TableCell>
                       </TableRow>
                     </TableHead>
+
                     <TableBody>
-                      {students.map((s) => (
-                        <TableRow key={s.user_id}>
-                          <TableCell>{s.username}</TableCell>
-                          <TableCell>{s.student_id || "-"}</TableCell>
-                          <TableCell>{s.class_group || "-"}</TableCell>
-                          <TableCell>{s.level || "-"}</TableCell>
-                          <TableCell>{s.email || "-"}</TableCell>
-                          <TableCell>
-                            <Select
-                              size="small"
-                              value={advisorMap[s.user_id] || ""}
-                              onChange={(e) =>
-                                setAdvisorMap((prev) => ({ ...prev, [s.user_id]: e.target.value }))
-                              }
-                              displayEmpty
-                              sx={{ minWidth: 220 }}
-                            >
-                              <MenuItem value="">เลือกอาจารย์</MenuItem>
-                              {teachers.map((t) => (
-                                <MenuItem key={t.user_id} value={t.user_id}>
-                                  {t.username} ({t.email || "no email"})
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </TableCell>
-                          <TableCell>
-                            <Button variant="contained" size="small" onClick={() => saveAdvisor(s.user_id)}>
-                              Save
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {students.map((s) => {
+                        const isEdit = !!editingAdvisor[s.user_id];
+                        const isSaving = savingAdvisorId === s.user_id;
+
+                        return (
+                          <TableRow key={s.user_id}>
+                            <TableCell>{s.username}</TableCell>
+                            <TableCell>{s.student_id || "-"}</TableCell>
+                            <TableCell>{s.class_group || "-"}</TableCell>
+                            <TableCell>{s.level || "-"}</TableCell>
+                            <TableCell>{s.email || "-"}</TableCell>
+
+                            <TableCell>
+                              {!isEdit ? (
+                                <Chip
+                                  label={advisorLabelOf(s.advisor_id)}
+                                  size="small"
+                                  variant="outlined"
+                                />
+                              ) : (
+                                <Select
+                                  size="small"
+                                  value={advisorMap[s.user_id] || ""}
+                                  onChange={(e) =>
+                                    setAdvisorMap((prev) => ({ ...prev, [s.user_id]: e.target.value }))
+                                  }
+                                  displayEmpty
+                                  sx={{ minWidth: 260 }}
+                                >
+                                  <MenuItem value="">เลือกอาจารย์</MenuItem>
+                                  {teachers.map((t) => (
+                                    <MenuItem key={t.user_id} value={t.user_id}>
+                                      {t.username} ({t.email || "ไม่มีอีเมล"})
+                                    </MenuItem>
+                                  ))}
+                                </Select>
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              {!isEdit ? (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() =>
+                                    setEditingAdvisor((prev) => ({ ...prev, [s.user_id]: true }))
+                                  }
+                                >
+                                  แก้ไข
+                                </Button>
+                              ) : (
+                                <div className="flex gap-2 flex-wrap">
+                                  <Button
+                                    variant="contained"
+                                    size="small"
+                                    disabled={isSaving}
+                                    onClick={() => saveAdvisor(s.user_id)}
+                                  >
+                                    {isSaving ? "กำลังบันทึก..." : "บันทึก"}
+                                  </Button>
+
+                                  <Button
+                                    variant="outlined"
+                                    size="small"
+                                    disabled={isSaving}
+                                    onClick={() => {
+                                      // ยกเลิก -> revert ค่า select ให้กลับไปเหมือน DB
+                                      setAdvisorMap((prev) => ({
+                                        ...prev,
+                                        [s.user_id]: s.advisor_id || "",
+                                      }));
+                                      setEditingAdvisor((prev) => ({ ...prev, [s.user_id]: false }));
+                                    }}
+                                  >
+                                    ยกเลิก
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
 
                       {students.length === 0 ? (
                         <TableRow>

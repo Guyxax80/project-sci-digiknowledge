@@ -69,7 +69,7 @@ const Navbar = () => {
 
         <button
           type="button"
-          aria-label="Toggle menu"
+          aria-label="ไทย: ปุ่มเปิดเมนู"
           aria-expanded={mobileOpen}
           className="md:hidden cursor-pointer p-2 -mr-2"
           onClick={() => setMobileOpen((v) => !v)}
@@ -94,7 +94,7 @@ const Navbar = () => {
               to="/upload"
               className="hover:text-accent-200 transition-colors"
               onClick={handleUploadClick}
-              title={!isLoggedIn ? "ต้องเข้าสู่ระบบ" : !isStudent ? "ต้องเป็น student" : ""}
+              title={!isLoggedIn ? "ต้องเข้าสู่ระบบ" : !isStudent ? "ต้องเป็น นักศึกษา" : ""}
             >
               อัปโหลดไฟล์
             </Link>
@@ -133,7 +133,7 @@ const Navbar = () => {
           )}
 
           <Link to="/profile" className="hover:text-accent-200 transition-colors" onClick={handleProfileClick}>
-            Profile
+            โปรไฟล์
           </Link>
         </div>
 

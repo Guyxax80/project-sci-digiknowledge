@@ -109,7 +109,7 @@ export default function LoginForm() {
             {/* Username Field */}
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
-                Username
+                ชื่อผู้ใช้
               </label>
               <div className="relative">
                 <input
@@ -140,7 +140,7 @@ export default function LoginForm() {
             {/* Password Field */}
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password
+                รหัสผ่าน
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -224,7 +224,7 @@ export default function LoginForm() {
               {isLoading ? (
                 <div className="flex items-center justify-center space-x-2">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Signing in...</span>
+                  <span>กำลังเข้าสู่ระบบ...</span>
                 </div>
               ) : (
                 <div className="flex items-center justify-center space-x-2">
