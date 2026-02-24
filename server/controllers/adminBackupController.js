@@ -148,16 +148,27 @@ async function backup(req, res) {
   }
 
   // ✅ default: dump ทั้ง public schema
-  const args = ["--no-owner", "--no-privileges", "--format=plain", "--schema=public", `--dbname=${dbUrl}`];
+  const args = ["--no-owner", "--no-privileges", "--format=plain"];
 
-  // ถ้าเลือกเฉพาะ tables: ให้เจาะจงเป็นรายตาราง
-  if (normalizedScope === "tables") {
-    // เอา --schema=public ออก แล้วใช้ --table แทน (ชัดเจนกว่า)
-    const schemaIdx = args.indexOf("--schema=public");
-    if (schemaIdx !== -1) args.splice(schemaIdx, 1);
+// ===== scope: all (schema + data) =====
+if (normalizedScope === "all") {
+  // dump เฉพาะ public schema (ทั้ง schema+data)
+  // ✅ ใส่ clean เพื่อให้ restore ง่าย ไม่ชน "already exists"
+  args.push("--clean", "--if-exists");
+  args.push("--schema=public");
+}
 
-    wantedTables.forEach((t) => args.push("--table", `public.${t}`));
-  }
+// ===== scope: tables (data-only) =====
+if (normalizedScope === "tables") {
+  // ✅ data-only: ไม่มี CREATE TABLE / CREATE TYPE
+  args.push("--data-only", "--column-inserts"); // หรือใช้ "--inserts" ก็ได้
+
+  // ระบุรายตาราง
+  wantedTables.forEach((t) => args.push("--table", `public.${t}`));
+}
+
+// ใส่ dbUrl ไว้ท้ายสุด (ชัดเจน)
+args.push(`--dbname=${dbUrl}`);
 
   const stamp = nowStamp();
   const filename =
