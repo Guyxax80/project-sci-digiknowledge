@@ -152,7 +152,13 @@ async function backup(req, res) {
     return res.status(400).json({ error: "เลือกตารางอย่างน้อย 1 ตาราง" });
   }
 
-  const args = ["--no-owner", "--no-privileges", "--format=plain", `--dbname=${dbUrl}`];
+  const args = [
+  "--no-owner",
+  "--no-privileges",
+  "--format=plain",
+  "--schema=public",          // ✅ เอาเฉพาะ schema public
+  `--dbname=${dbUrl}`,
+];
 
   if (normalizedScope === "tables") {
     wantedTables.forEach((t) => args.push("--table", `public.${t}`));
