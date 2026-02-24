@@ -15,6 +15,8 @@ import {
   DialogTitle,
   TextField,
   Box,
+  Divider,
+  Stack,
 } from "@mui/material";
 import api from "../services/api";
 
@@ -244,6 +246,7 @@ export default function TeacherApprovalHistory() {
             size="small"
             label={`สถานะ: ${statusTH[normalizedDocStatus] || normalizedDocStatus}`}
             color={statusColor[normalizedDocStatus] || "default"}
+            variant="outlined"
           />
           <button
             type="button"
@@ -290,23 +293,19 @@ export default function TeacherApprovalHistory() {
                               className={`absolute -left-3 top-1 w-5 h-5 rounded-full border-2 ${style}`}
                             ></span>
 
-                            <div className="bg-white shadow-sm rounded-lg p-4 border">
-                              <div className="flex justify-between items-center mb-1">
+                            <div className="bg-white shadow-sm rounded-xl p-4 border border-black/5">
+                              <div className="flex justify-between items-center mb-1 gap-2">
                                 <span className={`px-2 py-1 text-xs rounded-full border ${style}`}>
                                   {approvalStatusTH[status] || item.status}
                                 </span>
                                 <span className="text-xs text-gray-500">
-                                  {item.approved_at
-                                    ? new Date(item.approved_at).toLocaleString()
-                                    : "-"}
+                                  {item.approved_at ? new Date(item.approved_at).toLocaleString() : "-"}
                                 </span>
                               </div>
 
-                              <div className="text-sm">โดย {item.approver_name || "-"}</div>
+                              <div className="text-sm text-gray-800">โดย {item.approver_name || "-"}</div>
                               {item.reason && (
-                                <div className="text-sm text-red-500 mt-1">
-                                  เหตุผล: {item.reason}
-                                </div>
+                                <div className="text-sm text-red-600 mt-1">เหตุผล: {item.reason}</div>
                               )}
                             </div>
                           </div>
@@ -384,7 +383,6 @@ export default function TeacherApprovalHistory() {
   }, [items]);
 
   // 🔹 group ตาม student
-  // 🔹 group ตาม student
   const grouped = useMemo(() => {
     const map = new Map();
 
@@ -451,253 +449,399 @@ export default function TeacherApprovalHistory() {
     });
   };
 
+  // ===== UI-only summary =====
+  const pendingCount = pendingDocs.length;
+  const historyCount = items.length;
+  const studentCount = grouped.length;
+
+  const needEmail = !String(myEmail || "").trim();
+
   return (
-    <div className="p-8 bg-slate-50 min-h-screen">
-      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-        <Typography variant="h4" className="!text-slate-900 !font-bold">
-          งานอาจารย์ที่ปรึกษา
-        </Typography>
+    <div className="min-h-screen bg-black/[0.02] py-6">
+      <div className="max-w-6xl mx-auto px-4 md:px-6 space-y-5">
+        {/* ===== Hero ===== */}
+        <div className="rounded-3xl border border-black/5 shadow-lg bg-white overflow-hidden">
+          <div className="p-6 md:p-8 bg-gradient-to-br from-slate-50 via-white to-sky-50">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <Typography variant="h5" sx={{ fontWeight: 900 }}>
+                  งานอาจารย์ที่ปรึกษา
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  ตรวจผลงานที่ส่งมาอนุมัติ/ตีกลับ และดูประวัติการอนุมัติย้อนหลัง
+                </Typography>
 
-        <div className="flex gap-2">
-          <Button
-            variant="outlined"
-            onClick={() => {
-              loadPendingDocs();
-            }}
-          >
-            รีเฟรชรายการรออนุมัติ
-          </Button>
-        </div>
-      </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={`รอตรวจ: ${pendingCount}`}
+                    color={pendingCount ? "warning" : "default"}
+                  />
+                  <Chip size="small" variant="outlined" label={`ประวัติ: ${historyCount}`} />
+                  <Chip size="small" variant="outlined" label={`นักศึกษา: ${studentCount}`} />
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={needEmail ? "ยังไม่ตั้งค่าอีเมล" : "ตั้งค่าอีเมลแล้ว"}
+                    color={needEmail ? "warning" : "success"}
+                  />
+                </div>
+              </div>
 
-      <Card className="border border-slate-200 shadow-sm bg-white rounded-xl">
-        <CardContent>
-          <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
-            <Tab label="รายการรออนุมัติ" />
-            <Tab label="ประวัติการอนุมัติ" />
-          </Tabs>
-        </CardContent>
-      </Card>
-
-      <Box className="mt-6">
-        {/* ================= TAB 0: Pending ================= */}
-        {tab === 0 && (
-          <React.Fragment>
-            <Typography variant="h6" className="!text-slate-900 !font-bold mb-3">
-              รายการรออนุมัติ (เฉพาะนักศึกษาที่คุณเป็นที่ปรึกษา)
-            </Typography>
-
-            {pendingLoading && <div className="text-slate-700">กำลังโหลด...</div>}
-            {pendingError ? (
-              <Typography color="error" sx={{ mb: 1 }}>
-                {pendingError}
-              </Typography>
-            ) : null}
-
-            {!pendingLoading && pendingDocs.length === 0 && !pendingError && (
-              <Typography color="text.secondary">ไม่มีรายการรอตรวจ</Typography>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {pendingDocs.map((doc) => (
-                <Card
-                  key={`pending-${doc.document_id ?? `${doc.title}-${doc.student_id}`}`}
-                  className="rounded-xl border border-slate-200"
-                >
-                  <CardContent>
-                    <Typography variant="subtitle1" className="!font-bold !text-slate-900">
-                      {doc.title}
-                    </Typography>
-                    <Typography variant="body2" className="!text-slate-600">
-                      ผู้ส่ง: {doc.student_name} ({doc.student_id || "-"})
-                    </Typography>
-
-                    <div className="mt-2">
-                      <TimelineBlock documentId={doc.document_id} docStatus={doc.status} />
-                    </div>
-
-                    <div className="mt-3 flex gap-2 flex-wrap">
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => navigate(`/document-detail/${doc.document_id}`)}
-                      >
-                        ดูรายละเอียด
-                      </Button>
-
-                      <Button
-                        size="small"
-                        variant="contained"
-                        color="success"
-                        onClick={() => handleApprove(doc)}
-                      >
-                        อนุมัติ
-                      </Button>
-
-                      <Button
-                        size="small"
-                        variant="contained"
-                        color="error"
-                        onClick={async () => {
-                          const ok = await ensureEmailOrGoProfile("ตีกลับ");
-                          if (!ok) return;
-                          setRejectingDoc(doc);
-                        }}
-                      >
-                        ตีกลับ
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+              <div className="flex gap-2 flex-wrap">
+                <Button variant="outlined" onClick={() => loadPendingDocs()}>
+                  รีเฟรชรายการรออนุมัติ
+                </Button>
+                {needEmail ? (
+                  <Button variant="contained" onClick={() => navigate("/profile")}>
+                    ไปตั้งค่าอีเมล
+                  </Button>
+                ) : null}
+              </div>
             </div>
-          </React.Fragment>
-        )}
 
-        {/* ================= TAB 1: History ================= */}
-        {tab === 1 && (
-          <React.Fragment>
-            <Typography variant="h6" className="!text-slate-900 !font-bold mb-3">
-              ประวัติการอนุมัติ
-            </Typography>
+            {needEmail ? (
+              <div className="mt-4 rounded-2xl border border-yellow-200 bg-yellow-50 p-4">
+                <div className="font-semibold text-yellow-900">ต้องเพิ่มอีเมลก่อนอนุมัติ/ตีกลับ</div>
+                <div className="text-sm text-yellow-800 mt-1">
+                  ระบบต้องใช้อีเมลเพื่อส่งการแจ้งเตือนการอนุมัติ/ตีกลับไปยังนักศึกษา
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
 
-            {historyLoading && <div className="text-slate-700">กำลังโหลด...</div>}
+        {/* ===== Tabs ===== */}
+        <Card
+          className="shadow-md"
+          sx={{ borderRadius: 3, border: "1px solid rgba(0,0,0,0.06)" }}
+        >
+          <CardContent className="!pb-3">
+            <Tabs
+              value={tab}
+              onChange={(_, v) => setTab(v)}
+              variant="scrollable"
+              scrollButtons="auto"
+            >
+              <Tab label={`รายการรออนุมัติ (${pendingCount})`} />
+              <Tab label={`ประวัติการอนุมัติ (${historyCount})`} />
+            </Tabs>
+          </CardContent>
+        </Card>
 
-            {!historyLoading &&
-              grouped.map(([studentId, data], idx) => {
-                const studentKey =
-                  data?.student_id != null && String(data.student_id).trim() !== ""
-                    ? `stu-${String(data.student_id).trim()}`
-                    : `stu-unknown-${idx}`;
+        <Box>
+          {/* ================= TAB 0: Pending ================= */}
+          {tab === 0 && (
+            <React.Fragment>
+              <div className="flex items-end justify-between gap-2 flex-wrap mb-3">
+                <div>
+                  <Typography variant="h6" sx={{ fontWeight: 900 }}>
+                    รายการรออนุมัติ
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    เฉพาะนักศึกษาที่คุณเป็นที่ปรึกษา
+                  </Typography>
+                </div>
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <Chip size="small" variant="outlined" label="อนุมัติ = ส่งผ่าน" />
+                  <Chip size="small" variant="outlined" label="ตีกลับ = ขอแก้ไข" />
+                </Stack>
+              </div>
 
-                const studentOpen = openStudents.has(String(studentId));
-                const displayName = prettifyName(data.student_name, data.student_id);
+              {pendingLoading ? (
+                <div className="rounded-2xl border border-black/5 bg-white p-5 text-gray-700">
+                  กำลังโหลด...
+                </div>
+              ) : pendingError ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+                  <Typography color="error" sx={{ fontWeight: 700 }}>
+                    {pendingError}
+                  </Typography>
+                </div>
+              ) : pendingDocs.length === 0 ? (
+                <div className="rounded-2xl border border-black/5 bg-white p-6 text-center">
+                  <div className="text-3xl mb-2">✅</div>
+                  <Typography sx={{ fontWeight: 800 }}>ไม่มีรายการรอตรวจ</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    เมื่อมีนักศึกษาส่งเอกสาร ระบบจะแสดงรายการที่นี่
+                  </Typography>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {pendingDocs.map((doc) => (
+                    <Card
+                      key={`pending-${doc.document_id ?? `${doc.title}-${doc.student_id}`}`}
+                      className="shadow-md"
+                      sx={{
+                        borderRadius: 3,
+                        border: "1px solid rgba(0,0,0,0.06)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <CardContent>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <Typography variant="subtitle1" sx={{ fontWeight: 900 }} className="truncate">
+                              {doc.title}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" className="truncate">
+                              ผู้ส่ง: {doc.student_name} ({doc.student_id || "-"})
+                            </Typography>
+                          </div>
+                          <Chip
+                            size="small"
+                            label="PENDING"
+                            color="warning"
+                            variant="outlined"
+                            sx={{ fontWeight: 700 }}
+                          />
+                        </div>
 
-                return (
-                  <Card
-                    key={studentKey}
-                    className="mb-6 border border-slate-200 shadow-sm bg-white rounded-xl"
-                  >
-                    <CardContent>
-                      {/* Student Header */}
-                      <div className="flex justify-between items-start gap-4">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <div className="h-9 w-9 rounded-full bg-slate-900 text-white flex items-center justify-center text-sm">
-                              {displayName?.[0] || "N"}
-                            </div>
+                        <Divider sx={{ my: 2 }} />
+
+                        <div className="mt-2">
+                          <TimelineBlock documentId={doc.document_id} docStatus={doc.status} />
+                        </div>
+
+                        <div className="mt-3 flex gap-2 flex-wrap">
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => navigate(`/document-detail/${doc.document_id}`)}
+                          >
+                            ดูรายละเอียด
+                          </Button>
+
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="success"
+                            onClick={() => handleApprove(doc)}
+                          >
+                            อนุมัติ
+                          </Button>
+
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="error"
+                            onClick={async () => {
+                              const ok = await ensureEmailOrGoProfile("ตีกลับ");
+                              if (!ok) return;
+                              setRejectingDoc(doc);
+                            }}
+                          >
+                            ตีกลับ
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </React.Fragment>
+          )}
+
+          {/* ================= TAB 1: History ================= */}
+          {tab === 1 && (
+            <React.Fragment>
+              <div className="flex items-end justify-between gap-2 flex-wrap mb-3">
+                <div>
+                  <Typography variant="h6" sx={{ fontWeight: 900 }}>
+                    ประวัติการอนุมัติ
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    เรียงจากล่าสุดไปเก่าสุด และจัดกลุ่มตามนักศึกษา
+                  </Typography>
+                </div>
+                <Chip size="small" variant="outlined" label={`นักศึกษาทั้งหมด: ${studentCount}`} />
+              </div>
+
+              {historyLoading ? (
+                <div className="rounded-2xl border border-black/5 bg-white p-5 text-gray-700">
+                  กำลังโหลด...
+                </div>
+              ) : grouped.length === 0 ? (
+                <div className="rounded-2xl border border-black/5 bg-white p-6 text-center">
+                  <div className="text-3xl mb-2">🗂️</div>
+                  <Typography sx={{ fontWeight: 800 }}>ยังไม่มีประวัติการอนุมัติ</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    เมื่อมีการอนุมัติ/ตีกลับ ระบบจะเก็บประวัติไว้ที่นี่
+                  </Typography>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {grouped.map(([studentId, data], idx) => {
+                    const studentKey =
+                      data?.student_id != null && String(data.student_id).trim() !== ""
+                        ? `stu-${String(data.student_id).trim()}`
+                        : `stu-unknown-${idx}`;
+
+                    const studentOpen = openStudents.has(String(studentId));
+                    const displayName = prettifyName(data.student_name, data.student_id);
+
+                    return (
+                      <Card
+                        key={studentKey}
+                        className="shadow-md"
+                        sx={{ borderRadius: 3, border: "1px solid rgba(0,0,0,0.06)" }}
+                      >
+                        <CardContent>
+                          {/* Student Header */}
+                          <div className="flex justify-between items-start gap-4 flex-wrap">
                             <div className="min-w-0">
-                              <Typography variant="h6" className="!text-slate-900 !font-bold truncate">
-                                {displayName}
-                              </Typography>
+                              <div className="flex items-center gap-2">
+                                <div className="h-10 w-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center text-sm shadow">
+                                  {displayName?.[0] || "N"}
+                                </div>
+                                <div className="min-w-0">
+                                  <Typography variant="h6" sx={{ fontWeight: 900 }} className="truncate">
+                                    {displayName}
+                                  </Typography>
+                                  <div className="text-xs text-slate-600 mt-0.5">
+                                    รหัสนักศึกษา: {data.student_id ?? "-"}
+                                  </div>
+                                </div>
+                              </div>
 
-                              <div className="text-xs text-slate-600 mt-0.5">
-                                รหัสนักศึกษา: {data.student_id ?? "-"}
+                              {/* chips */}
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {data.class_group ? (
+                                  <Chip size="small" label={`กลุ่ม/ห้อง: ${data.class_group}`} />
+                                ) : null}
+                                {data.level ? <Chip size="small" label={`ชั้นปี: ${data.level}`} /> : null}
+                                <Chip
+                                  size="small"
+                                  variant="outlined"
+                                  label={`เอกสารทั้งหมด: ${Object.keys(data.documents).length}`}
+                                />
                               </div>
                             </div>
-                          </div>
 
-                          {/* chips */}
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {data.class_group && (
-                              <Chip size="small" label={`กลุ่ม/ห้อง: ${data.class_group}`} />
-                            )}
-                            {data.level && <Chip size="small" label={`ชั้นปี: ${data.level}`} />}
-                            <Chip
+                            <Button
                               size="small"
-                              variant="outlined"
-                              label={`เอกสารทั้งหมด: ${Object.keys(data.documents).length}`}
-                            />
+                              variant={studentOpen ? "contained" : "outlined"}
+                              onClick={() => toggleStudent(String(studentId))}
+                            >
+                              {studentOpen ? "ย่อรายการ" : "ดูเอกสาร"}
+                            </Button>
                           </div>
-                        </div>
 
-                        <button
-                          onClick={() => toggleStudent(String(studentId))}
-                          className="shrink-0 px-3 py-1 text-sm rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
-                        >
-                          {studentOpen ? "ย่อ" : "ดูเอกสาร"}
-                        </button>
-                      </div>
+                          {/* Documents */}
+                          {studentOpen && (
+                            <div className="mt-5 space-y-4">
+                              {Object.entries(data.documents).map(([docId, events]) => {
+                                const docKey = String(docId);
+                                const docOpen = openDocs.has(docKey);
+                                const latest = Array.isArray(events) ? events[0] : null;
 
-                      {/* Documents */}
-                      {studentOpen && (
-                        <div className="mt-5 space-y-4">
-                          {Object.entries(data.documents).map(([docId, events]) => {
-                            const docKey = String(docId);
-                            const docOpen = openDocs.has(docKey);
-                            const latest = Array.isArray(events) ? events[0] : null;
-
-                            return (
-                              <div
-                                key={`doc-${studentKey}-${docKey}`}
-                                className="border border-slate-200 rounded-xl p-4 bg-slate-50"
-                              >
-                                <div className="flex justify-between items-center gap-3">
-                                  <div className="min-w-0">
-                                    <div className="font-semibold text-slate-900 truncate">
-                                      {latest.document_title || latest.title || "-"}
-                                    </div>
-                                    <div className="text-sm text-slate-600">
-                                      ล่าสุด: {formatThaiDateTime(latest?.approved_at)}
-                                    </div>
-                                  </div>
-
-                                  <button
-                                    onClick={() => toggleDoc(docKey)}
-                                    className="shrink-0 px-3 py-1 text-sm rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800"
+                                return (
+                                  <div
+                                    key={`doc-${studentKey}-${docKey}`}
+                                    className="border border-black/5 rounded-2xl p-4 bg-black/[0.02]"
                                   >
-                                    {docOpen ? "ซ่อนประวัติ" : "ดูประวัติ"}
-                                  </button>
-                                </div>
-
-                                {docOpen && (
-                                  <div className="mt-3 space-y-2">
-                                    {(Array.isArray(events) ? events : []).map((it, eIdx) => {
-                                      const rowKey =
-                                        it?.approval_id != null
-                                          ? `appr-${it.approval_id}`
-                                          : `appr-${studentKey}-${docKey}-${it?.approved_at || "no-date"}-${eIdx}`;
-
-                                      return (
-                                        <div
-                                          key={rowKey}
-                                          className="p-3 bg-white border border-slate-200 rounded-lg"
-                                        >
-                                          <div className="text-sm text-slate-700">
-                                            {formatThaiDateTime(it?.approved_at)} —{" "}
-                                            <span className="font-medium">
-                                              {approvalStatusTH[String(it?.status || "").toLowerCase()] ||
-                                                it?.status ||
-                                                "-"}
-                                            </span>
-                                          </div>
-                                          {it?.reason && (
-                                            <div className="text-sm text-red-600 mt-1">
-                                              เหตุผล: {it.reason}
-                                            </div>
-                                          )}
+                                    <div className="flex justify-between items-center gap-3 flex-wrap">
+                                      <div className="min-w-0">
+                                        <div className="font-semibold text-slate-900 truncate">
+                                          {latest.document_title || latest.title || "-"}
                                         </div>
-                                      );
-                                    })}
+                                        <div className="text-sm text-slate-600">
+                                          ล่าสุด: {formatThaiDateTime(latest?.approved_at)}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-2">
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          onClick={() => navigate(`/document-detail/${docKey}`)}
+                                        >
+                                          เปิดเอกสาร
+                                        </Button>
+
+                                        <Button
+                                          size="small"
+                                          variant={docOpen ? "contained" : "outlined"}
+                                          onClick={() => toggleDoc(docKey)}
+                                        >
+                                          {docOpen ? "ซ่อนประวัติ" : "ดูประวัติ"}
+                                        </Button>
+                                      </div>
+                                    </div>
+
+                                    {docOpen && (
+                                      <div className="mt-3 space-y-2">
+                                        {(Array.isArray(events) ? events : []).map((it, eIdx) => {
+                                          const rowKey =
+                                            it?.approval_id != null
+                                              ? `appr-${it.approval_id}`
+                                              : `appr-${studentKey}-${docKey}-${it?.approved_at || "no-date"}-${eIdx}`;
+
+                                          const s = String(it?.status || "").toLowerCase();
+                                          const chipColor =
+                                            s === "approved"
+                                              ? "success"
+                                              : s === "rejected"
+                                              ? "error"
+                                              : s === "pending"
+                                              ? "warning"
+                                              : "default";
+
+                                          return (
+                                            <div
+                                              key={rowKey}
+                                              className="p-3 bg-white border border-black/5 rounded-xl"
+                                            >
+                                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                <div className="text-sm text-slate-700">
+                                                  {formatThaiDateTime(it?.approved_at)} —{" "}
+                                                  <span className="font-medium">
+                                                    {approvalStatusTH[s] || it?.status || "-"}
+                                                  </span>
+                                                </div>
+                                                <Chip
+                                                  size="small"
+                                                  color={chipColor}
+                                                  variant="outlined"
+                                                  label={(approvalStatusTH[s] || it?.status || "-").toUpperCase()}
+                                                />
+                                              </div>
+
+                                              {it?.reason ? (
+                                                <div className="text-sm text-red-600 mt-1">
+                                                  เหตุผล: {it.reason}
+                                                </div>
+                                              ) : null}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-          </React.Fragment>
-        )}
-      </Box>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </React.Fragment>
+          )}
+        </Box>
+      </div>
 
       {/* ================= Reject Dialog ================= */}
       <Dialog open={!!rejectingDoc} onClose={() => setRejectingDoc(null)} fullWidth>
         <DialogTitle>ระบุเหตุผลการตีกลับ</DialogTitle>
-        <DialogContent>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            โปรดระบุเหตุผลให้ชัดเจน เพื่อให้นักศึกษาแก้ไขได้ตรงจุด
+          </Typography>
+
           <TextField
             autoFocus
             margin="dense"

@@ -1,7 +1,26 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const db = require('../db');
-const bcrypt = require('bcrypt');
+const db = require("../db");
+const bcrypt = require("bcrypt");
+
+// ✅ Backup/Restore controllers (ตัวเดียวพอ)
+const {
+  listTables,
+  backup,
+  restore,
+  restoreUploadMiddleware,
+  restoreFromUpload,
+} = require("../controllers/adminBackupController");
+
+// ทำให้ controller เรียก db ได้ผ่าน req.app.locals.db
+router.use((req, _res, next) => {
+  req.app.locals.db = db;
+  next();
+});
+
+// ✅ แนะนำให้ป้องกันด้วย auth/role (ถ้าคุณมี middleware อยู่แล้ว)
+// const auth = require("../middleware/auth");
+// const requireRole = require("../middleware/requireRole");
 
 // =========================
 // helpers: check columns exists (กันพังถ้ายังไม่มีคอลัมน์)
@@ -22,114 +41,126 @@ async function getExistingColumns(tableName, wantedCols) {
 }
 
 async function ensureUsersHasAdvisorId() {
-  const cols = await getExistingColumns('users', ['advisor_id']);
-  return cols.includes('advisor_id');
+  const cols = await getExistingColumns("users", ["advisor_id"]);
+  return cols.includes("advisor_id");
 }
+
+// =========================
+// ✅ BACKUP/RESTORE ROUTES (มาตรฐาน ใช้ controller อย่างเดียว)
+// =========================
+
+// GET /api/admin/backup/tables -> list ตารางทั้งหมดใน public schema
+router.get("/backup/tables", listTables);
+
+// POST /api/admin/backup
+// body: { scope:"all"|"tables", tables:[...], destination:"download"|"server"|"supabase" }
+router.post("/backup", express.json({ limit: "2mb" }), backup);
+
+// POST /api/admin/restore  (multipart/form-data: file=@xxx.sql)
+router.post("/restore", restoreUploadMiddleware, restoreFromUpload);
+
+// POST /api/admin/restore-from-supabase
+// body: { source:"supabase", path:"backups/xxx.sql" }
+router.post("/restore-from-supabase", express.json({ limit: "2mb" }), restore);
 
 // =========================
 // USERS
 // =========================
-router.get('/users', async (_req, res) => {
+router.get("/users", async (_req, res) => {
   try {
-    // อยากได้ fields เพิ่ม แต่ถ้าไม่มีคอลัมน์ก็ไม่พัง
-    const existing = await getExistingColumns('users', [
-      'email',
-      'class_group',
-      'level',
-      'advisor_id',
-      'created_at',
-    ]);
+    const existing = await getExistingColumns("users", ["email", "class_group", "level", "advisor_id", "created_at"]);
 
     const selectParts = [
-      'user_id',
-      'username',
-      'role',
-      'student_id',
-      existing.includes('email') ? 'email' : 'NULL::text AS email',
-      existing.includes('class_group') ? 'class_group' : 'NULL::text AS class_group',
-      existing.includes('level') ? 'level' : 'NULL::text AS level',
-      existing.includes('advisor_id') ? 'advisor_id' : 'NULL::int AS advisor_id',
-      existing.includes('created_at') ? 'created_at' : 'NOW() AS created_at',
+      "user_id",
+      "username",
+      "role",
+      "student_id",
+      existing.includes("email") ? "email" : "NULL::text AS email",
+      existing.includes("class_group") ? "class_group" : "NULL::text AS class_group",
+      existing.includes("level") ? "level" : "NULL::text AS level",
+      existing.includes("advisor_id") ? "advisor_id" : "NULL::int AS advisor_id",
+      existing.includes("created_at") ? "created_at" : "NOW() AS created_at",
     ];
 
-    const { rows } = await db.query(`SELECT ${selectParts.join(', ')} FROM users ORDER BY user_id DESC`);
+    const { rows } = await db.query(`SELECT ${selectParts.join(", ")} FROM users ORDER BY user_id DESC`);
     return res.json(rows);
   } catch (err) {
-    console.error('GET /admin/users error:', err);
-    return res.status(500).json({ error: 'DB error' });
+    console.error("GET /admin/users error:", err);
+    return res.status(500).json({ error: "DB error" });
   }
 });
 
-router.post('/users', async (req, res) => {
+router.post("/users", async (req, res) => {
   const { username, password, role, student_id } = req.body || {};
-  if (!username || !password || !role) return res.status(400).json({ error: 'กรอกข้อมูลไม่ครบ' });
-  if (role === 'student' && !student_id) {
-    return res.status(400).json({ error: 'กรุณาระบุ Student ID สำหรับนักศึกษา' });
+  if (!username || !password || !role) return res.status(400).json({ error: "กรอกข้อมูลไม่ครบ" });
+  if (role === "student" && !student_id) {
+    return res.status(400).json({ error: "กรุณาระบุ Student ID สำหรับนักศึกษา" });
   }
 
   try {
     if (student_id) {
-      const chk = await db.query('SELECT 1 FROM student_codes WHERE student_id = $1 LIMIT 1', [student_id]);
-      if (!chk.rows.length) return res.status(400).json({ error: 'Student ID ไม่พบในระบบ' });
+      const chk = await db.query("SELECT 1 FROM student_codes WHERE student_id = $1 LIMIT 1", [student_id]);
+      if (!chk.rows.length) return res.status(400).json({ error: "Student ID ไม่พบในระบบ" });
     }
 
     const hashed = await bcrypt.hash(password, 10);
 
-    await db.query(
-      'INSERT INTO users (username, student_id, password, role) VALUES ($1, $2, $3, $4)',
-      [username, student_id || null, hashed, role]
-    );
+    await db.query("INSERT INTO users (username, student_id, password, role) VALUES ($1, $2, $3, $4)", [
+      username,
+      student_id || null,
+      hashed,
+      role,
+    ]);
 
-    return res.json({ message: 'เพิ่มผู้ใช้สำเร็จ' });
+    return res.json({ message: "เพิ่มผู้ใช้สำเร็จ" });
   } catch (err) {
-    console.error('POST /admin/users error:', err);
-    return res.status(500).json({ error: 'DB insert error' });
+    console.error("POST /admin/users error:", err);
+    return res.status(500).json({ error: "DB insert error" });
   }
 });
 
-router.put('/users/:user_id', async (req, res) => {
+router.put("/users/:user_id", async (req, res) => {
   const { username, role, student_id } = req.body || {};
   const userId = req.params.user_id;
 
   try {
-    const current = await db.query('SELECT student_id FROM users WHERE user_id = $1 LIMIT 1', [userId]);
-    if (!current.rows.length) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+    const current = await db.query("SELECT student_id FROM users WHERE user_id = $1 LIMIT 1", [userId]);
+    if (!current.rows.length) return res.status(404).json({ error: "ไม่พบผู้ใช้" });
 
-    const targetStudentId =
-      typeof student_id === 'undefined' ? current.rows[0].student_id : (student_id || null);
+    const targetStudentId = typeof student_id === "undefined" ? current.rows[0].student_id : student_id || null;
 
-    if (role === 'student' && !targetStudentId) {
-      return res.status(400).json({ error: 'กรุณาระบุ Student ID สำหรับนักศึกษา' });
+    if (role === "student" && !targetStudentId) {
+      return res.status(400).json({ error: "กรุณาระบุ Student ID สำหรับนักศึกษา" });
     }
 
-    // ✅ ทำให้ student_id มีใน student_codes เสมอ (กันหน้าอื่นเช็คไม่เจอ)
     if (targetStudentId) {
-      await db.query(
-        'INSERT INTO student_codes (student_id) VALUES ($1) ON CONFLICT (student_id) DO NOTHING',
-        [targetStudentId]
-      );
+      await db.query("INSERT INTO student_codes (student_id) VALUES ($1) ON CONFLICT (student_id) DO NOTHING", [
+        targetStudentId,
+      ]);
     }
 
-    await db.query(
-      'UPDATE users SET username = $1, role = $2, student_id = $3 WHERE user_id = $4',
-      [username, role, targetStudentId, userId]
-    );
+    await db.query("UPDATE users SET username = $1, role = $2, student_id = $3 WHERE user_id = $4", [
+      username,
+      role,
+      targetStudentId,
+      userId,
+    ]);
 
-    return res.json({ message: 'อัปเดตผู้ใช้สำเร็จ' });
+    return res.json({ message: "อัปเดตผู้ใช้สำเร็จ" });
   } catch (err) {
-    console.error('PUT /admin/users/:id error:', err);
-    return res.status(500).json({ error: 'DB update error' });
+    console.error("PUT /admin/users/:id error:", err);
+    return res.status(500).json({ error: "DB update error" });
   }
 });
 
-router.delete('/users/:user_id', async (req, res) => {
+router.delete("/users/:user_id", async (req, res) => {
   try {
-    await db.query('UPDATE documents SET user_id = NULL WHERE user_id = $1', [req.params.user_id]);
-    await db.query('DELETE FROM users WHERE user_id = $1', [req.params.user_id]);
-    return res.json({ message: 'ลบผู้ใช้สำเร็จ (ผลงานยังอยู่)' });
+    await db.query("UPDATE documents SET user_id = NULL WHERE user_id = $1", [req.params.user_id]);
+    await db.query("DELETE FROM users WHERE user_id = $1", [req.params.user_id]);
+    return res.json({ message: "ลบผู้ใช้สำเร็จ (ผลงานยังอยู่)" });
   } catch (err) {
-    console.error('DELETE /admin/users/:id error:', err);
-    return res.status(500).json({ error: 'ไม่สามารถลบผู้ใช้ได้' });
+    console.error("DELETE /admin/users/:id error:", err);
+    return res.status(500).json({ error: "ไม่สามารถลบผู้ใช้ได้" });
   }
 });
 
@@ -138,117 +169,96 @@ router.delete('/users/:user_id', async (req, res) => {
 // =========================
 
 // GET /api/admin/teachers
-router.get('/teachers', async (_req, res) => {
+router.get("/teachers", async (_req, res) => {
   try {
-    const existing = await getExistingColumns('users', ['email']);
-    const selectParts = [
-      'user_id',
-      'username',
-      'role',
-      existing.includes('email') ? 'email' : 'NULL::text AS email',
-    ];
+    const existing = await getExistingColumns("users", ["email"]);
+    const selectParts = ["user_id", "username", "role", existing.includes("email") ? "email" : "NULL::text AS email"];
 
     const { rows } = await db.query(
-      `SELECT ${selectParts.join(', ')}
+      `SELECT ${selectParts.join(", ")}
        FROM users
        WHERE role='teacher'
        ORDER BY user_id DESC`
     );
     return res.json(rows);
   } catch (err) {
-    console.error('GET /admin/teachers error:', err);
-    return res.status(500).json({ error: 'DB error' });
+    console.error("GET /admin/teachers error:", err);
+    return res.status(500).json({ error: "DB error" });
   }
 });
 
 // GET /api/admin/students
-router.get('/students', async (_req, res) => {
+router.get("/students", async (_req, res) => {
   try {
-    const existing = await getExistingColumns('users', [
-      'email',
-      'class_group',
-      'level',
-      'advisor_id',
-    ]);
+    const existing = await getExistingColumns("users", ["email", "class_group", "level", "advisor_id"]);
 
     const selectParts = [
-      'user_id',
-      'username',
-      'role',
-      'student_id',
-      existing.includes('email') ? 'email' : 'NULL::text AS email',
-      existing.includes('class_group') ? 'class_group' : 'NULL::text AS class_group',
-      existing.includes('level') ? 'level' : 'NULL::text AS level',
-      existing.includes('advisor_id') ? 'advisor_id' : 'NULL::int AS advisor_id',
+      "user_id",
+      "username",
+      "role",
+      "student_id",
+      existing.includes("email") ? "email" : "NULL::text AS email",
+      existing.includes("class_group") ? "class_group" : "NULL::text AS class_group",
+      existing.includes("level") ? "level" : "NULL::text AS level",
+      existing.includes("advisor_id") ? "advisor_id" : "NULL::int AS advisor_id",
     ];
 
     const { rows } = await db.query(
-      `SELECT ${selectParts.join(', ')}
+      `SELECT ${selectParts.join(", ")}
        FROM users
        WHERE role='student'
        ORDER BY user_id DESC`
     );
     return res.json(rows);
   } catch (err) {
-    console.error('GET /admin/students error:', err);
-    return res.status(500).json({ error: 'DB error' });
+    console.error("GET /admin/students error:", err);
+    return res.status(500).json({ error: "DB error" });
   }
 });
 
 // PUT /api/admin/students/:id/advisor  { advisor_id }
-router.put('/students/:id/advisor', async (req, res) => {
+router.put("/students/:id/advisor", async (req, res) => {
   try {
     const studentUserId = Number(req.params.id);
     const { advisor_id } = req.body || {};
 
-    if (!Number.isFinite(studentUserId)) return res.status(400).json({ error: 'student id ไม่ถูกต้อง' });
-    if (!advisor_id) return res.status(400).json({ error: 'advisor_id required' });
+    if (!Number.isFinite(studentUserId)) return res.status(400).json({ error: "student id ไม่ถูกต้อง" });
+    if (!advisor_id) return res.status(400).json({ error: "advisor_id required" });
 
     const hasAdvisorId = await ensureUsersHasAdvisorId();
     if (!hasAdvisorId) {
       return res.status(400).json({
-        error:
-          "ตาราง users ยังไม่มีคอลัมน์ advisor_id กรุณารัน SQL: ALTER TABLE public.users ADD COLUMN advisor_id integer;",
+        error: "ตาราง users ยังไม่มีคอลัมน์ advisor_id กรุณารัน SQL: ALTER TABLE public.users ADD COLUMN advisor_id integer;",
       });
     }
 
-    // เช็คว่า student มีจริงและเป็น role student
-    const stu = await db.query(
-      `SELECT user_id FROM users WHERE user_id=$1 AND role='student' LIMIT 1`,
-      [studentUserId]
-    );
-    if (!stu.rows.length) return res.status(404).json({ error: 'ไม่พบนักศึกษา' });
+    const stu = await db.query(`SELECT user_id FROM users WHERE user_id=$1 AND role='student' LIMIT 1`, [studentUserId]);
+    if (!stu.rows.length) return res.status(404).json({ error: "ไม่พบนักศึกษา" });
 
-    // เช็คว่า advisor เป็น teacher จริง
-    const t = await db.query(
-      `SELECT user_id FROM users WHERE user_id=$1 AND role='teacher' LIMIT 1`,
-      [advisor_id]
-    );
-    if (!t.rows.length) return res.status(400).json({ error: 'advisor ต้องเป็น teacher' });
+    const t = await db.query(`SELECT user_id FROM users WHERE user_id=$1 AND role='teacher' LIMIT 1`, [advisor_id]);
+    if (!t.rows.length) return res.status(400).json({ error: "advisor ต้องเป็น teacher" });
 
     await db.query(`UPDATE users SET advisor_id=$1 WHERE user_id=$2`, [advisor_id, studentUserId]);
 
     return res.json({ success: true });
   } catch (err) {
-    console.error('PUT /admin/students/:id/advisor error:', err);
-    return res.status(500).json({ error: 'DB error' });
+    console.error("PUT /admin/students/:id/advisor error:", err);
+    return res.status(500).json({ error: "DB error" });
   }
 });
 
 // =========================
 // STATS
 // =========================
-router.get('/stats', async (req, res) => {
+router.get("/stats", async (req, res) => {
   const days = Math.max(1, Math.min(Number(req.query.days || 7), 365));
 
   try {
-    // ----- Core totals -----
-    const usersQ = await db.query('SELECT COUNT(*)::int AS count FROM users');
-    const documentsQ = await db.query('SELECT COUNT(*)::int AS count FROM documents');
-    const downloadsQ = await db.query('SELECT COALESCE(SUM(download_count),0)::int AS count FROM documents');
-    const usersByRoleQ = await db.query('SELECT role, COUNT(*)::int AS count FROM users GROUP BY role');
+    const usersQ = await db.query("SELECT COUNT(*)::int AS count FROM users");
+    const documentsQ = await db.query("SELECT COUNT(*)::int AS count FROM documents");
+    const downloadsQ = await db.query("SELECT COALESCE(SUM(download_count),0)::int AS count FROM documents");
+    const usersByRoleQ = await db.query("SELECT role, COUNT(*)::int AS count FROM users GROUP BY role");
 
-    // ----- Detect timestamp column (uploaded_at preferred) -----
     const tsColQ = await db.query(
       `
       SELECT column_name
@@ -260,9 +270,8 @@ router.get('/stats', async (req, res) => {
       LIMIT 1
       `
     );
-    const tsCol = tsColQ.rows?.[0]?.column_name || 'uploaded_at';
+    const tsCol = tsColQ.rows?.[0]?.column_name || "uploaded_at";
 
-    // ----- Upload count in last N days -----
     const uploadCountQ = await db.query(
       `SELECT COUNT(*)::int AS count
        FROM documents
@@ -270,7 +279,6 @@ router.get('/stats', async (req, res) => {
       [days]
     );
 
-    // ----- Daily series in last N days (fill missing days) -----
     const uploadsSeriesQ = await db.query(
       `
       WITH dd AS (
@@ -291,7 +299,6 @@ router.get('/stats', async (req, res) => {
       [days]
     );
 
-    // ----- topCategories (ถ้ามีตารางจริง) -----
     let topCategoriesRows = [];
     try {
       const hasCategoriesTableQ = await db.query(
@@ -323,11 +330,10 @@ router.get('/stats', async (req, res) => {
         topCategoriesRows = topCategoriesQ.rows;
       }
     } catch (e) {
-      console.error('topCategories error:', e);
+      console.error("topCategories error:", e);
       topCategoriesRows = [];
     }
 
-    // ----- Top downloads (documents) -----
     const topDocumentsQ = await db.query(
       `
       SELECT document_id, title, COALESCE(download_count,0)::int AS download_count
@@ -337,7 +343,6 @@ router.get('/stats', async (req, res) => {
       `
     );
 
-    // ----- Top downloads (files) -----
     let topFilesRows = [];
     try {
       const topFilesQ = await db.query(
@@ -353,7 +358,6 @@ router.get('/stats', async (req, res) => {
       );
       topFilesRows = topFilesQ.rows;
     } catch (e) {
-      // ถ้า document_files ยังไม่มี download_count ก็ไม่ให้ stats พัง
       topFilesRows = [];
     }
 
@@ -375,18 +379,18 @@ router.get('/stats', async (req, res) => {
       topFiles: topFilesRows,
     });
   } catch (err) {
-    console.error('GET /admin/stats error:', err);
-    return res.status(500).json({ error: 'DB error' });
+    console.error("GET /admin/stats error:", err);
+    return res.status(500).json({ error: "DB error" });
   }
 });
 
 // =========================
 // FILE DOWNLOADS (per document)
 // =========================
-router.get('/documents/:documentId/file-downloads', async (req, res) => {
+router.get("/documents/:documentId/file-downloads", async (req, res) => {
   try {
     const documentId = Number(req.params.documentId);
-    if (!Number.isFinite(documentId)) return res.status(400).json({ error: 'documentId ไม่ถูกต้อง' });
+    if (!Number.isFinite(documentId)) return res.status(400).json({ error: "documentId ไม่ถูกต้อง" });
 
     const { rows } = await db.query(
       `SELECT document_file_id, section, original_name, COALESCE(download_count,0)::int AS download_count
@@ -397,66 +401,57 @@ router.get('/documents/:documentId/file-downloads', async (req, res) => {
     );
     return res.json(rows);
   } catch (err) {
-    console.error('GET /admin/documents/:id/file-downloads error:', err);
-    return res.status(500).json({ error: 'DB error' });
+    console.error("GET /admin/documents/:id/file-downloads error:", err);
+    return res.status(500).json({ error: "DB error" });
   }
-});
-
-// =========================
-// BACKUP
-// =========================
-router.get('/backup', (_req, res) => {
-  return res.status(501).json({ error: 'Use Supabase backup tools / pg_dump outside API server.' });
 });
 
 // =========================
 // STUDENT CODES
 // =========================
-router.get('/student-codes', async (_req, res) => {
+router.get("/student-codes", async (_req, res) => {
   try {
-    const { rows } = await db.query(
-      'SELECT student_code_id, student_id FROM student_codes ORDER BY student_code_id DESC'
-    );
+    const { rows } = await db.query("SELECT student_code_id, student_id FROM student_codes ORDER BY student_code_id DESC");
     return res.json(rows);
   } catch (err) {
-    console.error('GET /admin/student-codes error:', err);
-    return res.status(500).json({ error: 'DB error' });
+    console.error("GET /admin/student-codes error:", err);
+    return res.status(500).json({ error: "DB error" });
   }
 });
 
-router.post('/student-codes', async (req, res) => {
+router.post("/student-codes", async (req, res) => {
   const raw = req.body?.student_ids;
-  if (!raw) return res.status(400).json({ error: 'กรุณาระบุ Student ID' });
+  if (!raw) return res.status(400).json({ error: "กรุณาระบุ Student ID" });
 
   const ids = (Array.isArray(raw) ? raw : String(raw).split(/[\n,]/))
     .map((s) => String(s).trim())
     .filter(Boolean);
 
-  if (!ids.length) return res.status(400).json({ error: 'ไม่มี Student ID ที่เพิ่มได้' });
+  if (!ids.length) return res.status(400).json({ error: "ไม่มี Student ID ที่เพิ่มได้" });
 
   try {
     let inserted = 0;
     for (const id of ids) {
       const r = await db.query(
-        'INSERT INTO student_codes (student_id) VALUES ($1) ON CONFLICT (student_id) DO NOTHING RETURNING student_code_id',
+        "INSERT INTO student_codes (student_id) VALUES ($1) ON CONFLICT (student_id) DO NOTHING RETURNING student_code_id",
         [id]
       );
       if (r.rows.length) inserted += 1;
     }
     return res.json({ success: true, inserted, totalSubmitted: ids.length });
   } catch (err) {
-    console.error('POST /admin/student-codes error:', err);
-    return res.status(500).json({ error: 'เพิ่มรหัสนักศึกษาไม่สำเร็จ' });
+    console.error("POST /admin/student-codes error:", err);
+    return res.status(500).json({ error: "เพิ่มรหัสนักศึกษาไม่สำเร็จ" });
   }
 });
 
-router.delete('/student-codes/:student_code_id', async (req, res) => {
+router.delete("/student-codes/:student_code_id", async (req, res) => {
   try {
-    await db.query('DELETE FROM student_codes WHERE student_code_id = $1', [req.params.student_code_id]);
+    await db.query("DELETE FROM student_codes WHERE student_code_id = $1", [req.params.student_code_id]);
     return res.json({ success: true });
   } catch (err) {
-    console.error('DELETE /admin/student-codes/:id error:', err);
-    return res.status(500).json({ error: 'DB delete error' });
+    console.error("DELETE /admin/student-codes/:id error:", err);
+    return res.status(500).json({ error: "DB delete error" });
   }
 });
 

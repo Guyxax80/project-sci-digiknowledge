@@ -306,222 +306,459 @@ export default function UploadDocument() {
   // ✅ disable ทั้งฟอร์มเมื่อ blocked
   const formDisabled = eligLoading || uploadBlocked;
 
+  // ===== UI-only helpers =====
+  const uploadedCount = useMemo(() => {
+    let c = 0;
+    for (const r of REQUIRED_SECTIONS) if (filesMap[r.key]) c += 1;
+    return c;
+  }, [filesMap]);
+
+  const totalRequired = REQUIRED_SECTIONS.length;
+  const progressPct = totalRequired ? Math.round((uploadedCount / totalRequired) * 100) : 0;
+
+  const fileHint = (file) => {
+    if (!file) return "ยังไม่ได้เลือกไฟล์";
+    const kb = Math.round(file.size / 1024);
+    const sizeText = kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`;
+    return `${file.name} • ${sizeText}`;
+  };
+
   return (
-    <div className="p-4 md:p-6 max-w-2xl mx-auto border rounded-lg shadow-md bg-white/80">
-      <h2 className="text-2xl font-bold mb-4 text-brand-800">อัปโหลดเอกสาร</h2>
+    <div className="min-h-screen bg-black/[0.02] py-6">
+      <div className="max-w-4xl mx-auto px-4 md:px-6 space-y-6">
+        {/* ===== Header / Hero ===== */}
+        <div className="rounded-3xl border border-black/5 shadow-lg overflow-hidden bg-white">
+          <div className="p-6 md:p-8 bg-gradient-to-br from-slate-50 via-white to-brand-50/60">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+              <div>
+                <h2 className="text-2xl md:text-3xl font-black text-brand-800">
+                  อัปโหลดเอกสาร
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  บันทึกฉบับร่างได้แม้ไฟล์ไม่ครบ • ส่งให้ที่ปรึกษาต้องครบทุกไฟล์
+                </p>
+              </div>
 
-      {/* ✅ แจ้งเตือนทันทีตอนเข้าหน้า ถ้าไม่มี student code */}
-      {eligLoading && (
-        <div className="mb-4 p-3 rounded border border-gray-200 bg-gray-50 text-gray-700">
-          กำลังตรวจสอบสิทธิ์การอัปโหลด...
-        </div>
-      )}
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => navigate("/documents")}
+                  className="px-4 py-2 rounded-xl border border-black/10 hover:bg-black/[0.03] transition font-semibold"
+                >
+                  ← กลับไปหน้ารายการ
+                </button>
+              </div>
+            </div>
 
-      {!eligLoading && uploadBlocked && (
-        <div className="mb-4 p-4 rounded border border-yellow-300 bg-yellow-50 text-yellow-900">
-          <div className="font-semibold mb-1">ยังไม่สามารถใช้งานการอัปโหลดได้</div>
-          <div className="text-sm">{blockMessage}</div>
-          <div className="mt-3 flex gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => navigate("/profile")}
-              className="bg-white border border-yellow-400 hover:bg-yellow-100 text-yellow-900 px-4 py-2 rounded"
-            >
-              ไปหน้าโปรไฟล์
-            </button>
-            <button
-              type="button"
-              onClick={checkStudentEligibility}
-              className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded"
-            >
-              ตรวจสอบอีกครั้ง
-            </button>
+            {/* progress (UI only) */}
+            <div className="mt-5 rounded-2xl border border-black/5 bg-white p-4">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="font-semibold text-gray-800">
+                  ความคืบหน้าไฟล์ที่ต้องมี: {uploadedCount}/{totalRequired} ({progressPct}%)
+                </div>
+                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-black/[0.04] border border-black/5">
+                  แนะนำ: อัปโหลดให้ครบก่อนกด “ส่งให้ที่ปรึกษา”
+                </span>
+              </div>
+              <div className="mt-3 h-2.5 rounded-full bg-black/[0.06] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            </div>
           </div>
         </div>
-      )}
 
-      <div className={`flex flex-col gap-4 ${formDisabled ? "opacity-60 pointer-events-none" : ""}`}>
-        <input
-          type="text"
-          placeholder="ชื่อเอกสาร"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="border rounded px-3 py-2 w-full"
-          required
-          disabled={formDisabled}
-        />
+        {/* ✅ แจ้งเตือนทันทีตอนเข้าหน้า ถ้าไม่มี student code */}
+        {eligLoading && (
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 text-gray-700 p-4 shadow-sm">
+            <div className="font-semibold">กำลังตรวจสอบสิทธิ์การอัปโหลด...</div>
+            <div className="text-sm text-gray-600 mt-1">กรุณารอสักครู่</div>
+          </div>
+        )}
 
-        <div>
-          <p className="font-semibold mb-2">เลือกหมวดหมู่ (เลือกได้ไม่เกิน 2)</p>
+        {!eligLoading && uploadBlocked && (
+          <div className="rounded-2xl border border-yellow-300 bg-yellow-50 text-yellow-900 p-5 shadow-sm">
+            <div className="font-black text-lg mb-1">ยังไม่สามารถใช้งานการอัปโหลดได้</div>
+            <div className="text-sm">{blockMessage}</div>
 
-          <div className="flex flex-col gap-2 border rounded p-3">
-            {FIXED_CATEGORIES.map((cat) => {
-              const checked = selectedCategoryIds.includes(cat.id);
-              const disableUnchecked = !checked && selectedCategoryIds.length >= 2;
+            <div className="mt-4 flex gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => navigate("/profile")}
+                className="px-4 py-2 rounded-xl bg-white border border-yellow-400 hover:bg-yellow-100 transition font-semibold"
+              >
+                ไปหน้าโปรไฟล์
+              </button>
+              <button
+                type="button"
+                onClick={checkStudentEligibility}
+                className="px-4 py-2 rounded-xl bg-yellow-600 hover:bg-yellow-700 text-white transition font-semibold"
+              >
+                ตรวจสอบอีกครั้ง
+              </button>
+            </div>
+          </div>
+        )}
 
-              return (
-                <label key={cat.id} className="inline-flex items-center gap-2">
+        {/* ===== Form body (disabled UI) ===== */}
+        <div className={`space-y-6 ${formDisabled ? "opacity-60 pointer-events-none" : ""}`}>
+          {/* ===== Basic info card ===== */}
+          <div className="rounded-3xl border border-black/5 shadow-lg bg-white overflow-hidden">
+            <div className="p-5 md:p-6">
+              <div className="text-xl font-black text-gray-800 mb-4">🧾 ข้อมูลเอกสาร</div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label className="flex flex-col gap-1 md:col-span-2">
+                  <span className="text-sm font-semibold text-gray-700">ชื่อเอกสาร</span>
                   <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={formDisabled || disableUnchecked}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedCategoryIds((prev) => (prev.length >= 2 ? prev : [...prev, cat.id]));
-                      } else {
-                        setSelectedCategoryIds((prev) => prev.filter((id) => id !== cat.id));
-                      }
-                    }}
+                    type="text"
+                    placeholder="กรอกชื่อเอกสาร"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="border border-black/10 rounded-xl px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
+                    required
+                    disabled={formDisabled}
                   />
-                  <span className={disableUnchecked ? "text-gray-400" : ""}>{cat.name}</span>
                 </label>
-              );
-            })}
+
+                <div className="md:col-span-2">
+                  <p className="text-sm font-semibold text-gray-700 mb-2">
+                    เลือกหมวดหมู่ (เลือกได้ไม่เกิน 2)
+                  </p>
+
+                  <div className="rounded-2xl border border-black/10 p-4 bg-black/[0.02]">
+                    <div className="flex flex-col gap-2">
+                      {FIXED_CATEGORIES.map((cat) => {
+                        const checked = selectedCategoryIds.includes(cat.id);
+                        const disableUnchecked = !checked && selectedCategoryIds.length >= 2;
+
+                        return (
+                          <label
+                            key={cat.id}
+                            className={`flex items-center gap-2 rounded-xl px-3 py-2 border border-black/5 bg-white hover:bg-black/[0.02] transition ${
+                              disableUnchecked ? "opacity-60" : ""
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={formDisabled || disableUnchecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedCategoryIds((prev) => (prev.length >= 2 ? prev : [...prev, cat.id]));
+                                } else {
+                                  setSelectedCategoryIds((prev) => prev.filter((id) => id !== cat.id));
+                                }
+                              }}
+                            />
+                            <span className="font-semibold text-gray-800">{cat.name}</span>
+                            {checked ? (
+                              <span className="ml-auto text-xs font-semibold px-2.5 py-1 rounded-full bg-green-50 text-green-700 border border-green-200">
+                                เลือกแล้ว
+                              </span>
+                            ) : (
+                              <span className="ml-auto text-xs text-gray-400">
+                                {disableUnchecked ? "เลือกได้ครบ 2 แล้ว" : ""}
+                              </span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2 text-xs text-gray-500">
+                      เลือกแล้ว: <span className="font-semibold">{selectedCategoryIds.length}</span>/2
+                    </div>
+                  </div>
+                </div>
+
+                <label className="flex flex-col gap-1 md:col-span-2">
+                  <span className="text-sm font-semibold text-gray-700">คำค้นหา</span>
+                  <input
+                    type="text"
+                    placeholder="เช่น IoT, AI, ระบบจัดการเอกสาร"
+                    value={keywords}
+                    onChange={(e) => setKeywords(e.target.value)}
+                    className="border border-black/10 rounded-xl px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
+                    disabled={formDisabled}
+                  />
+                </label>
+
+                <div className="flex flex-col gap-1 md:col-span-2">
+                  <span className="text-sm font-semibold text-gray-700">ปีการศึกษา</span>
+                  <input
+                    type="date"
+                    value={academicYearDate}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAcademicYearDate(val);
+                      const gYear = val ? new Date(val).getFullYear() : null;
+                      const thaiYear = gYear ? (gYear + 543).toString() : "";
+                      setAcademicYear(thaiYear);
+                    }}
+                    className="border border-black/10 rounded-xl px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
+                    disabled={formDisabled}
+                  />
+                  {academicYear && (
+                    <span className="text-sm text-gray-600 mt-1">เลือกปี (พ.ศ.): {academicYear}</span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
-          <p className="text-xs text-gray-500 mt-2">เลือกแล้ว: {selectedCategoryIds.length}/2</p>
+          {/* ===== Upload sections card ===== */}
+          <div className="rounded-3xl border border-black/5 shadow-lg bg-white overflow-hidden">
+            <div className="p-5 md:p-6">
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+                <div className="text-xl font-black text-gray-800">📎 อัปโหลดไฟล์รายส่วน</div>
+                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-black/[0.04] border border-black/5">
+                  ส่งให้ที่ปรึกษาต้องครบ {totalRequired} รายการ
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* ใช้ “label + file hint” เพื่อ UI ดูดีขึ้น (logic เดิม) */}
+                <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3">
+                  <span className="text-sm font-semibold text-gray-800">ปก (cover)</span>
+                  <input
+                    type="file"
+                    onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+                    disabled={formDisabled}
+                    className="text-sm"
+                  />
+                  <span className="text-xs text-gray-500">{fileHint(coverFile)}</span>
+                </label>
+
+                <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3">
+                  <span className="text-sm font-semibold text-gray-800">บทคัดย่อ (abstract)</span>
+                  <input
+                    type="file"
+                    onChange={(e) => setAbstractFile(e.target.files?.[0] || null)}
+                    disabled={formDisabled}
+                    className="text-sm"
+                  />
+                  <span className="text-xs text-gray-500">{fileHint(abstractFile)}</span>
+                </label>
+
+                <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3">
+                  <span className="text-sm font-semibold text-gray-800">กิตติกรรมประกาศ (acknowledgement)</span>
+                  <input
+                    type="file"
+                    onChange={(e) => setAckFile(e.target.files?.[0] || null)}
+                    disabled={formDisabled}
+                    className="text-sm"
+                  />
+                  <span className="text-xs text-gray-500">{fileHint(ackFile)}</span>
+                </label>
+
+                <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3">
+                  <span className="text-sm font-semibold text-gray-800">สารบัญ (toc)</span>
+                  <input
+                    type="file"
+                    onChange={(e) => setTocFile(e.target.files?.[0] || null)}
+                    disabled={formDisabled}
+                    className="text-sm"
+                  />
+                  <span className="text-xs text-gray-500">{fileHint(tocFile)}</span>
+                </label>
+
+                <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3">
+                  <span className="text-sm font-semibold text-gray-800">บทที่ 1 (chapter1)</span>
+                  <input
+                    type="file"
+                    onChange={(e) => setChapter1File(e.target.files?.[0] || null)}
+                    disabled={formDisabled}
+                    className="text-sm"
+                  />
+                  <span className="text-xs text-gray-500">{fileHint(chapter1File)}</span>
+                </label>
+
+                <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3">
+                  <span className="text-sm font-semibold text-gray-800">บทที่ 2 (chapter2)</span>
+                  <input
+                    type="file"
+                    onChange={(e) => setChapter2File(e.target.files?.[0] || null)}
+                    disabled={formDisabled}
+                    className="text-sm"
+                  />
+                  <span className="text-xs text-gray-500">{fileHint(chapter2File)}</span>
+                </label>
+
+                <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3">
+                  <span className="text-sm font-semibold text-gray-800">บทที่ 3 (chapter3)</span>
+                  <input
+                    type="file"
+                    onChange={(e) => setChapter3File(e.target.files?.[0] || null)}
+                    disabled={formDisabled}
+                    className="text-sm"
+                  />
+                  <span className="text-xs text-gray-500">{fileHint(chapter3File)}</span>
+                </label>
+
+                <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3">
+                  <span className="text-sm font-semibold text-gray-800">บทที่ 4 (chapter4)</span>
+                  <input
+                    type="file"
+                    onChange={(e) => setChapter4File(e.target.files?.[0] || null)}
+                    disabled={formDisabled}
+                    className="text-sm"
+                  />
+                  <span className="text-xs text-gray-500">{fileHint(chapter4File)}</span>
+                </label>
+
+                <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3">
+                  <span className="text-sm font-semibold text-gray-800">บทที่ 5 (chapter5)</span>
+                  <input
+                    type="file"
+                    onChange={(e) => setChapter5File(e.target.files?.[0] || null)}
+                    disabled={formDisabled}
+                    className="text-sm"
+                  />
+                  <span className="text-xs text-gray-500">{fileHint(chapter5File)}</span>
+                </label>
+
+                <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3">
+                  <span className="text-sm font-semibold text-gray-800">บรรณานุกรม (bibliography)</span>
+                  <input
+                    type="file"
+                    onChange={(e) => setBibliographyFile(e.target.files?.[0] || null)}
+                    disabled={formDisabled}
+                    className="text-sm"
+                  />
+                  <span className="text-xs text-gray-500">{fileHint(bibliographyFile)}</span>
+                </label>
+
+                <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3">
+                  <span className="text-sm font-semibold text-gray-800">ภาคผนวก (appendix)</span>
+                  <input
+                    type="file"
+                    onChange={(e) => setAppendixFile(e.target.files?.[0] || null)}
+                    disabled={formDisabled}
+                    className="text-sm"
+                  />
+                  <span className="text-xs text-gray-500">{fileHint(appendixFile)}</span>
+                </label>
+
+                <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3">
+                  <span className="text-sm font-semibold text-gray-800">ประวัติผู้จัดทำ (author_bio)</span>
+                  <input
+                    type="file"
+                    onChange={(e) => setAuthorBioFile(e.target.files?.[0] || null)}
+                    disabled={formDisabled}
+                    className="text-sm"
+                  />
+                  <span className="text-xs text-gray-500">{fileHint(authorBioFile)}</span>
+                </label>
+
+                <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3 sm:col-span-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-gray-800">
+                      วิดีโอนำเสนอ (presentation_video)
+                    </span>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                      สูงสุด {MAX_VIDEO_MB}MB
+                    </span>
+                  </div>
+
+                  <input
+                    type="file"
+                    accept="video/*"
+                    disabled={formDisabled}
+                    onChange={(e) => {
+                      const selectedFile = e.target.files?.[0] || null;
+                      if (!validatePresentationVideoSize(selectedFile)) {
+                        e.target.value = "";
+                        setPresentationVideoFile(null);
+                        return;
+                      }
+                      setPresentationVideoFile(selectedFile);
+                    }}
+                    className="text-sm"
+                  />
+                  <span className="text-xs text-gray-500">{fileHint(presentationVideoFile)}</span>
+                  {presentationVideoFile?.size > 0 ? (
+                    <div className="text-xs text-gray-500 mt-1">
+                      * หากอัปโหลดไม่ผ่าน ให้ลดขนาดวิดีโอ (ระบบจำกัด 100MB)
+                    </div>
+                  ) : null}
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* ===== Actions ===== */}
+          <div className="rounded-3xl border border-black/5 shadow-lg bg-white overflow-hidden">
+            <div className="p-5 md:p-6">
+              <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+                <div className="text-sm text-gray-600 space-y-1">
+                  <div>
+                    * บันทึกฉบับร่างอัปไฟล์ไม่ครบได้ แต่ <span className="font-semibold">ส่งให้ที่ปรึกษา</span> ต้องครบทุกไฟล์
+                  </div>
+                  <div>
+                    ฟังก์ชันอัปโหลดต้องมี Student Code ที่ผ่านการอนุมัติแล้ว
+                  </div>
+                </div>
+
+                <div className="flex gap-2 flex-col sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={handleSaveDraft}
+                    className="px-5 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-900 text-white transition font-bold"
+                    disabled={formDisabled}
+                  >
+                    บันทึกฉบับร่าง
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSubmitToAdvisor}
+                    className="px-5 py-2.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white transition font-bold"
+                    disabled={formDisabled}
+                  >
+                    ส่งให้ที่ปรึกษา
+                  </button>
+                </div>
+              </div>
+
+              {/* UI-only: quick checklist */}
+              <div className="mt-4 rounded-2xl border border-black/5 bg-black/[0.02] p-4">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="font-semibold text-gray-800">เช็คลิสต์ไฟล์ที่ต้องมี</div>
+                  <span className="text-xs font-semibold px-3 py-1 rounded-full bg-white border border-black/10">
+                    ครบแล้ว {uploadedCount}/{totalRequired}
+                  </span>
+                </div>
+
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {REQUIRED_SECTIONS.map((r) => {
+                    const ok = Boolean(filesMap[r.key]);
+                    return (
+                      <div
+                        key={r.key}
+                        className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2 border ${
+                          ok
+                            ? "bg-green-50 text-green-800 border-green-200"
+                            : "bg-white text-gray-700 border-black/10"
+                        }`}
+                      >
+                        <span className="text-sm font-semibold">{r.label}</span>
+                        <span className="text-xs font-bold">
+                          {ok ? "✔" : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* small bottom spacing */}
+          <div className="h-6" />
         </div>
-
-        <input
-          type="text"
-          placeholder="คำค้นหา"
-          value={keywords}
-          onChange={(e) => setKeywords(e.target.value)}
-          className="border rounded px-3 py-2 w-full"
-          disabled={formDisabled}
-        />
-
-        <div className="flex flex-col">
-          <label className="mb-1">ปีการศึกษา</label>
-          <input
-            type="date"
-            value={academicYearDate}
-            onChange={(e) => {
-              const val = e.target.value;
-              setAcademicYearDate(val);
-              const gYear = val ? new Date(val).getFullYear() : null;
-              const thaiYear = gYear ? (gYear + 543).toString() : "";
-              setAcademicYear(thaiYear);
-            }}
-            className="border rounded px-3 py-2 w-full"
-            disabled={formDisabled}
-          />
-          {academicYear && (
-            <span className="text-sm text-gray-600 mt-1">เลือกปี (พ.ศ.): {academicYear}</span>
-          )}
-        </div>
-
-        <hr className="my-2" />
-        <h3 className="text-xl font-bold">อัปโหลดไฟล์รายส่วน</h3>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="flex flex-col">
-            <span className="mb-1">ปก (cover)</span>
-            <input type="file" onChange={(e) => setCoverFile(e.target.files?.[0] || null)} disabled={formDisabled} />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="mb-1">บทคัดย่อ (abstract)</span>
-            <input type="file" onChange={(e) => setAbstractFile(e.target.files?.[0] || null)} disabled={formDisabled} />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="mb-1">กิตติกรรมประกาศ (acknowledgement)</span>
-            <input type="file" onChange={(e) => setAckFile(e.target.files?.[0] || null)} disabled={formDisabled} />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="mb-1">สารบัญ (toc)</span>
-            <input type="file" onChange={(e) => setTocFile(e.target.files?.[0] || null)} disabled={formDisabled} />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="mb-1">บทที่ 1 (chapter1)</span>
-            <input type="file" onChange={(e) => setChapter1File(e.target.files?.[0] || null)} disabled={formDisabled} />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="mb-1">บทที่ 2 (chapter2)</span>
-            <input type="file" onChange={(e) => setChapter2File(e.target.files?.[0] || null)} disabled={formDisabled} />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="mb-1">บทที่ 3 (chapter3)</span>
-            <input type="file" onChange={(e) => setChapter3File(e.target.files?.[0] || null)} disabled={formDisabled} />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="mb-1">บทที่ 4 (chapter4)</span>
-            <input type="file" onChange={(e) => setChapter4File(e.target.files?.[0] || null)} disabled={formDisabled} />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="mb-1">บทที่ 5 (chapter5)</span>
-            <input type="file" onChange={(e) => setChapter5File(e.target.files?.[0] || null)} disabled={formDisabled} />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="mb-1">บรรณานุกรม (bibliography)</span>
-            <input type="file" onChange={(e) => setBibliographyFile(e.target.files?.[0] || null)} disabled={formDisabled} />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="mb-1">ภาคผนวก (appendix)</span>
-            <input type="file" onChange={(e) => setAppendixFile(e.target.files?.[0] || null)} disabled={formDisabled} />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="mb-1">ประวัติผู้จัดทำ (author_bio)</span>
-            <input type="file" onChange={(e) => setAuthorBioFile(e.target.files?.[0] || null)} disabled={formDisabled} />
-          </label>
-
-          <label className="flex flex-col sm:col-span-2">
-            <span className="mb-1">วิดีโอนำเสนอ (presentation_video, สูงสุด {MAX_VIDEO_MB}MB)</span>
-            <input
-              type="file"
-              accept="video/*"
-              disabled={formDisabled}
-              onChange={(e) => {
-                const selectedFile = e.target.files?.[0] || null;
-                if (!validatePresentationVideoSize(selectedFile)) {
-                  e.target.value = "";
-                  setPresentationVideoFile(null);
-                  return;
-                }
-                setPresentationVideoFile(selectedFile);
-              }}
-            />
-          </label>
-        </div>
-
-        <div className="flex gap-2 flex-col sm:flex-row mt-2">
-          <button
-            type="button"
-            onClick={handleSaveDraft}
-            className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded"
-            disabled={formDisabled}
-          >
-            บันทึกฉบับร่าง
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSubmitToAdvisor}
-            className="bg-brand-700 hover:bg-brand-800 text-white px-4 py-2 rounded"
-            disabled={formDisabled}
-          >
-            ส่งให้ที่ปรึกษา
-          </button>
-        </div>
-
-        <p className="text-sm text-gray-500 mt-1 space-y-1">
-          <span>
-            * หมายเหตุ: บันทึกฉบับร่างอัปไฟล์ไม่ครบได้ แต่ “ส่งให้ที่ปรึกษา” ต้องครบทุกไฟล์
-          </span>
-          <span className="block">
-            ฟังก์ชันอัปโหลดจะต้องมี Student Code ที่ผ่านการอนุมัติแล้วเท่านั้น กรุณาติดต่ออาจารย์หรือผู้ดูแลระบบเพื่อขออนุมัติ Student Code ของคุณก่อนใช้งานฟังก์ชันนี้
-          </span>
-        </p>
       </div>
     </div>
   );
