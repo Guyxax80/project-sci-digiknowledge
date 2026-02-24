@@ -1,28 +1,17 @@
+// server/routes/auth.js
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
+const auth = require('../middleware/auth');
 const JWT_SECRET = process.env.JWT_SECRET;
 
-function authenticateToken(req, res, next) {
-  const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ success: false, message: 'Unauthorized' });
-  if (!JWT_SECRET) return res.status(500).json({ success: false, message: 'JWT_SECRET not configured' });
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ success: false, message: 'Token invalid or expired' });
-    req.user = user;
-    next();
-  });
-}
-
-router.get('/me', authenticateToken, async (req, res) => {
+// ✅ /auth/me
+router.get('/me', auth, async (req, res) => {
   try {
     const { rows } = await db.query(
-      // ✅ เพิ่ม email (และถ้าคุณมี advisor_id ก็ใส่เพิ่มได้)
       'SELECT user_id, username, student_id, role, created_at, class_group, level, email FROM public.users WHERE user_id = $1',
       [req.user.user_id],
     );
@@ -36,6 +25,10 @@ router.get('/me', authenticateToken, async (req, res) => {
   }
 });
 
+// ===== ตัวอย่าง login (ถ้าในไฟล์คุณมีอยู่แล้วไม่ต้องเพิ่ม) =====
+// router.post('/login', async (req, res) => { ... jwt.sign({ user_id, role }, JWT_SECRET) ... });
+
+// forgot-password
 router.post('/forgot-password', async (req, res) => {
   const { username } = req.body || {};
   if (!username) return res.status(400).json({ success: false, message: 'กรุณาระบุชื่อผู้ใช้' });
@@ -63,6 +56,7 @@ router.post('/forgot-password', async (req, res) => {
   }
 });
 
+// reset-password
 router.post('/reset-password', async (req, res) => {
   const { username, code, new_password } = req.body || {};
   if (!username || !code || !new_password) {

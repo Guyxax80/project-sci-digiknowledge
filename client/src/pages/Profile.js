@@ -1,3 +1,4 @@
+// src/pages/Profile.js
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -41,14 +42,14 @@ function Profile() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const [myDocs, setMyDocs] = useState([]);
+  // ===== Teacher pending =====
   const [pendingDocs, setPendingDocs] = useState([]);
   const [pendingError, setPendingError] = useState('');
 
   const [rejectingDoc, setRejectingDoc] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  // ✅ timeline ต่อเอกสาร
+  // ✅ timeline ต่อเอกสาร (เฉพาะ Teacher ใช้ดู timeline)
   const [timelineByDoc, setTimelineByDoc] = useState({});
 
   // ✅ โหมดแก้ไขโปรไฟล์
@@ -74,37 +75,37 @@ function Profile() {
   const isStudent = effectiveRole === 'student';
   const isAdmin = effectiveRole === 'admin';
 
+  // ===== Helpers =====
+  const toast = useCallback((message, severity = 'info') => {
+    if (!message) return;
+    try {
+      window.dispatchEvent(
+        new CustomEvent('app-toast', {
+          detail: { severity, message },
+        })
+      );
+    } catch (_) {
+      alert(message);
+    }
+  }, []);
+
+  const pickErrMessage = useCallback((err, fallback = 'เกิดข้อผิดพลาด') => {
+    const data = err?.response?.data;
+    return (
+      data?.message ||
+      data?.error ||
+      data?.detail ||
+      (typeof data === 'string' ? data : '') ||
+      err?.message ||
+      fallback
+    );
+  }, []);
+
   // ✅ ดึง profile จาก route ที่ “ชัวร์ว่ามี email”
   const fetchProfileMe = useCallback(async () => {
-    // ✅ baseURL = .../api แล้ว → เรียกแค่ /profile/me
     const res = await api.get('/profile/me');
     return res.data;
   }, []);
-
-  const loadMyDocs = useCallback(async (userId) => {
-    // ✅ baseURL = .../api แล้ว
-    const r = await api.get(`/documents/by-user/${userId}`);
-    setMyDocs(Array.isArray(r.data) ? r.data : []);
-  }, []);
-
-  const loadPendingDocs = useCallback(async () => {
-    if (!isTeacher) {
-      setPendingDocs([]);
-      setPendingError('');
-      return;
-    }
-
-    try {
-      setPendingError('');
-      // ✅ baseURL = .../api แล้ว
-      const r = await api.get('/approvals/pending');
-      setPendingDocs(Array.isArray(r.data) ? r.data : []);
-    } catch (e) {
-      const msg = e?.response?.data?.message || 'โหลดรายการรอตรวจไม่สำเร็จ';
-      setPendingDocs([]);
-      setPendingError(msg);
-    }
-  }, [isTeacher]);
 
   // ✅ โหลด user จาก /auth/me แล้ว merge email จาก /profile/me
   useEffect(() => {
@@ -116,8 +117,6 @@ function Profile() {
 
     (async () => {
       try {
-        // 1) auth/me สำหรับเช็ค login
-        // ✅ baseURL = .../api แล้ว → /auth/me
         const authRes = await api.get('/auth/me');
         const data = authRes.data;
 
@@ -126,7 +125,6 @@ function Profile() {
           return;
         }
 
-        // 2) profile/me เพื่อเอา email ที่ชัวร์
         let profileMe = null;
         try {
           profileMe = await fetchProfileMe();
@@ -143,7 +141,6 @@ function Profile() {
 
         setUser(mergedUser);
 
-        // ✅ ตั้งค่า form เริ่มต้น
         setProfileForm({
           username: mergedUser.username || '',
           student_id: mergedUser.student_id || '',
@@ -152,10 +149,6 @@ function Profile() {
           email: mergedUser.email || '',
           password: '',
         });
-
-        if (String(mergedUser.role).toLowerCase() === 'student') {
-          await loadMyDocs(mergedUser.user_id);
-        }
       } catch (err) {
         console.error('Error fetching profile:', err?.response?.data || err.message);
         setUser(null);
@@ -163,11 +156,7 @@ function Profile() {
         setLoading(false);
       }
     })();
-  }, [loadMyDocs, fetchProfileMe]);
-
-  useEffect(() => {
-    loadPendingDocs().catch((e) => console.error(e));
-  }, [loadPendingDocs]);
+  }, [fetchProfileMe]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -176,15 +165,18 @@ function Profile() {
     navigate('/login');
   };
 
-  // ✅ เช็ค email ก่อนทำ action สำคัญ
-  const ensureEmailOrOpenEdit = (actionLabel) => {
-    const email = String(user?.email || '').trim();
-    if (email) return true;
+  // ✅ เช็ค email ก่อนทำ action สำคัญ (Teacher approve/reject)
+  const ensureEmailOrOpenEdit = useCallback(
+    (actionLabel) => {
+      const email = String(user?.email || '').trim();
+      if (email) return true;
 
-    alert(`ต้องเพิ่มอีเมลในโปรไฟล์ก่อน ถึงจะ${actionLabel}ได้`);
-    setEditProfile(true);
-    return false;
-  };
+      toast(`ต้องเพิ่มอีเมลในโปรไฟล์ก่อน ถึงจะ${actionLabel}ได้`, 'warning');
+      setEditProfile(true);
+      return false;
+    },
+    [user?.email, toast]
+  );
 
   // ✅ บันทึกแก้ไขโปรไฟล์ (PATCH /profile/me)
   const handleSaveProfile = async () => {
@@ -206,12 +198,11 @@ function Profile() {
         payload.password = profileForm.password;
       }
 
-      // ✅ baseURL = .../api แล้ว
       const res = await api.patch('/profile/me', payload);
       const updatedUser = res.data?.user;
 
       if (!res.data?.success || !updatedUser) {
-        alert(res.data?.message || 'บันทึกไม่สำเร็จ');
+        toast(res.data?.message || 'บันทึกไม่สำเร็จ', 'error');
         return;
       }
 
@@ -232,18 +223,41 @@ function Profile() {
       }));
 
       setEditProfile(false);
-      alert('บันทึกโปรไฟล์สำเร็จ');
+      toast('บันทึกโปรไฟล์สำเร็จ', 'success');
     } catch (err) {
       console.error('save profile error:', err?.response?.data || err.message);
-      alert(err?.response?.data?.message || 'บันทึกไม่สำเร็จ');
+      toast(err?.response?.data?.message || 'บันทึกไม่สำเร็จ', 'error');
     } finally {
       setSavingProfile(false);
     }
   };
 
-  // ✅ เปิด/ปิด + โหลด timeline (lazy) — แก้บั๊ก state อ่านค่าเก่า
+  // ===== Teacher: pending list =====
+  const loadPendingDocs = useCallback(async () => {
+    if (!isTeacher) {
+      setPendingDocs([]);
+      setPendingError('');
+      return;
+    }
+
+    try {
+      setPendingError('');
+      const r = await api.get('/approvals/pending');
+      setPendingDocs(Array.isArray(r.data) ? r.data : []);
+    } catch (e) {
+      const msg = e?.response?.data?.message || 'โหลดรายการรอตรวจไม่สำเร็จ';
+      setPendingDocs([]);
+      setPendingError(msg);
+      toast(msg, 'error');
+    }
+  }, [isTeacher, toast]);
+
+  useEffect(() => {
+    loadPendingDocs().catch((e) => console.error(e));
+  }, [loadPendingDocs]);
+
+  // ===== Teacher: timeline (lazy) =====
   const toggleTimeline = async (documentId) => {
-    // อ่านค่าปัจจุบันจาก state อย่างปลอดภัย
     const current = timelineByDoc[documentId] || {
       open: false,
       loading: false,
@@ -251,26 +265,21 @@ function Profile() {
       items: null,
     };
 
-    // toggle open/close
     const nextOpen = !current.open;
 
-    // อัปเดต open ก่อน
     setTimelineByDoc((prev) => ({
       ...prev,
       [documentId]: { ...(prev[documentId] || current), open: nextOpen },
     }));
 
-    // ถ้าปิดอยู่ หรือเคยโหลดแล้ว ไม่ต้องโหลด
     if (!nextOpen || current.items) return;
 
-    // โหลดตอนเปิดครั้งแรก
     setTimelineByDoc((prev) => ({
       ...prev,
       [documentId]: { ...(prev[documentId] || current), open: true, loading: true, error: null, items: null },
     }));
 
     try {
-      // ✅ baseURL = .../api แล้ว
       const res = await api.get(`/approvals/${documentId}/timeline`);
       const items = res.data?.timeline || [];
       setTimelineByDoc((prev) => ({
@@ -289,14 +298,13 @@ function Profile() {
           items: [],
         },
       }));
+      toast('โหลด Timeline ไม่สำเร็จ', 'error');
     }
   };
 
-  // ✅ UI timeline
   const TimelineBlock = ({ documentId, docStatus }) => {
     const state = timelineByDoc[documentId] || { open: false, loading: false, error: null, items: null };
     const items = Array.isArray(state.items) ? state.items : [];
-
     const normalizedDocStatus = String(docStatus || 'draft').toLowerCase();
 
     return (
@@ -307,7 +315,6 @@ function Profile() {
             label={`สถานะ: ${statusTH[normalizedDocStatus] || normalizedDocStatus}`}
             color={statusColor[normalizedDocStatus] || 'default'}
           />
-
           <button
             type="button"
             onClick={() => toggleTimeline(documentId)}
@@ -333,14 +340,12 @@ function Profile() {
                     <div className="relative border-l-2 border-gray-200 ml-2">
                       {items.map((item) => {
                         const status = (item.status || '').toLowerCase();
-
                         const statusStyles = {
                           approved: 'bg-green-100 text-green-700 border-green-400',
                           rejected: 'bg-red-100 text-red-700 border-red-400',
                           pending: 'bg-yellow-100 text-yellow-700 border-yellow-400',
                           draft: 'bg-gray-100 text-gray-600 border-gray-400',
                         };
-
                         const style = statusStyles[status] || 'bg-gray-100 text-gray-600 border-gray-400';
 
                         return (
@@ -352,17 +357,13 @@ function Profile() {
                                 <span className={`px-2 py-1 text-xs rounded-full border ${style}`}>
                                   {approvalStatusTH[status] || item.status}
                                 </span>
-
                                 <span className="text-xs text-gray-500">
                                   {item.approved_at ? new Date(item.approved_at).toLocaleString() : '-'}
                                 </span>
                               </div>
 
                               <div className="text-sm">โดย {item.approver_name || '-'}</div>
-
-                              {item.reason && (
-                                <div className="text-sm text-red-500 mt-1">เหตุผล: {item.reason}</div>
-                              )}
+                              {item.reason && <div className="text-sm text-red-500 mt-1">เหตุผล: {item.reason}</div>}
                             </div>
                           </div>
                         );
@@ -377,6 +378,38 @@ function Profile() {
       </div>
     );
   };
+
+  // ✅ Approve
+  const handleApprove = useCallback(
+    async (doc) => {
+      if (!ensureEmailOrOpenEdit('อนุมัติ')) return;
+
+      try {
+        await api.post(`/approvals/${doc.document_id}/approve`);
+        toast('อนุมัติเรียบร้อย', 'success');
+        await loadPendingDocs();
+      } catch (err) {
+        toast(pickErrMessage(err, 'อนุมัติไม่สำเร็จ'), 'error');
+      }
+    },
+    [ensureEmailOrOpenEdit, loadPendingDocs, pickErrMessage, toast]
+  );
+
+  // ✅ Confirm Reject
+  const handleConfirmReject = useCallback(async () => {
+    if (!rejectingDoc) return;
+    if (!ensureEmailOrOpenEdit('ตีกลับ')) return;
+
+    try {
+      await api.post(`/approvals/${rejectingDoc.document_id}/reject`, { reason: rejectReason });
+      toast('ตีกลับเรียบร้อย', 'success');
+      setRejectingDoc(null);
+      setRejectReason('');
+      await loadPendingDocs();
+    } catch (err) {
+      toast(pickErrMessage(err, 'ตีกลับไม่สำเร็จ'), 'error');
+    }
+  }, [ensureEmailOrOpenEdit, loadPendingDocs, pickErrMessage, rejectReason, rejectingDoc, toast]);
 
   if (loading) return <p className="p-4">กำลังโหลด...</p>;
   if (!user) return <div className="p-4 text-center"><p>ยังไม่ได้เข้าสู่ระบบ</p></div>;
@@ -505,59 +538,7 @@ function Profile() {
         </CardContent>
       </Card>
 
-      {/* ================= STUDENT ================= */}
-      {isStudent && (
-        <>
-          <Typography variant="h6">ผลงานที่ฉันอัปโหลด</Typography>
-          {myDocs.length === 0 && <Typography color="text.secondary">ยังไม่มีผลงานที่อัปโหลด</Typography>}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {myDocs.map((doc) => {
-              const normalized = String(doc.status || 'draft').toLowerCase();
-              const canSubmit = normalized === 'draft' || normalized === 'rejected';
-
-              return (
-                <Card key={doc.document_id}>
-                  <CardContent>
-                    <Typography variant="subtitle1" className="font-semibold">{doc.title}</Typography>
-                    <Typography variant="body2" color="text.secondary">หมวดหมู่: {doc.category_names || '-'}</Typography>
-                    <Typography variant="body2" color="text.secondary">คำค้นหา: {doc.keywords || '-'}</Typography>
-                    <Typography variant="body2" color="text.secondary">ปีการศึกษา: {doc.academic_year || '-'}</Typography>
-
-                    <div className="mt-2">
-                      <TimelineBlock documentId={doc.document_id} docStatus={doc.status} />
-                    </div>
-
-                    <div className="mt-3 flex gap-2 flex-wrap">
-                      <Button size="small" variant="outlined" onClick={() => navigate(`/document-detail/${doc.document_id}`)}>
-                        ดูรายละเอียด
-                      </Button>
-
-                      {canSubmit && (
-                        <Button
-                          size="small"
-                          variant="contained"
-                          onClick={async () => {
-                            if (!ensureEmailOrOpenEdit('ส่งให้อาจารย์ตรวจ')) return;
-
-                            // ✅ baseURL = .../api แล้ว
-                            await api.post(`/documents/${doc.document_id}/submit`);
-                            await loadMyDocs(user.user_id);
-                          }}
-                        >
-                          ส่งให้อาจารย์ตรวจ
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      {/* ================= TEACHER ================= */}
+      {/* ================= TEACHER (ยังอยู่ใน Profile) ================= */}
       {isTeacher && (
         <>
           <Typography variant="h6">รายการรออนุมัติ (เฉพาะนักศึกษาที่คุณเป็นที่ปรึกษา)</Typography>
@@ -589,13 +570,7 @@ function Profile() {
                       size="small"
                       variant="contained"
                       color="success"
-                      onClick={async () => {
-                        if (!ensureEmailOrOpenEdit('อนุมัติ')) return;
-
-                        // ✅ baseURL = .../api แล้ว
-                        await api.post(`/approvals/${doc.document_id}/approve`);
-                        await loadPendingDocs();
-                      }}
+                      onClick={() => handleApprove(doc)}
                     >
                       อนุมัติ
                     </Button>
@@ -648,15 +623,7 @@ function Profile() {
             color="error"
             variant="contained"
             disabled={!rejectReason.trim()}
-            onClick={async () => {
-              if (!ensureEmailOrOpenEdit('ตีกลับ')) return;
-
-              // ✅ baseURL = .../api แล้ว
-              await api.post(`/approvals/${rejectingDoc.document_id}/reject`, { reason: rejectReason });
-              setRejectingDoc(null);
-              setRejectReason('');
-              await loadPendingDocs();
-            }}
+            onClick={handleConfirmReject}
           >
             ยืนยันตีกลับ
           </Button>

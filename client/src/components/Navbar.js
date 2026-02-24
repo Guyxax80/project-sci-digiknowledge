@@ -31,6 +31,14 @@ const Navbar = () => {
     navigate("/upload");
   };
 
+  // ✅ Student: ไปหน้าผลงานของฉัน
+  const handleMyDocsClick = (e) => {
+    e.preventDefault();
+    if (!isLoggedIn) return goAuth("/my-documents");
+    if (!isStudent) return alert("ต้องเป็น student เท่านั้น");
+    navigate("/my-documents");
+  };
+
   const handleProfileClick = (e) => {
     e.preventDefault();
     if (!isLoggedIn) return goAuth("/profile");
@@ -92,6 +100,17 @@ const Navbar = () => {
             </Link>
           )}
 
+          {/* ✅ Student: ผลงานของฉัน */}
+          {isStudent && (
+            <Link
+              to="/my-documents"
+              className="hover:text-accent-200 transition-colors"
+              onClick={handleMyDocsClick}
+            >
+              ผลงานของฉัน
+            </Link>
+          )}
+
           {/* ✅ teacher: ประวัติการอนุมัติ */}
           {isTeacher && (
             <Link
@@ -113,11 +132,7 @@ const Navbar = () => {
             </Link>
           )}
 
-          <Link
-            to="/profile"
-            className="hover:text-accent-200 transition-colors"
-            onClick={handleProfileClick}
-          >
+          <Link to="/profile" className="hover:text-accent-200 transition-colors" onClick={handleProfileClick}>
             Profile
           </Link>
         </div>
@@ -144,6 +159,20 @@ const Navbar = () => {
                   }}
                 >
                   อัปโหลดไฟล์
+                </Link>
+              )}
+
+              {/* ✅ Student: ผลงานของฉัน */}
+              {isStudent && (
+                <Link
+                  to="/my-documents"
+                  className="block py-2"
+                  onClick={(e) => {
+                    setMobileOpen(false);
+                    handleMyDocsClick(e);
+                  }}
+                >
+                  ผลงานของฉัน
                 </Link>
               )}
 

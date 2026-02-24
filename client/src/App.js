@@ -13,10 +13,13 @@ import Profile from "./pages/Profile";
 import Upload from "./pages/Upload";
 import AdminCRUD from "./pages/AdminDashboard";
 
-// ✅ หน้า "ประวัติการอนุมัติ" (ที่เราสร้างไว้)
+// ✅ หน้าใหม่: ผลงานของฉัน (Student)
+import MyDocuments from "./pages/MyDocuments";
+
+// ✅ หน้า "ประวัติการอนุมัติ" (Teacher)
 import TeacherApprovalHistory from "./pages/TeacherApprovalHistory";
 
-// ✅ Guard สำหรับ role ครู
+// ✅ Guards
 import RequireAuth from "./components/RequireAuth";
 import RequireStudent from "./components/RequireStudent";
 import RequireTeacher from "./components/RequireTeacher";
@@ -49,6 +52,16 @@ function App() {
           }
         />
 
+        {/* ✅ นักศึกษาเท่านั้น: ผลงานของฉัน */}
+        <Route
+          path="/my-documents"
+          element={
+            <RequireStudent>
+              <MyDocuments />
+            </RequireStudent>
+          }
+        />
+
         {/* ผู้ใช้ที่ล็อกอินแล้ว: โปรไฟล์ */}
         <Route
           path="/profile"
@@ -59,7 +72,7 @@ function App() {
           }
         />
 
-        {/* แอดมิน (ถ้า RequireAuth ยังไม่แยก role แนะนำทำ RequireAdmin เพิ่มภายหลัง) */}
+        {/* แอดมิน */}
         <Route
           path="/admin"
           element={
@@ -69,7 +82,7 @@ function App() {
           }
         />
 
-        {/* ✅ ครู: ประวัติการอนุมัติ (Timeline) */}
+        {/* ครู: ประวัติการอนุมัติ (Timeline) */}
         <Route
           path="/teacher/history"
           element={

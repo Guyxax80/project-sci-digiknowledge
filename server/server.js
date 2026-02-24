@@ -21,6 +21,7 @@ const sectionFilesRoute = require('./routes/sectionFiles');
 const categoriesRoute = require('./routes/categories');
 const dbTestRoute = require('./routes/dbTest');
 const profileRoute = require('./routes/profile');
+const studentCodesRoute = require('./routes/studentCodes');
 
 const app = express();
 
@@ -97,6 +98,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/categories', categoriesRoute);
 app.use('/api/profile', profileRoute);
 app.use("/api/teacher", require("./routes/teacher"));
+app.use('/api/student-codes', require('./routes/studentCodes'));
 
 // ✅ แยก prefix ชัด ๆ ไม่ชน /api/documents
 app.use('/api/section-files', sectionFilesRoute);
