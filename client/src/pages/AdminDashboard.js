@@ -32,7 +32,7 @@ import UploadFileIcon from "@mui/icons-material/UploadFile";
 
 import api from "../services/api";
 
-const ADMIN_BASE = "/admin"; // ✅ ให้ใช้ตัวเดียวทั้งไฟล์
+const ADMIN_BASE = "/admin";
 
 // ===== helper UI =====
 const roleChip = (role) => {
@@ -110,7 +110,7 @@ export default function AdminDashboard() {
   const [studentCodes, setStudentCodes] = useState([]);
   const [newCodesText, setNewCodesText] = useState("");
 
-  // ===== Stats (กัน ESLint: ใช้จริง) =====
+  // ===== Stats =====
   const [, setStats] = useState(null);
 
   // ===== TAB 4: Advisor =====
@@ -124,14 +124,17 @@ export default function AdminDashboard() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreFile, setRestoreFile] = useState(null);
-  const [restoreMode] = useState("full"); // เผื่ออนาคต
 
-  // ✅ Backup options (NEW)
+  // ✅ Restore options (NEW)
+  const [restoreMode, setRestoreMode] = useState("overwrite_public"); // overwrite_public | overwrite_tables
+  const [restoreTables, setRestoreTables] = useState([]); // ตารางที่เลือกตอน restore แบบ overwrite_tables
+
+  // ✅ Backup options
   const [backupScope, setBackupScope] = useState("all"); // all | tables
   const [backupDestination, setBackupDestination] = useState("download"); // download | server | supabase
   const [dbTables, setDbTables] = useState([]); // รายชื่อตารางทั้งหมด
   const [selectedTables, setSelectedTables] = useState([]);
-  const [backupResult, setBackupResult] = useState(null); // เก็บผลลัพธ์เมื่อ destination ไม่ใช่ download
+  const [backupResult, setBackupResult] = useState(null);
 
   // ===== UI-only filters =====
   const [qUsers, setQUsers] = useState("");
@@ -142,11 +145,7 @@ export default function AdminDashboard() {
   const toast = (message, severity = "info") => {
     if (!message) return;
     try {
-      window.dispatchEvent(
-        new CustomEvent("app-toast", {
-          detail: { severity, message },
-        })
-      );
+      window.dispatchEvent(new CustomEvent("app-toast", { detail: { severity, message } }));
     } catch (_) {
       alert(message);
     }
@@ -218,7 +217,7 @@ export default function AdminDashboard() {
   };
 
   // =========================
-  // FETCH: DB Tables (สำหรับ backup เลือกตาราง)
+  // FETCH: DB Tables
   // =========================
   const fetchDbTables = async () => {
     try {
@@ -227,12 +226,11 @@ export default function AdminDashboard() {
     } catch (err) {
       console.error("โหลดรายชื่อตารางไม่สำเร็จ", err?.response?.data || err.message);
       setDbTables([]);
-      // ไม่ toast ก็ได้ แต่ใส่ไว้ช่วย debug
-      toast("โหลดรายชื่อตารางสำหรับ Backup ไม่สำเร็จ", "warning");
+      toast("โหลดรายชื่อตารางสำหรับ Backup/Restore ไม่สำเร็จ", "warning");
     }
   };
 
-  // แปลง teacher list เป็น map เพื่อโชว์ชื่อที่ปรึกษาปัจจุบันได้เร็ว
+  // teacher map
   const teacherById = useMemo(() => {
     const m = new Map();
     teachers.forEach((t) => m.set(String(t.user_id), t));
@@ -255,11 +253,8 @@ export default function AdminDashboard() {
 
     try {
       setSavingAdvisorId(studentUserId);
-
       await api.put(`${ADMIN_BASE}/students/${studentUserId}/advisor`, { advisor_id });
-
       toast("บันทึกที่ปรึกษาสำเร็จ", "success");
-
       await loadAdvisorData();
       setEditingAdvisor((prev) => ({ ...prev, [studentUserId]: false }));
     } catch (err) {
@@ -291,7 +286,7 @@ export default function AdminDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  // ✅ โหลด tables เฉพาะตอนเปิดแท็บ Backup/Restore
+  // โหลด tables เฉพาะตอนเปิดแท็บ Backup/Restore
   useEffect(() => {
     if (tab === 2) {
       fetchDbTables();
@@ -359,7 +354,7 @@ export default function AdminDashboard() {
   };
 
   // =========================
-  // ✅ BACKUP (NEW: POST /backup + เลือก scope/destination)
+  // BACKUP
   // =========================
   const backupDatabase = async () => {
     try {
@@ -367,12 +362,11 @@ export default function AdminDashboard() {
       setBackupResult(null);
 
       const payload = {
-        scope: backupScope, // "all" | "tables"
+        scope: backupScope,
         tables: backupScope === "tables" ? selectedTables : [],
-        destination: backupDestination, // "download" | "server" | "supabase"
+        destination: backupDestination,
       };
 
-      // ถ้าเป็น download ให้รับเป็น blob แล้วดาวน์โหลด
       if (backupDestination === "download") {
         const res = await api.post(`${ADMIN_BASE}/backup`, payload, { responseType: "blob" });
 
@@ -391,7 +385,7 @@ export default function AdminDashboard() {
 
         const filename =
           backupScope === "all"
-            ? `backup-all-${yyyy}${mm}${dd}-${hh}${mi}.sql`
+            ? `backup-public-${yyyy}${mm}${dd}-${hh}${mi}.sql`
             : `backup-${selectedTables.join("_")}-${yyyy}${mm}${dd}-${hh}${mi}.sql`;
 
         link.setAttribute("download", filename);
@@ -405,10 +399,8 @@ export default function AdminDashboard() {
         return;
       }
 
-      // ถ้าไม่ใช่ download ให้รับ JSON result
       const res = await api.post(`${ADMIN_BASE}/backup`, payload);
       setBackupResult(res.data);
-
       toast("สร้างไฟล์ backup สำเร็จ", "success");
     } catch (err) {
       console.error("สำรองฐานข้อมูลล้มเหลว", err?.response?.data || err.message);
@@ -421,7 +413,7 @@ export default function AdminDashboard() {
   };
 
   // =========================
-  // RESTORE (เดิมของคุณ)
+  // RESTORE (แก้ให้เลือก mode + tables)
   // =========================
   const restoreDatabase = async () => {
     if (!restoreFile) {
@@ -429,17 +421,32 @@ export default function AdminDashboard() {
       return;
     }
 
-    const ok = window.confirm(
-      "⚠️ ยืนยันกู้คืนฐานข้อมูล?\n\nการกู้คืนอาจทำให้ข้อมูลเดิมถูกเขียนทับ/ลบได้\nแนะนำให้สำรองก่อนเสมอ"
-    );
-    if (!ok) return;
+    // validate restore mode
+    if (restoreMode === "overwrite_tables" && restoreTables.length === 0) {
+      toast("กรุณาเลือกตารางที่ต้องการทับ (Restore เฉพาะตาราง)", "warning");
+      return;
+    }
+
+    const confirmText =
+      restoreMode === "overwrite_public"
+        ? "⚠️ ยืนยันกู้คืนแบบ “ทับทั้งระบบ (public ทั้งหมด)” ?\n\nการทำงานนี้จะลบข้อมูลเดิมใน public ทั้งหมด แล้วนำเข้าจากไฟล์ .sql"
+        : "⚠️ ยืนยันกู้คืนแบบ “ทับเฉพาะตารางที่เลือก” ?\n\nระบบจะล้างข้อมูลในตารางที่เลือก (TRUNCATE) แล้วนำเข้าจากไฟล์ .sql";
+
+    if (!window.confirm(confirmText)) return;
 
     try {
       setRestoreBusy(true);
 
       const fd = new FormData();
       fd.append("file", restoreFile);
-      fd.append("mode", restoreMode); // full
+
+      // ✅ ส่ง mode ให้ backend
+      fd.append("mode", restoreMode);
+
+      // ✅ ส่ง tables ถ้าเป็น overwrite_tables (ส่งเป็น comma string)
+      if (restoreMode === "overwrite_tables") {
+        fd.append("tables", restoreTables.join(","));
+      }
 
       await api.post(`${ADMIN_BASE}/restore`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -447,11 +454,13 @@ export default function AdminDashboard() {
 
       toast("กู้คืนฐานข้อมูลสำเร็จ", "success");
       setRestoreFile(null);
+      setRestoreTables([]);
+      setRestoreMode("overwrite_public");
     } catch (err) {
       console.error("กู้คืนฐานข้อมูลล้มเหลว", err?.response?.data || err.message);
       const status = err?.response?.status;
       if (status === 501) toast("ตอนนี้ระบบ restore ผ่าน API ยังไม่เปิดใช้งาน (501)", "warning");
-      else toast(err?.response?.data?.error || "กู้คืนไม่สำเร็จ", "error");
+      else toast(err?.response?.data?.error || err?.response?.data?.detail || "กู้คืนไม่สำเร็จ", "error");
     } finally {
       setRestoreBusy(false);
     }
@@ -492,7 +501,6 @@ export default function AdminDashboard() {
     const totalTeachers = users.filter((u) => String(u.role).toLowerCase() === "teacher").length;
     const totalCodes = studentCodes.length;
     const advisorAssigned = students.filter((s) => !!s.advisor_id).length;
-
     return { totalUsers, totalStudents, totalTeachers, totalCodes, advisorAssigned };
   }, [users, studentCodes, students]);
 
@@ -530,7 +538,7 @@ export default function AdminDashboard() {
       );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [students, qStudents]);
+  }, [students, qStudents, teachers]);
 
   return (
     <Box
@@ -541,8 +549,8 @@ export default function AdminDashboard() {
         px: { xs: 2, md: 4 },
       }}
     >
-      {/* ===== Header ===== */}
       <Box sx={{ maxWidth: 1200, mx: "auto" }}>
+        {/* ===== Header ===== */}
         <Stack
           direction={{ xs: "column", md: "row" }}
           spacing={2}
@@ -565,6 +573,7 @@ export default function AdminDashboard() {
                 fetchUsers();
                 fetchStudentCodes();
                 if (tab === 3) loadAdvisorData();
+                if (tab === 2) fetchDbTables();
               }}
             >
               รีเฟรชข้อมูล
@@ -615,7 +624,7 @@ export default function AdminDashboard() {
         </Card>
 
         <Box mt={3}>
-          {/* ===== TAB 1 ===== */}
+          {/* ===== TAB 1: Users ===== */}
           {tab === 0 && (
             <Card
               sx={{
@@ -800,7 +809,7 @@ export default function AdminDashboard() {
             </Card>
           )}
 
-          {/* ===== TAB 2 ===== */}
+          {/* ===== TAB 2: Student Codes ===== */}
           {tab === 1 && (
             <Card
               sx={{
@@ -947,7 +956,6 @@ export default function AdminDashboard() {
                         เลือกได้ว่าจะสำรอง “ทั้งหมด” หรือ “เลือกเฉพาะตาราง” และเลือกที่เก็บไฟล์ได้
                       </Typography>
 
-                      {/* ✅ Options */}
                       <Stack direction={{ xs: "column", md: "row" }} spacing={2} sx={{ mt: 1, width: "100%", maxWidth: 900 }}>
                         <TextField
                           select
@@ -981,12 +989,11 @@ export default function AdminDashboard() {
                         </TextField>
                       </Stack>
 
-                      {/* ✅ Select tables */}
                       {backupScope === "tables" && (
                         <TextField
                           select
                           fullWidth
-                          label="เลือกตาราง"
+                          label="เลือกตาราง (Backup)"
                           SelectProps={{ multiple: true }}
                           value={selectedTables}
                           onChange={(e) => {
@@ -1009,17 +1016,12 @@ export default function AdminDashboard() {
                         variant="contained"
                         size="large"
                         onClick={backupDatabase}
-                        disabled={
-                          backupBusy ||
-                          restoreBusy ||
-                          (backupScope === "tables" && selectedTables.length === 0)
-                        }
+                        disabled={backupBusy || restoreBusy || (backupScope === "tables" && selectedTables.length === 0)}
                         sx={{ mt: 1 }}
                       >
                         {backupBusy ? "กำลังเตรียมไฟล์..." : "เริ่ม Backup"}
                       </Button>
 
-                      {/* ✅ show result (server/supabase) */}
                       {backupResult ? (
                         <Box
                           sx={{
@@ -1042,11 +1044,7 @@ export default function AdminDashboard() {
                             <>
                               <Typography variant="body2">path: {backupResult.path}</Typography>
                               {backupResult.signedUrl ? (
-                                <Button
-                                  variant="outlined"
-                                  sx={{ mt: 1 }}
-                                  onClick={() => window.open(backupResult.signedUrl, "_blank")}
-                                >
+                                <Button variant="outlined" sx={{ mt: 1 }} onClick={() => window.open(backupResult.signedUrl, "_blank")}>
                                   เปิดลิงก์ดาวน์โหลด (Signed URL)
                                 </Button>
                               ) : null}
@@ -1055,7 +1053,7 @@ export default function AdminDashboard() {
 
                           {backupResult.destination === "server" ? (
                             <Typography variant="caption" sx={{ opacity: 0.75 }}>
-                              หมายเหตุ: Railway filesystem อาจหายเมื่อ redeploy/restart แนะนำใช้ Supabase Storage
+                              หมายเหตุ: filesystem อาจหายเมื่อ redeploy/restart แนะนำใช้ Supabase Storage
                             </Typography>
                           ) : null}
                         </Box>
@@ -1095,16 +1093,57 @@ export default function AdminDashboard() {
                       <Typography variant="body2" sx={{ opacity: 0.75, textAlign: "center", maxWidth: 680 }}>
                         ⚠️ การกู้คืนอาจทำให้ข้อมูลเดิมถูกเขียนทับ/ลบได้
                         <br />
-                        ให้เลือกไฟล์ .sql ที่เชื่อถือได้ และควรสำรองก่อนเสมอ
+                        เลือกโหมดให้ถูกต้องก่อนกด
                       </Typography>
 
-                      <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems="center" sx={{ mt: 1 }}>
-                        <Button
-                          component="label"
-                          variant="outlined"
-                          startIcon={<UploadFileIcon />}
-                          disabled={restoreBusy || backupBusy}
+                      {/* ✅ Restore options */}
+                      <Stack direction={{ xs: "column", md: "row" }} spacing={2} sx={{ mt: 1, width: "100%", maxWidth: 900 }}>
+                        <TextField
+                          select
+                          fullWidth
+                          label="โหมดการ Restore"
+                          value={restoreMode}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setRestoreMode(v);
+                            if (v !== "overwrite_tables") setRestoreTables([]);
+                          }}
                         >
+                          <MenuItem value="overwrite_public">ทับทั้งระบบ (public ทั้งหมด)</MenuItem>
+                          <MenuItem value="overwrite_tables">ทับเฉพาะตารางที่เลือก</MenuItem>
+                        </TextField>
+
+                        {restoreMode === "overwrite_tables" ? (
+                          <TextField
+                            select
+                            fullWidth
+                            label="เลือกตาราง (Restore)"
+                            SelectProps={{ multiple: true }}
+                            value={restoreTables}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setRestoreTables(typeof v === "string" ? v.split(",") : v);
+                            }}
+                            helperText={dbTables.length ? "เลือกได้หลายตาราง (จะ TRUNCATE แล้วนำเข้าใหม่)" : "ยังโหลดรายชื่อตารางไม่ได้"}
+                          >
+                            {dbTables.map((t) => (
+                              <MenuItem key={t} value={t}>
+                                {t}
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                        ) : (
+                          <TextField
+                            fullWidth
+                            disabled
+                            label="เลือกตาราง (Restore)"
+                            value="โหมดนี้จะทับทั้ง public schema"
+                          />
+                        )}
+                      </Stack>
+
+                      <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems="center" sx={{ mt: 1 }}>
+                        <Button component="label" variant="outlined" startIcon={<UploadFileIcon />} disabled={restoreBusy || backupBusy}>
                           เลือกไฟล์ .sql
                           <input
                             hidden
@@ -1127,7 +1166,12 @@ export default function AdminDashboard() {
                         variant="contained"
                         size="large"
                         onClick={restoreDatabase}
-                        disabled={!restoreFile || restoreBusy || backupBusy}
+                        disabled={
+                          !restoreFile ||
+                          restoreBusy ||
+                          backupBusy ||
+                          (restoreMode === "overwrite_tables" && restoreTables.length === 0)
+                        }
                         sx={{ mt: 1 }}
                       >
                         {restoreBusy ? "กำลังกู้คืน..." : "กู้คืนจากไฟล์ที่เลือก"}
@@ -1186,13 +1230,11 @@ export default function AdminDashboard() {
                   <Table size="small" sx={{ minWidth: 1050 }}>
                     <TableHead>
                       <TableRow sx={{ bgcolor: "rgba(0,0,0,.03)" }}>
-                        {["ชื่อผู้ใช้", "รหัสนักศึกษา", "กลุ่มเรียน", "ชั้นปี", "อีเมล", "ที่ปรึกษาปัจจุบัน", "จัดการ"].map(
-                          (h) => (
-                            <TableCell key={h} sx={{ fontWeight: 800 }}>
-                              {h}
-                            </TableCell>
-                          )
-                        )}
+                        {["ชื่อผู้ใช้", "รหัสนักศึกษา", "กลุ่มเรียน", "ชั้นปี", "อีเมล", "ที่ปรึกษาปัจจุบัน", "จัดการ"].map((h) => (
+                          <TableCell key={h} sx={{ fontWeight: 800 }}>
+                            {h}
+                          </TableCell>
+                        ))}
                       </TableRow>
                     </TableHead>
 
@@ -1232,11 +1274,7 @@ export default function AdminDashboard() {
 
                             <TableCell>
                               {!isEdit ? (
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  onClick={() => setEditingAdvisor((prev) => ({ ...prev, [s.user_id]: true }))}
-                                >
+                                <Button size="small" variant="outlined" onClick={() => setEditingAdvisor((prev) => ({ ...prev, [s.user_id]: true }))}>
                                   แก้ไข
                                 </Button>
                               ) : (

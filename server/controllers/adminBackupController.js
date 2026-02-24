@@ -36,15 +36,12 @@ function dbUrlForCli() {
   let u;
   try {
     u = new URL(raw);
-  } catch (e) {
-    // If it's not a valid URL, just return raw (will fail with clear error from pg_dump/psql)
+  } catch {
     return raw;
   }
 
-  // pg_dump/psql (libpq) doesn't recognize this param
   u.searchParams.delete("uselibpqcompat");
 
-  // Supabase/Cloud DB: force SSL for CLI tools
   if (!u.searchParams.get("sslmode")) {
     u.searchParams.set("sslmode", "require");
   }
@@ -62,7 +59,7 @@ function safeUnlink(p) {
 
 const upload = multer({
   dest: TMP_DIR,
-  limits: { fileSize: 80 * 1024 * 1024 }, // 80MB
+  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB (ปรับได้)
   fileFilter: (_req, file, cb) => {
     const ok = String(file.originalname || "").toLowerCase().endsWith(".sql");
     if (!ok) return cb(new Error("Only .sql files are allowed"));
@@ -93,7 +90,6 @@ async function uploadToSupabase({ localFilePath, destPath }) {
   });
   if (upErr) throw new Error(upErr.message);
 
-  // signed URL 1 hour
   const { data, error: signErr } = await sb.storage.from(bucket).createSignedUrl(destPath, 60 * 60);
   if (signErr) throw new Error(signErr.message);
 
@@ -112,7 +108,7 @@ function nowStamp() {
 }
 
 // =========================
-// GET /admin/backup/tables  -> list tables
+// GET /admin/backup/tables  -> list tables (public only)
 // =========================
 async function listTables(req, res) {
   try {
@@ -135,13 +131,12 @@ async function listTables(req, res) {
 // =========================
 // POST /admin/backup
 // body: { scope: "all"|"tables", tables: ["users"], destination: "download"|"server"|"supabase" }
+// ✅ backup เฉพาะ public schema (ไม่เอา auth/storage)
 // =========================
 async function backup(req, res) {
   if (!mustEnabled(res)) return;
 
   const { scope = "all", tables = [], destination = "download" } = req.body || {};
-
-  // Use sanitized URL for pg_dump
   const dbUrl = dbUrlForCli();
 
   const normalizedScope = String(scope).toLowerCase();
@@ -152,22 +147,22 @@ async function backup(req, res) {
     return res.status(400).json({ error: "เลือกตารางอย่างน้อย 1 ตาราง" });
   }
 
-  const args = [
-  "--no-owner",
-  "--no-privileges",
-  "--format=plain",
-  "--schema=public",          // ✅ เอาเฉพาะ schema public
-  `--dbname=${dbUrl}`,
-];
+  // ✅ default: dump ทั้ง public schema
+  const args = ["--no-owner", "--no-privileges", "--format=plain", "--schema=public", `--dbname=${dbUrl}`];
 
+  // ถ้าเลือกเฉพาะ tables: ให้เจาะจงเป็นรายตาราง
   if (normalizedScope === "tables") {
+    // เอา --schema=public ออก แล้วใช้ --table แทน (ชัดเจนกว่า)
+    const schemaIdx = args.indexOf("--schema=public");
+    if (schemaIdx !== -1) args.splice(schemaIdx, 1);
+
     wantedTables.forEach((t) => args.push("--table", `public.${t}`));
   }
 
   const stamp = nowStamp();
   const filename =
     normalizedScope === "all"
-      ? `backup-all-${stamp}.sql`
+      ? `backup-public-${stamp}.sql`
       : `backup-${wantedTables.join("_")}-${stamp}.sql`;
 
   // 1) DOWNLOAD: stream directly
@@ -245,18 +240,19 @@ async function backup(req, res) {
 
 // =========================
 // POST /admin/restore
-// 1) multipart: file=@backup.sql
-// 2) json: { source: "supabase", path: "backups/xxx.sql" }
+// JSON: { source:"supabase", path:"backups/xxx.sql", mode:"overwrite_public"|"overwrite_tables", tables:["users"] }
+// หรือ multipart: file=@backup.sql + mode/tables ใน body
 // =========================
 async function restore(req, res) {
   if (!mustEnabled(res)) return;
 
-  // Use sanitized URL for psql
   const dbUrl = dbUrlForCli();
-
   const ct = String(req.headers["content-type"] || "");
+
+  // -------- JSON restore from Supabase storage --------
   if (ct.includes("application/json")) {
-    const { source, path: sbPath } = req.body || {};
+    const { source, path: sbPath, mode = "overwrite_public", tables = [] } = req.body || {};
+
     if (String(source).toLowerCase() !== "supabase" || !sbPath) {
       return res.status(400).json({ error: "ต้องส่ง { source:'supabase', path:'backups/..sql' }" });
     }
@@ -274,7 +270,7 @@ async function restore(req, res) {
     const tmpFile = path.join(TMP_DIR, `restore-${nowStamp()}.sql`);
     fs.writeFileSync(tmpFile, buf);
 
-    return runRestoreFromFile({ filePath: tmpFile, dbUrl, res });
+    return runRestoreFromFile({ filePath: tmpFile, dbUrl, res, mode, tables });
   }
 
   return res.status(400).json({ error: "ต้องส่งแบบ multipart/form-data (file) หรือ JSON (source=supabase)" });
@@ -283,8 +279,49 @@ async function restore(req, res) {
 // middleware สำหรับ multipart restore
 const restoreUploadMiddleware = upload.single("file");
 
-function runRestoreFromFile({ filePath, dbUrl, res }) {
-  const child = spawn("psql", [`--dbname=${dbUrl}`], { env: process.env, stdio: ["pipe", "pipe", "pipe"] });
+// multipart handler wrapper
+function restoreFromUpload(req, res) {
+  if (!mustEnabled(res)) return;
+
+  const dbUrl = dbUrlForCli();
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: "Missing file" });
+
+  const mode = String(req.body?.mode || "overwrite_public");
+  const tables = req.body?.tables || [];
+
+  return runRestoreFromFile({ filePath: file.path, dbUrl, res, mode, tables });
+}
+
+// ---------------------
+// Restore helpers
+// ---------------------
+function quoteIdent(name) {
+  // allow only safe identifiers (กัน SQL injection)
+  if (!/^[a-zA-Z0-9_]+$/.test(String(name))) return null;
+  return `"${name}"`;
+}
+
+function runPsqlSql({ dbUrl, sql, cb }) {
+  const child = spawn("psql", [`--dbname=${dbUrl}`, "-v", "ON_ERROR_STOP=1"], {
+    env: process.env,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  let errText = "";
+  child.stderr.on("data", (d) => (errText += d.toString()));
+
+  child.stdin.write(sql);
+  child.stdin.end();
+
+  child.on("close", (code) => cb(code, errText));
+}
+
+function importSqlFile({ filePath, dbUrl, res, mode, tables }) {
+  const child = spawn("psql", [`--dbname=${dbUrl}`, "-v", "ON_ERROR_STOP=1"], {
+    env: process.env,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
 
   fs.createReadStream(filePath).pipe(child.stdin);
 
@@ -298,19 +335,79 @@ function runRestoreFromFile({ filePath, dbUrl, res }) {
       console.error("psql restore failed:", errText);
       return res.status(500).json({ error: "Restore failed", detail: errText.slice(0, 1600) });
     }
-    return res.json({ ok: true });
+
+    return res.json({ ok: true, mode, tables: tables || null });
   });
 }
 
-// multipart handler wrapper
-function restoreFromUpload(req, res) {
-  if (!mustEnabled(res)) return;
+function runRestoreFromFile({ filePath, dbUrl, res, mode = "overwrite_public", tables = [] }) {
+  const normalizedMode = String(mode).toLowerCase();
 
-  const dbUrl = dbUrlForCli();
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: "Missing file" });
+  // ✅ 1) ทับทั้งระบบ public
+  if (normalizedMode === "overwrite_public") {
+    const sql = `
+DO $$
+BEGIN
+  EXECUTE 'DROP SCHEMA IF EXISTS public CASCADE';
+  EXECUTE 'CREATE SCHEMA public';
+  EXECUTE 'GRANT ALL ON SCHEMA public TO postgres';
+  EXECUTE 'GRANT ALL ON SCHEMA public TO public';
+END $$;
+`;
+    return runPsqlSql({
+      dbUrl,
+      sql,
+      cb: (code, errText) => {
+        if (code !== 0) {
+          safeUnlink(filePath);
+          return res.status(500).json({ error: "Clean public schema failed", detail: errText.slice(0, 1600) });
+        }
+        return importSqlFile({ filePath, dbUrl, res, mode: "overwrite_public" });
+      },
+    });
+  }
 
-  return runRestoreFromFile({ filePath: file.path, dbUrl, res });
+  // ✅ 2) ทับเฉพาะบางตาราง (เช่น users)
+  if (normalizedMode === "overwrite_tables") {
+    const list = Array.isArray(tables)
+      ? tables.map((t) => String(t).trim()).filter(Boolean)
+      : String(tables || "")
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
+
+    if (list.length === 0) {
+      safeUnlink(filePath);
+      return res.status(400).json({ error: "ต้องระบุ tables อย่างน้อย 1 ตาราง (mode=overwrite_tables)" });
+    }
+
+    const quoted = [];
+    for (const t of list) {
+      const qi = quoteIdent(t);
+      if (!qi) {
+        safeUnlink(filePath);
+        return res.status(400).json({ error: `Invalid table name: ${t}` });
+      }
+      quoted.push(`public.${qi}`);
+    }
+
+    const sql = `TRUNCATE TABLE ${quoted.join(", ")} RESTART IDENTITY CASCADE;\n`;
+
+    return runPsqlSql({
+      dbUrl,
+      sql,
+      cb: (code, errText) => {
+        if (code !== 0) {
+          safeUnlink(filePath);
+          return res.status(500).json({ error: "Truncate tables failed", detail: errText.slice(0, 1600) });
+        }
+        return importSqlFile({ filePath, dbUrl, res, mode: "overwrite_tables", tables: list });
+      },
+    });
+  }
+
+  safeUnlink(filePath);
+  return res.status(400).json({ error: "mode ไม่ถูกต้อง (ใช้ overwrite_public หรือ overwrite_tables)" });
 }
 
 module.exports = {
