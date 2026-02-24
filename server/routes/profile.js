@@ -25,39 +25,65 @@ function normalizeEmail(val) {
 
 function isValidEmail(email) {
   if (!email) return true; // allow null
-  // simple email regex (พอใช้งานจริง)
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-// ✅ GET โปรไฟล์ตัวเอง
+// ✅ helper: โหลดโปรไฟล์ตัวเองแบบมีชื่ออาจารย์ที่ปรึกษาเสมอ
+async function selectMeWithAdvisor(userId) {
+  const { rows } = await db.query(
+    `
+    SELECT
+      u.user_id,
+      u.username,
+      u.student_id,
+      u.role,
+      u.class_group,
+      u.level,
+      u.email,
+      u.advisor_id,
+
+      a.username AS advisor_name,
+      a.email    AS advisor_email
+    FROM public.users u
+    LEFT JOIN public.users a
+      ON a.user_id = u.advisor_id
+    WHERE u.user_id = $1
+    LIMIT 1
+    `,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
+// =========================
+// ✅ GET /api/profile/me
+// =========================
 router.get('/me', auth, async (req, res) => {
   try {
-    const { rows } = await db.query(
-      `SELECT user_id, username, student_id, role, class_group, level, email, advisor_id
-       FROM public.users
-       WHERE user_id = $1
-       LIMIT 1`,
-      [req.user.user_id]
-    );
-
-    if (!rows.length) return res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้' });
-    return res.json({ success: true, user: rows[0] });
+    const me = await selectMeWithAdvisor(req.user.user_id);
+    if (!me) return res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้' });
+    return res.json({ success: true, user: me });
   } catch (err) {
     console.error('GET /api/profile/me', err);
     return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในระบบ' });
   }
 });
 
-// ✅ PATCH แก้ไขโปรไฟล์ตัวเอง
+// =========================
+// ✅ PATCH /api/profile/me
+// =========================
 router.patch('/me', auth, async (req, res) => {
   const userId = req.user.user_id;
 
   try {
+    // 1) หา role ของตัวเอง
     const meQ = await db.query(
       'SELECT user_id, role FROM public.users WHERE user_id = $1 LIMIT 1',
       [userId]
     );
-    if (!meQ.rows.length) return res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้' });
+    if (!meQ.rows.length) {
+      return res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้' });
+    }
 
     const role = String(meQ.rows[0].role || '').toLowerCase();
     const payload = req.body || {};
@@ -67,17 +93,21 @@ router.patch('/me', auth, async (req, res) => {
       return res.status(403).json({ success: false, message: 'ไม่อนุญาตให้แก้ไขโปรไฟล์ใน role นี้' });
     }
 
-    // ===== normalize inputs =====
+    // 2) normalize inputs
     const next = {};
 
     if (allowed.has('username') && payload.username !== undefined) {
       next.username = normalizeString(payload.username);
-      if (!next.username) return res.status(400).json({ success: false, message: 'กรุณากรอก Username' });
+      if (!next.username) {
+        return res.status(400).json({ success: false, message: 'กรุณากรอก Username' });
+      }
     }
 
     if (allowed.has('student_id') && payload.student_id !== undefined) {
       next.student_id = normalizeString(payload.student_id);
-      if (!next.student_id) return res.status(400).json({ success: false, message: 'กรุณากรอก Student ID' });
+      if (!next.student_id) {
+        return res.status(400).json({ success: false, message: 'กรุณากรอก Student ID' });
+      }
     }
 
     if (allowed.has('class_group') && payload.class_group !== undefined) {
@@ -95,11 +125,10 @@ router.patch('/me', auth, async (req, res) => {
       }
     }
 
-    // ===== uniqueness checks =====
-    // username ซ้ำไหม (ถ้าส่ง username มา)
+    // 3) uniqueness checks
     if (next.username !== undefined) {
       const u = await db.query(
-        `SELECT 1 FROM public.users WHERE username = $1 AND user_id <> $2 LIMIT 1`,
+        'SELECT 1 FROM public.users WHERE username = $1 AND user_id <> $2 LIMIT 1',
         [next.username, userId]
       );
       if (u.rows.length) {
@@ -107,10 +136,9 @@ router.patch('/me', auth, async (req, res) => {
       }
     }
 
-    // email ซ้ำไหม (ถ้าส่ง email มาและไม่ใช่ null)
     if (next.email !== undefined && next.email !== null) {
       const e = await db.query(
-        `SELECT 1 FROM public.users WHERE email = $1 AND user_id <> $2 LIMIT 1`,
+        'SELECT 1 FROM public.users WHERE email = $1 AND user_id <> $2 LIMIT 1',
         [next.email, userId]
       );
       if (e.rows.length) {
@@ -118,7 +146,7 @@ router.patch('/me', auth, async (req, res) => {
       }
     }
 
-    // ===== build update query (เฉพาะ field ที่ส่งมา) =====
+    // 4) build update query
     const updates = [];
     const values = [];
 
@@ -134,7 +162,7 @@ router.patch('/me', auth, async (req, res) => {
     add('level', next.level);
     add('email', next.email);
 
-    // password
+    // password (ถ้าส่งมา)
     if (allowed.has('password') && payload.password) {
       const pw = String(payload.password).trim();
       if (pw.length < 6) {
@@ -145,16 +173,10 @@ router.patch('/me', auth, async (req, res) => {
       updates.push(`password = $${values.length}`);
     }
 
-    // ถ้าไม่มีอะไรให้ update → คืนข้อมูลปัจจุบัน
+    // ถ้าไม่มี field ให้ update -> ส่งข้อมูลปัจจุบันกลับ
     if (!updates.length) {
-      const current = await db.query(
-        `SELECT user_id, username, student_id, role, class_group, level, email, advisor_id
-         FROM public.users
-         WHERE user_id = $1
-         LIMIT 1`,
-        [userId]
-      );
-      return res.json({ success: true, user: current.rows[0] });
+      const current = await selectMeWithAdvisor(userId);
+      return res.json({ success: true, user: current });
     }
 
     values.push(userId);
@@ -162,11 +184,14 @@ router.patch('/me', auth, async (req, res) => {
       UPDATE public.users
       SET ${updates.join(', ')}
       WHERE user_id = $${values.length}
-      RETURNING user_id, username, student_id, role, class_group, level, email, advisor_id
+      RETURNING user_id
     `;
 
-    const updated = await db.query(query, values);
-    return res.json({ success: true, user: updated.rows[0] });
+    await db.query(query, values);
+
+    // 5) ส่งกลับข้อมูลล่าสุด (พร้อม advisor_name/advisor_email)
+    const updatedUser = await selectMeWithAdvisor(userId);
+    return res.json({ success: true, user: updatedUser });
   } catch (err) {
     console.error('PATCH /api/profile/me', err);
     return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในระบบ' });

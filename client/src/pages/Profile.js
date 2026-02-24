@@ -104,7 +104,7 @@ function Profile() {
   // ✅ ดึง profile จาก route ที่ “ชัวร์ว่ามี email”
   const fetchProfileMe = useCallback(async () => {
     const res = await api.get('/profile/me');
-    return res.data;
+    return res.data?.user || null; // ✅ สำคัญมาก
   }, []);
 
   // ✅ โหลด user จาก /auth/me แล้ว merge email จาก /profile/me
@@ -471,6 +471,7 @@ function Profile() {
                       margin="normal"
                       InputLabelProps={{ shrink: true }}
                     />
+
                     <TextField
                       label="Class Group"
                       value={profileForm.class_group}
@@ -479,6 +480,7 @@ function Profile() {
                       margin="normal"
                       InputLabelProps={{ shrink: true }}
                     />
+
                     <TextField
                       label="Level"
                       value={profileForm.level}
@@ -486,6 +488,16 @@ function Profile() {
                       fullWidth
                       margin="normal"
                       InputLabelProps={{ shrink: true }}
+                    />
+
+                    {/* ✅ แสดงชื่ออาจารย์ที่ปรึกษา (อ่านอย่างเดียว) */}
+                    <TextField
+                      label="อาจารย์ที่ปรึกษา"
+                      value={user?.advisor_name ? user.advisor_name : 'ยังไม่ผูกที่ปรึกษา'}
+                      fullWidth
+                      margin="normal"
+                      InputLabelProps={{ shrink: true }}
+                      disabled
                     />
                   </>
                 )}
