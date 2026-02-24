@@ -602,7 +602,7 @@ export default function TeacherApprovalHistory() {
                             {data.class_group && (
                               <Chip size="small" label={`กลุ่ม/ห้อง: ${data.class_group}`} />
                             )}
-                            {data.level && <Chip size="small" label={`ระดับ: ${data.level}`} />}
+                            {data.level && <Chip size="small" label={`ชั้นปี: ${data.level}`} />}
                             <Chip
                               size="small"
                               variant="outlined"

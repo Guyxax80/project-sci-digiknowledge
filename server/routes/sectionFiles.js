@@ -7,18 +7,11 @@ const requireRole = require('../middleware/requireRole');
 const supabase = require('../config/supabase');
 
 const router = express.Router();
+
 const BUCKET = process.env.SUPABASE_BUCKET_DOCUMENTS || 'documents';
-// Cloudinary Free plan supports video uploads up to 100MB.
-// Larger videos require a paid Cloudinary plan or alternative storage.
-const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100MB
 
-const envPreview = (value) => {
-  const v = String(value || '');
-  if (!v) return '<missing>';
-  if (v.length < 8) return `${v[0]}***`;
-  return `${v.slice(0, 4)}***${v.slice(-4)}`;
-};
-
+// ===== ENV CHECK =====
 const requiredSupabaseEnv = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
 for (const key of requiredSupabaseEnv) {
   if (!process.env[key]) {
@@ -28,11 +21,34 @@ for (const key of requiredSupabaseEnv) {
 
 const cloudinaryEnv = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
 
-console.log('[sections] BUCKET =', BUCKET);
-console.log('[sections] SUPABASE_URL =', process.env.SUPABASE_URL);
-console.log('[sections] SUPABASE_SERVICE_ROLE_KEY =', envPreview(process.env.SUPABASE_SERVICE_ROLE_KEY));
-console.log('[sections] CLOUDINARY_CLOUD_NAME =', envPreview(process.env.CLOUDINARY_CLOUD_NAME));
+// ===== Allowed sections =====
+const ALLOWED_SECTIONS = new Set([
+  'main',
+  'cover',
+  'abstract',
+  'acknowledgement',
+  'toc',
+  'chapter1',
+  'chapter2',
+  'chapter3',
+  'chapter4',
+  'chapter5',
+  'reference',
+  'bibliography',
+  'appendix',
+  'author_bio',
+  'presentation_video',
+]);
 
+const normalizeSection = (s) => String(s || '').trim().toLowerCase();
+
+// ✅ แก้ได้เฉพาะ draft / rejected
+const canEditStatus = (statusRaw) => {
+  const status = String(statusRaw || '').trim().toLowerCase();
+  return ['draft', 'rejected'].includes(status);
+};
+
+// ===== multer =====
 const storage = multer.memoryStorage();
 
 const sectionFields = [
@@ -58,12 +74,10 @@ const uploadSectionFields = (req, res, next) => {
   upload.fields(sectionFields)(req, res, (err) => {
     if (!err) return next();
 
-    console.error('[sections] multer upload error:', err);
-
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(413).json({
         success: false,
-        message: 'ไฟล์วิดีโอใหญ่เกิน 100MB',
+        message: 'ไฟล์ใหญ่เกิน 100MB',
         field: err.field,
       });
     }
@@ -75,32 +89,16 @@ const uploadSectionFields = (req, res, next) => {
   });
 };
 
-// --- fix filename thai mojibake (optional) ---
-const fixOriginalName = (name) => {
-  if (!name) return name;
-  if (!name.includes('à¸') && !name.includes('à¹') && !name.includes('â') && !name.includes('Ã')) return name;
-  try {
-    const fixed = Buffer.from(name, 'latin1').toString('utf8');
-    return fixed || name;
-  } catch {
-    return name;
-  }
-};
-
-// ✅ ห้ามเอาชื่อไฟล์จริงไปเป็น key (กัน Invalid key แบบชัวร์)
+// ===== Helpers =====
 const getExt = (originalName, mimeType) => {
   const n = String(originalName || '');
   const lastDot = n.lastIndexOf('.');
   if (lastDot > -1 && lastDot < n.length - 1) {
-    const ext = n.slice(lastDot + 1).toLowerCase();
-    if (ext && ext.length <= 10) return ext;
-}
+    return n.slice(lastDot + 1).toLowerCase();
+  }
 
   if (mimeType === 'application/pdf') return 'pdf';
-  if (mimeType === 'application/msword') return 'doc';
-  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
-  if (mimeType?.startsWith('image/')) return (mimeType.split('/')[1] || 'img').toLowerCase();
-
+  if (mimeType?.startsWith('image/')) return mimeType.split('/')[1];
   return 'bin';
 };
 
@@ -108,139 +106,87 @@ const uploadVideo = (buffer) =>
   new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       { resource_type: 'video', folder: 'documents/videos' },
-      (error, result) => (error ? reject(error) : resolve(result)),
+      (error, result) => (error ? reject(error) : resolve(result))
     );
     stream.end(buffer);
   });
 
-  const isLikelyJson = (contentType, text) => {
-  const body = String(text || '').trim();
-  if (!body) return false;
-  if (String(contentType || '').toLowerCase().includes('application/json')) return true;
-  return body.startsWith('{') || body.startsWith('[');
-};
-
-const parseJsonIfPossible = (contentType, text) => {
-  if (!isLikelyJson(contentType, text)) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-};
-
 const uploadToSupabaseStorageRest = async ({ objectPath, mimeType, buffer }) => {
   const storageUploadUrl = `${process.env.SUPABASE_URL}/storage/v1/object/${BUCKET}/${objectPath}`;
-  const method = 'PUT';
 
-  try {
-    const upstreamRes = await fetch(storageUploadUrl, {
-      method,
-      headers: {
-        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-        'Content-Type': mimeType || 'application/octet-stream',
-      },
-      body: buffer,
-    });
+  const upstreamRes = await fetch(storageUploadUrl, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+      'Content-Type': mimeType || 'application/octet-stream',
+    },
+    body: buffer,
+  });
 
-    const responseText = await upstreamRes.text();
-    const parsedJson = parseJsonIfPossible(upstreamRes.headers.get('content-type'), responseText);
-
-    if (!upstreamRes.ok) {
-      console.error('[sections] Supabase upload failed', {
-        method,
-        fullUrl: storageUploadUrl,
-        status: upstreamRes.status,
-        responseText,
-      });
-
-      const upstreamMessage = parsedJson?.message || parsedJson?.error || null;
-      const e = new Error(upstreamMessage || `Supabase upload failed with status ${upstreamRes.status}`);
-      e.status = upstreamRes.status;
-      e.responseText = responseText;
-      throw e;
-    }
-
-    return parsedJson;
-  } catch (error) {
-    if (!error?.status) {
-      console.error('[sections] Supabase upload request error', {
-        method,
-        fullUrl: storageUploadUrl,
-        status: error?.status || null,
-        responseText: error?.responseText || error?.message || null,
-      });
-    }
-    throw error;
+  if (!upstreamRes.ok) {
+    const text = await upstreamRes.text();
+    throw new Error(text || `Supabase upload failed (${upstreamRes.status})`);
   }
 };
 
+// ===== Persist =====
+async function persistFile(documentId, sectionNameRaw, file) {
+  const sectionName = normalizeSection(sectionNameRaw);
 
-async function persistFile(documentId, sectionName, file) {
-  const originalName = fixOriginalName(file.originalname);
-  const mimeType = file.mimetype;
-
-  // ===== VIDEO -> Cloudinary =====
-  if (sectionName === 'presentation_video') {
-  for (const key of cloudinaryEnv) {
-    if (!process.env[key]) {
-      throw new Error(`[sections] Missing required env for video upload: ${key}`);
-    }
+  if (!ALLOWED_SECTIONS.has(sectionName)) {
+    const e = new Error(`section ไม่ถูกต้อง: ${sectionName}`);
+    e.status = 400;
+    throw e;
   }
 
-  console.log('[sections] upload target', {
-    provider: 'cloudinary',
-    folder: 'documents/videos',
-    cloudNamePreview: envPreview(process.env.CLOUDINARY_CLOUD_NAME),
-  });
+  const mimeType = file.mimetype;
+  const originalName = file.originalname;
 
-  if (!mimeType?.startsWith('video/')) throw new Error('ไฟล์วิดีโอต้องเป็น mimetype video/*');
+  // ===== VIDEO =====
+  if (sectionName === 'presentation_video') {
+    for (const key of cloudinaryEnv) {
+      if (!process.env[key]) {
+        throw new Error(`Missing Cloudinary env: ${key}`);
+      }
+    }
 
-  const result = await uploadVideo(file.buffer);
+    if (!mimeType?.startsWith('video/')) {
+      throw new Error('ไฟล์วิดีโอต้องเป็น video/*');
+    }
 
-  await db.query(
-    `INSERT INTO public.document_files
-      (document_id, file_path, original_name, file_type, section, uploaded_at,
-       provider, public_url, cloudinary_public_id, mime_type, size_bytes)
-     VALUES
-      ($1,$2,$3,$4,$5,NOW(),
-       'cloudinary',$6,$7,$8,$9)`,
-    [
-      documentId,
-      result.secure_url,
-      originalName,
-      mimeType,
-      sectionName,
-      result.secure_url,
-      result.public_id,
-      mimeType,
-      file.size || null,
-    ],
-  );
+    const result = await uploadVideo(file.buffer);
 
-  return;
-}
+    await db.query(
+      `INSERT INTO public.document_files
+        (document_id, file_path, original_name, file_type, section, uploaded_at,
+         provider, public_url, cloudinary_public_id, mime_type, size_bytes)
+       VALUES ($1,$2,$3,$4,$5,NOW(),'cloudinary',$6,$7,$8,$9)`,
+      [
+        documentId,
+        result.secure_url,
+        originalName,
+        mimeType,
+        sectionName,
+        result.secure_url,
+        result.public_id,
+        mimeType,
+        file.size || null,
+      ]
+    );
 
-  // ===== FILES -> Supabase Storage =====
+    return;
+  }
+
+  // ===== Supabase =====
   const ext = getExt(originalName, mimeType);
+  const objectPath = `${documentId}/${sectionName}/${Date.now()}.${ext}`;
 
-  // ✅ key เป็น ASCII ล้วนแน่นอน
-  const objectPath = `${documentId}/${sectionName}/${Date.now()}-${Math.round(Math.random() * 1e9)}.${ext}`;
-
-  console.log('[sections] upload target', {
-    provider: 'supabase',
-    bucket: BUCKET,
-    objectPath,
-    storageUploadUrl: `${process.env.SUPABASE_URL}/storage/v1/object/${BUCKET}/${objectPath}`,
-  });
-
- await uploadToSupabaseStorageRest({
+  await uploadToSupabaseStorageRest({
     objectPath,
     mimeType,
     buffer: file.buffer,
   });
-
 
   const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(objectPath);
   const publicUrl = pub?.publicUrl || null;
@@ -249,12 +195,10 @@ async function persistFile(documentId, sectionName, file) {
     `INSERT INTO public.document_files
       (document_id, file_path, original_name, file_type, section, uploaded_at,
        provider, bucket, storage_path, public_url, mime_type, size_bytes)
-     VALUES
-      ($1,$2,$3,$4,$5,NOW(),
-        'supabase',$6,$7,$8,$9,$10)`,
+     VALUES ($1,$2,$3,$4,$5,NOW(),'supabase',$6,$7,$8,$9,$10)`,
     [
       documentId,
-      publicUrl || objectPath, // compat
+      publicUrl || objectPath,
       originalName,
       mimeType,
       sectionName,
@@ -263,11 +207,13 @@ async function persistFile(documentId, sectionName, file) {
       publicUrl,
       mimeType,
       file.size || null,
-    ],
+    ]
   );
 }
 
-// POST /api/documents/:documentId/sections
+// ===============================
+// POST upload many sections
+// ===============================
 router.post('/:documentId/sections', auth, requireRole('student'), uploadSectionFields, async (req, res) => {
   const documentId = Number(req.params.documentId);
 
@@ -276,15 +222,20 @@ router.post('/:documentId/sections', auth, requireRole('student'), uploadSection
   }
 
   try {
-    const ownerCheck = await db.query('SELECT user_id, status FROM public.documents WHERE document_id = $1 LIMIT 1', [documentId]);
-    if (!ownerCheck.rows.length) return res.status(404).json({ success: false, message: 'ไม่พบเอกสาร' });
+    const doc = await db.query(
+      'SELECT user_id, status FROM public.documents WHERE document_id = $1 LIMIT 1',
+      [documentId]
+    );
 
-    if (Number(ownerCheck.rows[0].user_id) !== Number(req.user.user_id)) {
+    if (!doc.rows.length) {
+      return res.status(404).json({ success: false, message: 'ไม่พบเอกสาร' });
+    }
+
+    if (Number(doc.rows[0].user_id) !== Number(req.user.user_id)) {
       return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์แก้ไขเอกสารนี้' });
     }
 
-    const editableStatuses = ['draft', 'rejected'];
-    if (!editableStatuses.includes(String(ownerCheck.rows[0].status || '').toLowerCase())) {
+    if (!canEditStatus(doc.rows[0].status)) {
       return res.status(403).json({ success: false, message: 'แก้ไขได้เฉพาะ draft หรือ rejected' });
     }
 
@@ -293,53 +244,58 @@ router.post('/:documentId/sections', auth, requireRole('student'), uploadSection
     }
 
     return res.json({ success: true, message: 'อัปโหลดไฟล์รายส่วนสำเร็จ' });
-  } catch (err) {
-    console.error('DB error (section files):', err);
-    const status = Number(err?.status || err?.statusCode);
-    const upstreamStatus = Number(err?.originalError?.status || err?.cause?.status || err?.cause?.statusCode);
-    const normalizedStatus = [400, 401, 403, 404, 409, 413, 415, 422].includes(status)
-      ? status
-      : [400, 401, 403, 404, 409, 413, 415, 422].includes(upstreamStatus)
-        ? upstreamStatus
-        : 500;
 
-    return res.status(normalizedStatus).json({
-      success: false,
-      message: normalizedStatus === 404
-        ? 'อัปโหลดล้มเหลว: ปลายทางจัดเก็บไฟล์ไม่พบ endpoint (404) กรุณาตรวจ SUPABASE_URL/Cloudinary config'
-        : 'อัปโหลดไฟล์รายส่วนไม่สำเร็จ กรุณาตรวจการตั้งค่า Storage และลองใหม่',
-      error: err.message,
-      providerStatus: status || upstreamStatus || null,
-    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'อัปโหลดไม่สำเร็จ', error: err.message });
   }
 });
 
-// PUT /api/documents/:documentId/sections/:section
+// ===============================
+// PUT replace single section
+// ===============================
 router.put('/:documentId/sections/:section', auth, requireRole('student'), upload.single('file'), async (req, res) => {
   const documentId = Number(req.params.documentId);
-  const sectionName = req.params.section;
+  const sectionName = normalizeSection(req.params.section);
 
-   if (!req.file) return res.status(400).json({ success: false, message: 'กรุณาเลือกไฟล์' });
+  if (!ALLOWED_SECTIONS.has(sectionName)) {
+    return res.status(400).json({ success: false, message: 'section ไม่ถูกต้อง' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: 'กรุณาเลือกไฟล์' });
+  }
 
   try {
-    const doc = await db.query('SELECT user_id, status FROM public.documents WHERE document_id = $1 LIMIT 1', [documentId]);
-    if (!doc.rows.length) return res.status(404).json({ success: false, message: 'ไม่พบเอกสาร' });
+    const doc = await db.query(
+      'SELECT user_id, status FROM public.documents WHERE document_id = $1 LIMIT 1',
+      [documentId]
+    );
+
+    if (!doc.rows.length) {
+      return res.status(404).json({ success: false, message: 'ไม่พบเอกสาร' });
+    }
 
     if (Number(doc.rows[0].user_id) !== Number(req.user.user_id)) {
       return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์แก้ไขเอกสารนี้' });
     }
 
-    if (!['draft', 'rejected'].includes(String(doc.rows[0].status || '').toLowerCase())) {
+    if (!canEditStatus(doc.rows[0].status)) {
       return res.status(403).json({ success: false, message: 'แก้ไขได้เฉพาะ draft หรือ rejected' });
     }
 
-    await db.query('DELETE FROM public.document_files WHERE document_id = $1 AND section = $2', [documentId, sectionName]);
+    await db.query(
+      'DELETE FROM public.document_files WHERE document_id = $1 AND section = $2',
+      [documentId, sectionName]
+    );
+
     await persistFile(documentId, sectionName, req.file);
 
     return res.json({ success: true, message: 'แทนที่ไฟล์สำเร็จ' });
+
   } catch (err) {
-    console.error('section replace error:', err);
-    return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาด', error: err.message });
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'แทนที่ไฟล์ไม่สำเร็จ', error: err.message });
   }
 });
 
