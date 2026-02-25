@@ -212,18 +212,35 @@ export default function UploadDocument() {
   };
 
   const uploadSectionsIfAny = async (documentId) => {
-    const sections = new FormData();
+  // filesMap: { cover: File, abstract: File, ... } ตามที่คุณเก็บไว้
+  // REQUIRED_SECTIONS: [{ key: 'cover' }, ...] หรือเป็น array ของ key
+  const entries = REQUIRED_SECTIONS.map((x) => x.key); // ถ้าของคุณเป็น [{key,...}]
+  // ถ้า REQUIRED_SECTIONS เป็น array string อยู่แล้ว ให้ใช้: const entries = REQUIRED_SECTIONS;
 
-    for (const [key, file] of Object.entries(filesMap)) {
-      if (file) sections.append(key, file);
-    }
+  for (const sectionKey of entries) {
+    const file = filesMap[sectionKey];
+    if (!file) continue; // draft อนุญาตให้ไม่ครบได้
 
-    if ([...sections.keys()].length === 0) return;
+    const fd = new FormData();
+    fd.append("file", file);          // ✅ multer single('file')
+    fd.append("section", sectionKey); // ✅ backend อ่าน req.body.section
 
-    await api.post(`/documents/${documentId}/sections`, sections, {
+    await api.post(`/upload/documents/${documentId}/sections`, fd, {
       headers: { "Content-Type": "multipart/form-data" },
     });
-  };
+  }
+
+  // กรณีวิดีโอแยกตัวแปร
+  if (presentationVideoFile) {
+    const fd = new FormData();
+    fd.append("file", presentationVideoFile);
+    fd.append("section", "presentation_video");
+
+    await api.post(`/upload/documents/${documentId}/sections`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  }
+};
 
   const clearForm = () => {
     setTitle("");
