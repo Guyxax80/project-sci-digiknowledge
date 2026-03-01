@@ -50,7 +50,6 @@ const allowedOrigins = [
 ].filter(Boolean);
 
 // ✅ รองรับ Vercel preview: https://<branch>.<project>.vercel.app
-// ปรับชื่อโปรเจกต์ให้ตรงของคุณ: project-sci-digiknowledge
 function isAllowedVercel(origin) {
   return /^https:\/\/([a-z0-9-]+\.)?project-sci-digiknowledge\.vercel\.app$/.test(origin);
 }
@@ -91,9 +90,14 @@ app.use(
 // ✅ CORS ต้องมาก่อน routes เสมอ
 app.use(cors(corsOptions));
 
-// ✅ ตอบ preflight ทุก path ให้จบ (กัน OPTIONS โดน 403)
-app.options("*", cors(corsOptions));
+/**
+ * ✅ Express 5 + path-to-regexp:
+ * ห้ามใช้ app.options("*", ...) เพราะ wildcard แบบไม่มีชื่อทำให้พังได้
+ * ให้ใช้ named wildcard แทน
+ */
+app.options("/{*splat}", cors(corsOptions)); // ✅ ครอบคลุมทุก path (รวม /)
 
+// body parsers
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
