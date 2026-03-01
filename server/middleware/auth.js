@@ -1,16 +1,19 @@
-const jwt = require('jsonwebtoken');
+const jwt = require("jsonwebtoken");
 
 module.exports = function auth(req, res, next) {
+  // ✅ ให้ preflight ผ่านก่อน (สำคัญมาก)
+  if (req.method === "OPTIONS") return next();
+
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    return res.status(500).json({ success: false, message: 'JWT_SECRET not configured' });
+    return res.status(500).json({ success: false, message: "JWT_SECRET not configured" });
   }
 
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
 
   if (!token) {
-    return res.status(401).json({ success: false, message: 'กรุณา login' });
+    return res.status(401).json({ success: false, message: "กรุณา login" });
   }
 
   try {
@@ -22,6 +25,6 @@ module.exports = function auth(req, res, next) {
     };
     next();
   } catch (_err) {
-    return res.status(401).json({ success: false, message: 'Token ไม่ถูกต้อง' });
+    return res.status(401).json({ success: false, message: "Token ไม่ถูกต้อง" });
   }
 };
