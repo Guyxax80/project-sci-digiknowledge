@@ -48,6 +48,47 @@ const extFromMime = (mime) => {
   return 'bin';
 };
 
+/**
+ * ✅ FIX: แก้ชื่อไฟล์ไทยเพี้ยน (UTF-8 -> latin1)
+ * บางระบบส่ง originalname มาเป็น latin1 ทำให้กลายเป็น à¸...
+ * เราเลยพยายามแปลงกลับเป็น utf8 แบบปลอดภัย
+ */
+function normalizeOriginalName(originalname) {
+  const name = String(originalname || '').trim();
+  if (!name) return null;
+
+  // ถ้าเป็น UTF-8 ถูกต้องอยู่แล้ว จะไม่เสีย
+  // ถ้าเป็นเพี้ยนแบบ à¸... มักแก้ได้ด้วย latin1 -> utf8
+  try {
+    const fixed = Buffer.from(name, 'latin1').toString('utf8').trim();
+    // กันกรณีแปลงแล้วกลายเป็นตัวอักษรแปลก/ว่าง
+    if (fixed) return fixed;
+    return name;
+  } catch {
+    return name;
+  }
+}
+
+/**
+ * ✅ ทำ section ให้ปลอดภัยสำหรับเอาไปประกอบเป็น path
+ * - กัน / \ ที่ทำให้ path หลุดโฟลเดอร์
+ * - กันช่องว่างยาว ๆ
+ * - จำกัดความยาวพอประมาณ
+ */
+function normalizeSection(section) {
+  const s = String(section || '').trim();
+  if (!s) return '';
+  // replace path separators + control chars
+  const cleaned = s
+    .replace(/[\/\\]/g, '_')
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // ป้องกัน path ยาวเกินไป
+  return cleaned.slice(0, 100);
+}
+
 // ===== Optional column check: cloudinary_public_id =====
 let supportsCloudinaryPublicIdCache;
 
@@ -314,6 +355,9 @@ router.post(
       if (req.file) {
         const mimeType = req.file.mimetype;
 
+        // ✅ FIX: normalize ชื่อไฟล์ก่อนเก็บลง DB
+        const originalNameFixed = normalizeOriginalName(req.file.originalname);
+
         // ===== A) VIDEO -> Cloudinary =====
         if (isVideo(mimeType)) {
           const uploaded = await uploadVideoToCloudinary(req.file, userId);
@@ -322,7 +366,7 @@ router.post(
             client,
             documentId,
             filePath: uploaded.secure_url,
-            originalName: req.file.originalname,
+            originalName: originalNameFixed,
             fileType: mimeType,
             section: 'main',
             publicId: uploaded.public_id,
@@ -364,7 +408,7 @@ router.post(
             client,
             documentId,
             filePath: publicUrl,
-            originalName: req.file.originalname,
+            originalName: originalNameFixed,
             fileType: mimeType,
             section: 'main',
             publicId: null,
@@ -451,7 +495,9 @@ router.post(
         return res.status(400).json({ success: false, message: 'documentId ไม่ถูกต้อง' });
       }
 
-      const section = String(req.body.section || '').trim();
+      // ✅ FIX: normalize section สำหรับใช้ใน path + เก็บใน DB ให้สม่ำเสมอ
+      const sectionRaw = String(req.body.section || '').trim();
+      const section = normalizeSection(sectionRaw);
       if (!section) {
         return res.status(400).json({ success: false, message: 'ต้องระบุ section' });
       }
@@ -486,6 +532,9 @@ router.post(
 
       const mimeType = req.file.mimetype;
 
+      // ✅ FIX: normalize ชื่อไฟล์ก่อนเก็บลง DB
+      const originalNameFixed = normalizeOriginalName(req.file.originalname);
+
       // ===== A) VIDEO -> Cloudinary =====
       if (isVideo(mimeType)) {
         const uploaded = await uploadVideoToCloudinary(req.file, userId);
@@ -494,7 +543,7 @@ router.post(
           client,
           documentId,
           filePath: uploaded.secure_url,
-          originalName: req.file.originalname,
+          originalName: originalNameFixed,
           fileType: mimeType,
           section,
           publicId: uploaded.public_id,
@@ -516,6 +565,8 @@ router.post(
         const bucket = 'documents';
         const ext = extFromMime(mimeType);
         const filename = `${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+
+        // ✅ FIX: ใช้ section ที่ normalize แล้ว
         const storagePath = `users/${userId}/${documentId}/sections/${section}/${filename}`;
 
         const { error: upErr } = await supabase.storage
@@ -546,7 +597,7 @@ router.post(
           client,
           documentId,
           filePath: publicUrl,
-          originalName: req.file.originalname,
+          originalName: originalNameFixed,
           fileType: mimeType,
           section,
           publicId: null,
