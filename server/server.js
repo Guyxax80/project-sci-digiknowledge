@@ -106,8 +106,9 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 /**
  * ✅ เพิ่ม header เฉพาะ route ที่เป็นไฟล์ (กัน browser block)
+ * ✅ เพิ่ม /api/files ด้วย เพื่อให้ FE ที่เรียกผ่าน /api ใช้งานได้
  */
-app.use(["/files", "/uploads"], (req, res, next) => {
+app.use(["/files", "/api/files", "/uploads"], (req, res, next) => {
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   next();
 });
@@ -128,8 +129,14 @@ app.use("/api/student-codes", studentCodesRoute);
 // ✅ แยก prefix ชัด ๆ ไม่ชน /api/documents
 app.use("/api/section-files", sectionFilesRoute);
 
+// ===== File routes (เดิม) =====
 app.use("/files", filesRoute);
 app.use("/download", downloadRoute);
+
+// ✅ เพิ่ม alias ให้รองรับผ่าน /api ด้วย (แก้ปัญหา baseURL ลงท้าย /api)
+app.use("/api/files", filesRoute);
+app.use("/api/download", downloadRoute);
+
 app.use("/api/db-test", dbTestRoute);
 
 app.get("/", (_req, res) => {
