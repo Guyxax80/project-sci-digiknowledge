@@ -39,8 +39,8 @@ function Profile() {
   );
 
   const isStudent = effectiveRole === "student";
-  //const isTeacher = effectiveRole === 'teacher';
   const isAdmin = effectiveRole === "admin";
+  const isTeacher = effectiveRole === "teacher";
 
   // ===== Helpers =====
   const toast = useCallback((message, severity = "info") => {
@@ -139,6 +139,7 @@ function Profile() {
         payload.level = profileForm.level;
       }
 
+      // ✅ Admin/Teacher/Student เปลี่ยนรหัสผ่านได้ (ถ้ากรอก)
       if (String(profileForm.password || "").trim()) {
         payload.password = profileForm.password;
       }
@@ -182,9 +183,10 @@ function Profile() {
   // ===== UI-only helpers =====
   const roleLabel = useMemo(() => {
     if (isAdmin) return "ผู้ดูแลระบบ";
+    if (isTeacher) return "อาจารย์";
     if (isStudent) return "นักศึกษา";
     return "ผู้ใช้งาน";
-  }, [isAdmin, isStudent]);
+  }, [isAdmin, isTeacher, isStudent]);
 
   const advisorLabel = useMemo(() => {
     if (!isStudent) return "-";
@@ -253,7 +255,8 @@ function Profile() {
               </div>
 
               <div className="flex gap-2 flex-wrap">
-                {!isAdmin && !editProfile ? (
+                {/* ✅ เปลี่ยน: ให้ Admin ก็กดแก้ไขได้ */}
+                {!editProfile ? (
                   <Button variant="contained" onClick={() => setEditProfile(true)}>
                     แก้ไขโปรไฟล์
                   </Button>
@@ -265,10 +268,11 @@ function Profile() {
               </div>
             </div>
 
+            {/* ✅ เปลี่ยนข้อความ admin: จาก "ดูอย่างเดียว" -> "แก้ได้เฉพาะบางฟิลด์" */}
             {isAdmin ? (
               <div className="mt-4 rounded-2xl border border-black/5 bg-white p-4">
                 <Typography color="text.secondary">
-                  คุณเป็นผู้ดูแลระบบ (Admin) — หน้านี้แสดงข้อมูลโปรไฟล์เท่านั้น
+                  คุณเป็นผู้ดูแลระบบ (Admin) — สามารถแก้ไข Username/Email และเปลี่ยนรหัสผ่านได้
                 </Typography>
               </div>
             ) : null}
@@ -368,16 +372,15 @@ function Profile() {
               {!editProfile ? (
                 <div className="space-y-2">
                   <Typography variant="body2" color="text.secondary">
-                    คุณสามารถแก้ไขชื่อผู้ใช้/อีเมล และเปลี่ยนรหัสผ่านได้ (ถ้าเป็นนักศึกษาจะแก้ไขกลุ่มเรียน/ชั้นปีได้)
+                    คุณสามารถแก้ไขชื่อผู้ใช้/อีเมล และเปลี่ยนรหัสผ่านได้
+                    {isStudent ? " (นักศึกษาจะแก้ไขกลุ่มเรียน/ชั้นปีได้)" : ""}
                   </Typography>
 
-                  {!isAdmin ? (
-                    <div className="mt-3">
-                      <Button variant="contained" onClick={() => setEditProfile(true)}>
-                        แก้ไขโปรไฟล์
-                      </Button>
-                    </div>
-                  ) : null}
+                  <div className="mt-3">
+                    <Button variant="contained" onClick={() => setEditProfile(true)}>
+                      แก้ไขโปรไฟล์
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <>
@@ -408,7 +411,9 @@ function Profile() {
                         <TextField
                           label="กลุ่มชั้นเรียน"
                           value={profileForm.class_group}
-                          onChange={(e) => setProfileForm((p) => ({ ...p, class_group: e.target.value }))}
+                          onChange={(e) =>
+                            setProfileForm((p) => ({ ...p, class_group: e.target.value }))
+                          }
                           fullWidth
                           margin="normal"
                           InputLabelProps={{ shrink: true }}
@@ -440,7 +445,6 @@ function Profile() {
                       </>
                     ) : null}
 
-                    {/* ✅ Teacher/Profile: มีแค่ Username/Email/Password (และ Student ก็มี Email/Password ด้วย) */}
                     <TextField
                       label="Email (สำหรับรับแจ้งเตือน)"
                       type="email"
@@ -451,6 +455,7 @@ function Profile() {
                       InputLabelProps={{ shrink: true }}
                     />
 
+                    {/* ✅ Admin/Teacher/Student ใช้ได้หมด */}
                     <TextField
                       label="เปลี่ยนรหัสผ่าน (ไม่กรอก = ไม่เปลี่ยน)"
                       type="password"
@@ -492,7 +497,7 @@ function Profile() {
                       <Chip
                         size="small"
                         variant="outlined"
-                        label={isStudent ? "Student" : isAdmin ? "Admin" : "User"}
+                        label={isStudent ? "Student" : isAdmin ? "Admin" : isTeacher ? "Teacher" : "User"}
                       />
                     </Stack>
                   </div>
