@@ -582,9 +582,6 @@ export default function AdminDashboard() {
           justifyContent="space-between"
         >
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: 900, letterSpacing: -0.5 }}>
-              Admin Dashboard
-            </Typography>
             <Typography variant="body2" sx={{ opacity: 0.7 }}>
               จัดการผู้ใช้ • รหัสนักศึกษา • สำรอง/กู้คืนฐานข้อมูล • ที่ปรึกษา
             </Typography>
