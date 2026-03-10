@@ -59,6 +59,12 @@ export default function UploadDocument() {
   const [authorBioFile, setAuthorBioFile] = useState(null);
   const [presentationVideoFile, setPresentationVideoFile] = useState(null);
 
+  // ✅ NEW: สถานะการทำงาน/แสดง animation
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processType, setProcessType] = useState(""); // draft | submit
+  const [uploadStatuses, setUploadStatuses] = useState([]);
+  const [currentStepText, setCurrentStepText] = useState("");
+
   const filesMap = useMemo(
     () => ({
       cover: coverFile,
@@ -91,6 +97,31 @@ export default function UploadDocument() {
       presentationVideoFile,
     ]
   );
+
+  // ✅ NEW: helper เตรียมสถานะเริ่มต้น
+  const buildInitialUploadStatuses = useCallback(() => {
+    return REQUIRED_SECTIONS.map((section) => ({
+      key: section.key,
+      label: section.label,
+      status: filesMap[section.key] ? "waiting" : "empty",
+      fileName: filesMap[section.key]?.name || "",
+    }));
+  }, [filesMap]);
+
+  // ✅ NEW: helper อัปเดตสถานะทีละไฟล์
+  const updateUploadStatus = useCallback((sectionKey, nextStatus, extra = {}) => {
+    setUploadStatuses((prev) =>
+      prev.map((item) =>
+        item.key === sectionKey
+          ? {
+              ...item,
+              status: nextStatus,
+              ...extra,
+            }
+          : item
+      )
+    );
+  }, []);
 
   const validatePresentationVideoSize = (file) => {
     if (!file) return true;
@@ -212,35 +243,37 @@ export default function UploadDocument() {
   };
 
   const uploadSectionsIfAny = async (documentId) => {
-  // filesMap: { cover: File, abstract: File, ... } ตามที่คุณเก็บไว้
-  // REQUIRED_SECTIONS: [{ key: 'cover' }, ...] หรือเป็น array ของ key
-  const entries = REQUIRED_SECTIONS.map((x) => x.key); // ถ้าของคุณเป็น [{key,...}]
-  // ถ้า REQUIRED_SECTIONS เป็น array string อยู่แล้ว ให้ใช้: const entries = REQUIRED_SECTIONS;
+    const entries = REQUIRED_SECTIONS.map((x) => x.key);
 
-  for (const sectionKey of entries) {
-    const file = filesMap[sectionKey];
-    if (!file) continue; // draft อนุญาตให้ไม่ครบได้
+    for (const sectionKey of entries) {
+      const file = filesMap[sectionKey];
 
-    const fd = new FormData();
-    fd.append("file", file);          // ✅ multer single('file')
-    fd.append("section", sectionKey); // ✅ backend อ่าน req.body.section
+      if (!file) {
+        updateUploadStatus(sectionKey, "skipped");
+        continue; // draft อนุญาตให้ไม่ครบได้
+      }
 
-    await api.post(`/upload/documents/${documentId}/sections`, fd, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-  }
+      try {
+        setCurrentStepText(`กำลังอัปโหลด ${sectionKey} ...`);
+        updateUploadStatus(sectionKey, "uploading");
 
-  // กรณีวิดีโอแยกตัวแปร
-  if (presentationVideoFile) {
-    const fd = new FormData();
-    fd.append("file", presentationVideoFile);
-    fd.append("section", "presentation_video");
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("section", sectionKey);
 
-    await api.post(`/upload/documents/${documentId}/sections`, fd, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-  }
-};
+        await api.post(`/upload/documents/${documentId}/sections`, fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+
+        updateUploadStatus(sectionKey, "success");
+      } catch (err) {
+        updateUploadStatus(sectionKey, "error", {
+          errorMessage: err?.response?.data?.message || err.message || "อัปโหลดไม่สำเร็จ",
+        });
+        throw err;
+      }
+    }
+  };
 
   const clearForm = () => {
     setTitle("");
@@ -276,16 +309,32 @@ export default function UploadDocument() {
 
       if (!validatePresentationVideoSize(presentationVideoFile)) return;
 
-      const documentId = await createDraftDocument();
-      if (!documentId) return;
+      // ✅ NEW
+      setProcessType("draft");
+      setIsProcessing(true);
+      setCurrentStepText("กำลังสร้างเอกสารฉบับร่าง...");
+      setUploadStatuses(buildInitialUploadStatuses());
 
+      const documentId = await createDraftDocument();
+      if (!documentId) {
+        setIsProcessing(false);
+        return;
+      }
+
+      setCurrentStepText("กำลังอัปโหลดไฟล์...");
       await uploadSectionsIfAny(documentId);
 
+      setCurrentStepText("บันทึกฉบับร่างสำเร็จ");
       alert("บันทึกฉบับร่างสำเร็จ (คุณสามารถมาอัปไฟล์เพิ่มทีหลังได้)");
       clearForm();
     } catch (err) {
       console.error("DRAFT ERR:", err?.response?.data || err.message);
       alert(err?.response?.data?.message || "เกิดข้อผิดพลาด");
+    } finally {
+      setTimeout(() => {
+        setIsProcessing(false);
+        setCurrentStepText("");
+      }, 700);
     }
   };
 
@@ -305,23 +354,40 @@ export default function UploadDocument() {
       const okEmail = await mustHaveEmail();
       if (!okEmail) return;
 
-      const documentId = await createDraftDocument();
-      if (!documentId) return;
+      // ✅ NEW
+      setProcessType("submit");
+      setIsProcessing(true);
+      setCurrentStepText("กำลังสร้างรายการเอกสาร...");
+      setUploadStatuses(buildInitialUploadStatuses());
 
+      const documentId = await createDraftDocument();
+      if (!documentId) {
+        setIsProcessing(false);
+        return;
+      }
+
+      setCurrentStepText("กำลังอัปโหลดไฟล์ทั้งหมด...");
       await uploadSectionsIfAny(documentId);
 
+      setCurrentStepText("กำลังส่งให้ที่ปรึกษา...");
       await api.post(`/documents/${documentId}/submit`);
 
+      setCurrentStepText("ส่งให้ที่ปรึกษาเรียบร้อยแล้ว");
       alert("ส่งให้ที่ปรึกษาเรียบร้อยแล้ว");
       clearForm();
     } catch (err) {
       console.error("SUBMIT ERR:", err?.response?.data || err.message);
       alert(err?.response?.data?.message || "เกิดข้อผิดพลาด");
+    } finally {
+      setTimeout(() => {
+        setIsProcessing(false);
+        setCurrentStepText("");
+      }, 700);
     }
   };
 
   // ✅ disable ทั้งฟอร์มเมื่อ blocked
-  const formDisabled = eligLoading || uploadBlocked;
+  const formDisabled = eligLoading || uploadBlocked || isProcessing;
 
   // ===== UI-only helpers =====
   const uploadedCount = useMemo(() => {
@@ -333,6 +399,17 @@ export default function UploadDocument() {
   const totalRequired = REQUIRED_SECTIONS.length;
   const progressPct = totalRequired ? Math.round((uploadedCount / totalRequired) * 100) : 0;
 
+  const statusSummary = useMemo(() => {
+    const total = uploadStatuses.length || 0;
+    const success = uploadStatuses.filter((x) => x.status === "success").length;
+    const uploading = uploadStatuses.filter((x) => x.status === "uploading").length;
+    const waiting = uploadStatuses.filter((x) => x.status === "waiting").length;
+    const skipped = uploadStatuses.filter((x) => x.status === "skipped" || x.status === "empty").length;
+    const error = uploadStatuses.filter((x) => x.status === "error").length;
+
+    return { total, success, uploading, waiting, skipped, error };
+  }, [uploadStatuses]);
+
   const fileHint = (file) => {
     if (!file) return "ยังไม่ได้เลือกไฟล์";
     const kb = Math.round(file.size / 1024);
@@ -340,8 +417,122 @@ export default function UploadDocument() {
     return `${file.name} • ${sizeText}`;
   };
 
+  const renderStatusBadge = (status) => {
+    const map = {
+      empty: "bg-gray-100 text-gray-500 border-gray-200",
+      waiting: "bg-yellow-50 text-yellow-700 border-yellow-200",
+      uploading: "bg-blue-50 text-blue-700 border-blue-200 animate-pulse",
+      success: "bg-green-50 text-green-700 border-green-200",
+      skipped: "bg-gray-100 text-gray-600 border-gray-200",
+      error: "bg-red-50 text-red-700 border-red-200",
+    };
+
+    const labelMap = {
+      empty: "ยังไม่ได้เลือก",
+      waiting: "รออัปโหลด",
+      uploading: "กำลังอัปโหลด...",
+      success: "อัปโหลดแล้ว",
+      skipped: "ข้าม",
+      error: "ผิดพลาด",
+    };
+
+    return (
+      <span
+        className={`text-xs font-bold px-2.5 py-1 rounded-full border ${map[status] || map.empty}`}
+      >
+        {labelMap[status] || "ไม่ทราบสถานะ"}
+      </span>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-black/[0.02] py-6">
+    <div className="min-h-screen bg-black/[0.02] py-6 relative">
+      {/* ✅ NEW: overlay ตอนกำลังบันทึก/ส่ง */}
+      {isProcessing && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] flex items-center justify-center px-4">
+          <div className="w-full max-w-3xl rounded-3xl bg-white shadow-2xl border border-black/10 overflow-hidden animate-[fadeIn_.25s_ease]">
+            <div className="p-5 md:p-6 border-b border-black/5 bg-gradient-to-r from-indigo-50 via-white to-purple-50">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-full border-4 border-indigo-200 border-t-indigo-600 animate-spin" />
+                <div>
+                  <div className="text-lg md:text-xl font-black text-gray-800">
+                    {processType === "submit" ? "กำลังส่งให้ที่ปรึกษา" : "กำลังบันทึกฉบับร่าง"}
+                  </div>
+                  <div className="text-sm text-gray-600 mt-0.5">{currentStepText || "กรุณารอสักครู่..."}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 md:p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                <div className="rounded-2xl border border-green-200 bg-green-50 p-3 text-center">
+                  <div className="text-lg font-black text-green-700">{statusSummary.success}</div>
+                  <div className="text-xs text-green-700">สำเร็จ</div>
+                </div>
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-center">
+                  <div className="text-lg font-black text-blue-700">{statusSummary.uploading}</div>
+                  <div className="text-xs text-blue-700">กำลังอัปโหลด</div>
+                </div>
+                <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-3 text-center">
+                  <div className="text-lg font-black text-yellow-700">{statusSummary.waiting}</div>
+                  <div className="text-xs text-yellow-700">รอคิว</div>
+                </div>
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3 text-center">
+                  <div className="text-lg font-black text-gray-700">{statusSummary.skipped}</div>
+                  <div className="text-xs text-gray-700">ข้าม</div>
+                </div>
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-center">
+                  <div className="text-lg font-black text-red-700">{statusSummary.error}</div>
+                  <div className="text-xs text-red-700">ผิดพลาด</div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-black/5 bg-black/[0.02] p-4">
+                <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                  <div className="font-bold text-gray-800">สถานะไฟล์ที่กำลังดำเนินการ</div>
+                  <div className="text-xs text-gray-500">
+                    {statusSummary.success}/{statusSummary.total} ไฟล์ที่ดำเนินการเสร็จ
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {uploadStatuses.map((item) => (
+                    <div
+                      key={item.key}
+                      className={`rounded-2xl border px-4 py-3 flex items-start justify-between gap-3 transition-all ${
+                        item.status === "uploading"
+                          ? "border-blue-200 bg-blue-50/70 scale-[1.01]"
+                          : item.status === "success"
+                          ? "border-green-200 bg-green-50"
+                          : item.status === "error"
+                          ? "border-red-200 bg-red-50"
+                          : "border-black/5 bg-white"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="font-semibold text-gray-800">{item.label}</div>
+                        <div className="text-xs text-gray-500 break-all mt-0.5">
+                          {item.fileName || "ไม่มีไฟล์ที่เลือก"}
+                        </div>
+                        {item.errorMessage ? (
+                          <div className="text-xs text-red-600 mt-1">{item.errorMessage}</div>
+                        ) : null}
+                      </div>
+
+                      <div className="shrink-0">{renderStatusBadge(item.status)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-xs text-gray-500">
+                ระบบกำลังแสดงผลสถานะเพื่อให้เห็นความคืบหน้าเท่านั้น กรุณารอจนกว่าการทำงานจะเสร็จสมบูรณ์
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto px-4 md:px-6 space-y-6">
         {/* ===== Header / Hero ===== */}
         <div className="rounded-3xl border border-black/5 shadow-lg overflow-hidden bg-white">
@@ -379,7 +570,7 @@ export default function UploadDocument() {
               </div>
               <div className="mt-3 h-2.5 rounded-full bg-black/[0.06] overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400"
+                  className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 transition-all duration-500"
                   style={{ width: `${progressPct}%` }}
                 />
               </div>
@@ -464,7 +655,9 @@ export default function UploadDocument() {
                               disabled={formDisabled || disableUnchecked}
                               onChange={(e) => {
                                 if (e.target.checked) {
-                                  setSelectedCategoryIds((prev) => (prev.length >= 2 ? prev : [...prev, cat.id]));
+                                  setSelectedCategoryIds((prev) =>
+                                    prev.length >= 2 ? prev : [...prev, cat.id]
+                                  );
                                 } else {
                                   setSelectedCategoryIds((prev) => prev.filter((id) => id !== cat.id));
                                 }
@@ -537,7 +730,6 @@ export default function UploadDocument() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* ใช้ “label + file hint” เพื่อ UI ดูดีขึ้น (logic เดิม) */}
                 <label className="flex flex-col gap-1 rounded-2xl border border-black/10 bg-black/[0.02] p-3">
                   <span className="text-sm font-semibold text-gray-800">ปก (cover)</span>
                   <input
@@ -714,28 +906,26 @@ export default function UploadDocument() {
                   <div>
                     * บันทึกฉบับร่างอัปไฟล์ไม่ครบได้ แต่ <span className="font-semibold">ส่งให้ที่ปรึกษา</span> ต้องครบทุกไฟล์
                   </div>
-                  <div>
-                    ฟังก์ชันอัปโหลดต้องมี Student Code ที่ผ่านการอนุมัติแล้ว
-                  </div>
+                  <div>ฟังก์ชันอัปโหลดต้องมี Student Code ที่ผ่านการอนุมัติแล้ว</div>
                 </div>
 
                 <div className="flex gap-2 flex-col sm:flex-row">
                   <button
                     type="button"
                     onClick={handleSaveDraft}
-                    className="px-5 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-900 text-white transition font-bold"
+                    className="px-5 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-900 text-white transition font-bold disabled:opacity-70"
                     disabled={formDisabled}
                   >
-                    บันทึกฉบับร่าง
+                    {isProcessing && processType === "draft" ? "กำลังบันทึก..." : "บันทึกฉบับร่าง"}
                   </button>
 
                   <button
                     type="button"
                     onClick={handleSubmitToAdvisor}
-                    className="px-5 py-2.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white transition font-bold"
+                    className="px-5 py-2.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white transition font-bold disabled:opacity-70"
                     disabled={formDisabled}
                   >
-                    ส่งให้ที่ปรึกษา
+                    {isProcessing && processType === "submit" ? "กำลังส่ง..." : "ส่งให้ที่ปรึกษา"}
                   </button>
                 </div>
               </div>
@@ -755,25 +945,45 @@ export default function UploadDocument() {
                     return (
                       <div
                         key={r.key}
-                        className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2 border ${
+                        className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2 border transition-all ${
                           ok
                             ? "bg-green-50 text-green-800 border-green-200"
                             : "bg-white text-gray-700 border-black/10"
                         }`}
                       >
                         <span className="text-sm font-semibold">{r.label}</span>
-                        <span className="text-xs font-bold">
-                          {ok ? "✔" : "—"}
-                        </span>
+                        <span className="text-xs font-bold">{ok ? "✔" : "—"}</span>
                       </div>
                     );
                   })}
                 </div>
               </div>
+
+              {/* ✅ NEW: panel แสดงสถานะล่าสุดด้านล่างปุ่ม */}
+              {uploadStatuses.length > 0 && !isProcessing && (
+                <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+                  <div className="font-bold text-gray-800 mb-3">สถานะไฟล์ล่าสุดที่ระบบดำเนินการ</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {uploadStatuses.map((item) => (
+                      <div
+                        key={item.key}
+                        className="rounded-xl border border-white bg-white px-3 py-2 flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-gray-800">{item.label}</div>
+                          <div className="text-xs text-gray-500 truncate">
+                            {item.fileName || "ไม่มีไฟล์ที่เลือก"}
+                          </div>
+                        </div>
+                        <div>{renderStatusBadge(item.status)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* small bottom spacing */}
           <div className="h-6" />
         </div>
       </div>
