@@ -157,13 +157,15 @@ const Home = () => {
   const isStudent = role === "student";
   const isTeacher = role === "teacher";
   const isAdmin = role === "admin";
+
   const isLoggedIn = useMemo(
     () => isStudent || isTeacher || isAdmin,
     [isStudent, isTeacher, isAdmin]
   );
 
-  // ✅ searchbar ให้ student / teacher / guest ใช้ได้
-  const canUseSearch = !isAdmin;
+  const isGuest = !isLoggedIn;
+  const canUseSearch = isGuest || isStudent || isTeacher;
+  const canShowPopularDocs = isGuest || isStudent || isTeacher;
 
   const toggleCategory = (category) => {
     setSelectedCategories((prev) =>
@@ -232,7 +234,7 @@ const Home = () => {
             let names = "-";
             const cats = detail?.categories;
 
-            if (Array.isArray(cats) && cats.length) {
+            if (Array.isArray(cats) && cats.length > 0) {
               names = cats.map((c) => c.name).join(", ");
             } else if (fallback?.category_names) {
               names = fallback.category_names;
@@ -247,11 +249,15 @@ const Home = () => {
         }
       } catch (err) {
         console.error("Home docs load error:", err?.response?.data || err.message);
-        if (!cancelled) setPopularDocs([]);
+        if (!cancelled) {
+          setPopularDocs([]);
+          setDocCategoryNames({});
+        }
       }
     };
 
     fetchDocs();
+
     return () => {
       cancelled = true;
     };
@@ -309,6 +315,7 @@ const Home = () => {
     };
 
     fetchAdminStats();
+
     return () => {
       cancelled = true;
     };
@@ -353,6 +360,7 @@ const Home = () => {
     };
 
     filterTopDocsByDownloadedFiles();
+
     return () => {
       cancelled = true;
     };
@@ -360,6 +368,7 @@ const Home = () => {
 
   const availableYears = useMemo(() => {
     const years = popularDocs
+      .filter((doc) => String(doc.status || "").toLowerCase() !== "draft")
       .map((doc) => String(doc.academic_year || "").trim())
       .filter(Boolean);
 
@@ -367,9 +376,10 @@ const Home = () => {
   }, [popularDocs]);
 
   const availableCategories = useMemo(() => {
-    const allCategories = Object.values(docCategoryNames)
-      .flatMap((value) =>
-        String(value || "")
+    const allCategories = popularDocs
+      .filter((doc) => String(doc.status || "").toLowerCase() !== "draft")
+      .flatMap((doc) =>
+        String(docCategoryNames[doc.document_id] || "")
           .split(",")
           .map((item) => item.trim())
           .filter(Boolean)
@@ -379,7 +389,7 @@ const Home = () => {
     return [...new Set(allCategories)].sort((a, b) =>
       a.localeCompare(b, "th")
     );
-  }, [docCategoryNames]);
+  }, [popularDocs, docCategoryNames]);
 
   useEffect(() => {
     setSelectedCategories((prev) =>
@@ -427,12 +437,23 @@ const Home = () => {
 
       return isNotDraft && matchSearch && matchCategory && matchYear;
     });
-  }, [popularDocs, docCategoryNames, searchText, selectedCategories, selectedYears]);
+  }, [
+    popularDocs,
+    docCategoryNames,
+    searchText,
+    selectedCategories,
+    selectedYears,
+  ]);
 
   const visiblePopularDocs = useMemo(() => {
-    if (canUseSearch) return filteredPopularDocs;
-    return [];
-  }, [canUseSearch, filteredPopularDocs]);
+    return canShowPopularDocs ? filteredPopularDocs : [];
+  }, [canShowPopularDocs, filteredPopularDocs]);
+
+  const displayPopularDocs = useMemo(() => {
+    return [...visiblePopularDocs]
+      .sort((a, b) => (b.download_count || 0) - (a.download_count || 0))
+      .slice(0, 6);
+  }, [visiblePopularDocs]);
 
   const activeFilterCount = selectedCategories.length + selectedYears.length;
 
@@ -524,7 +545,7 @@ const Home = () => {
                       <Chip
                         size="small"
                         icon={<FilterListIcon />}
-                        label={`พบ ${visiblePopularDocs.length} รายการ`}
+                        label={`พบ ${displayPopularDocs.length} รายการ`}
                         variant="outlined"
                       />
 
@@ -567,7 +588,7 @@ const Home = () => {
               >
                 <RoleBadge role={role} />
 
-                {!isLoggedIn ? (
+                {!isLoggedIn && (
                   <>
                     <Button
                       variant="contained"
@@ -582,9 +603,9 @@ const Home = () => {
                       สมัครสมาชิก
                     </Button>
                   </>
-                ) : null}
+                )}
 
-                {isStudent ? (
+                {isStudent && (
                   <Button
                     variant="contained"
                     color="primary"
@@ -592,7 +613,7 @@ const Home = () => {
                   >
                     อัปโหลดผลงานใหม่
                   </Button>
-                ) : null}
+                )}
               </Stack>
             </Stack>
           </div>
@@ -782,21 +803,9 @@ const Home = () => {
             </Stack>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard
-                title="👥 ผู้ใช้งานทั้งหมด"
-                value={stats.users}
-                tone="indigo"
-              />
-              <StatCard
-                title="📚 ผลงานทั้งหมด"
-                value={stats.documents}
-                tone="purple"
-              />
-              <StatCard
-                title="⬇️ ดาวน์โหลดรวม"
-                value={stats.downloads}
-                tone="pink"
-              />
+              <StatCard title="👥 ผู้ใช้งานทั้งหมด" value={stats.users} tone="indigo" />
+              <StatCard title="📚 ผลงานทั้งหมด" value={stats.documents} tone="purple" />
+              <StatCard title="⬇️ ดาวน์โหลดรวม" value={stats.downloads} tone="pink" />
               <StatCard
                 title="📅 อัปโหลดใน 7 วันล่าสุด"
                 value={stats.uploadCount7d ?? 0}
@@ -807,20 +816,11 @@ const Home = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="rounded-2xl border border-black/5 shadow-md">
                 <CardContent>
-                  <Stack
-                    direction="row"
-                    alignItems="center"
-                    justifyContent="space-between"
-                    mb={1}
-                  >
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
                     <Typography variant="h6" className="font-black">
                       📈 การอัปโหลดใน 7 วันที่ผ่านมา
                     </Typography>
-                    <Chip
-                      size="small"
-                      label="Uploads / Day"
-                      variant="outlined"
-                    />
+                    <Chip size="small" label="Uploads / Day" variant="outlined" />
                   </Stack>
                   <Divider className="my-2" />
                   {stats.uploadsLast7Days?.length > 0 ? (
@@ -838,37 +838,22 @@ const Home = () => {
                         />
                         <YAxis />
                         <Tooltip />
-                        <Bar
-                          dataKey="count"
-                          fill="#8884d8"
-                          radius={[10, 10, 0, 0]}
-                        />
+                        <Bar dataKey="count" fill="#8884d8" radius={[10, 10, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <Typography color="text.secondary">
-                      ไม่มีข้อมูลการอัปโหลด
-                    </Typography>
+                    <Typography color="text.secondary">ไม่มีข้อมูลการอัปโหลด</Typography>
                   )}
                 </CardContent>
               </Card>
 
               <Card className="rounded-2xl border border-black/5 shadow-md">
                 <CardContent>
-                  <Stack
-                    direction="row"
-                    alignItems="center"
-                    justifyContent="space-between"
-                    mb={1}
-                  >
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
                     <Typography variant="h6" className="font-black">
                       🥇 หมวดหมู่ยอดนิยม
                     </Typography>
-                    <Chip
-                      size="small"
-                      label="Top Categories"
-                      variant="outlined"
-                    />
+                    <Chip size="small" label="Top Categories" variant="outlined" />
                   </Stack>
                   <Divider className="my-2" />
                   {stats.topCategories?.length > 0 ? (
@@ -893,9 +878,7 @@ const Home = () => {
                       </PieChart>
                     </ResponsiveContainer>
                   ) : (
-                    <Typography color="text.secondary">
-                      ไม่มีข้อมูลหมวดหมู่
-                    </Typography>
+                    <Typography color="text.secondary">ไม่มีข้อมูลหมวดหมู่</Typography>
                   )}
                 </CardContent>
               </Card>
@@ -914,11 +897,7 @@ const Home = () => {
                   <Typography variant="h6" className="font-black">
                     🏆 เอกสารยอดดาวน์โหลด
                   </Typography>
-                  <Chip
-                    size="small"
-                    label="Click เพื่อดูไฟล์ย่อย"
-                    variant="outlined"
-                  />
+                  <Chip size="small" label="Click เพื่อดูไฟล์ย่อย" variant="outlined" />
                 </Stack>
                 <Divider className="my-2" />
 
@@ -941,9 +920,7 @@ const Home = () => {
                             const res = await api.get(
                               `/admin/documents/${d.document_id}/file-downloads`
                             );
-                            const files = Array.isArray(res.data)
-                              ? res.data
-                              : [];
+                            const files = Array.isArray(res.data) ? res.data : [];
                             const onlyDownloaded = files.filter(
                               (f) => Number(f.download_count || 0) > 0
                             );
@@ -984,7 +961,7 @@ const Home = () => {
           </div>
         )}
 
-        {!isAdmin && (
+        {canShowPopularDocs && (
           <div className="mt-10">
             <Stack
               direction="row"
@@ -1002,7 +979,7 @@ const Home = () => {
               </Typography>
             </Stack>
 
-            {visiblePopularDocs.length === 0 ? (
+            {displayPopularDocs.length === 0 ? (
               <Card className="rounded-2xl border border-black/5 shadow-sm">
                 <CardContent>
                   <Typography variant="body1" color="text.secondary">
@@ -1012,68 +989,63 @@ const Home = () => {
               </Card>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[...visiblePopularDocs]
-                  .sort((a, b) => (b.download_count || 0) - (a.download_count || 0))
-                  .slice(0, 6)
-                  .map((doc) => (
-                    <Card
-                      key={doc.document_id}
-                      className="shadow-lg hover:shadow-2xl transition rounded-2xl border border-black/5 overflow-hidden"
-                    >
-                      <div className="h-1.5 bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300" />
-                      <CardContent>
-                        <Typography
-                          variant="h6"
-                          gutterBottom
-                          className="line-clamp-2 text-brand-800 font-black"
-                        >
-                          {doc.title}
-                        </Typography>
+                {displayPopularDocs.map((doc) => (
+                  <Card
+                    key={doc.document_id}
+                    className="shadow-lg hover:shadow-2xl transition rounded-2xl border border-black/5 overflow-hidden"
+                  >
+                    <div className="h-1.5 bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300" />
+                    <CardContent>
+                      <Typography
+                        variant="h6"
+                        gutterBottom
+                        className="line-clamp-2 text-brand-800 font-black"
+                      >
+                        {doc.title}
+                      </Typography>
 
-                        <div className="flex flex-wrap gap-2 mb-3">
-                          <Chip
-                            size="small"
-                            label={`ดาวน์โหลด ${Number(
-                              doc.download_count || 0
-                            )} ครั้ง`}
-                          />
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            label={`ปี ${doc.academic_year || "-"}`}
-                          />
-                        </div>
-
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          className="mb-2"
-                        >
-                          หมวดหมู่: {docCategoryNames[doc.document_id] ?? "-"}
-                        </Typography>
-
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          className="mb-2"
-                        >
-                          คำค้นหา: {doc.keywords || "ไม่ระบุ"}
-                        </Typography>
-                      </CardContent>
-
-                      <CardActions className="px-4 pb-4">
-                        <Button
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        <Chip
+                          size="small"
+                          label={`ดาวน์โหลด ${Number(doc.download_count || 0)} ครั้ง`}
+                        />
+                        <Chip
                           size="small"
                           variant="outlined"
-                          onClick={() =>
-                            navigate(`/document-detail/${doc.document_id}`)
-                          }
-                        >
-                          ดูรายละเอียด
-                        </Button>
-                      </CardActions>
-                    </Card>
-                  ))}
+                          label={`ปี ${doc.academic_year || "-"}`}
+                        />
+                      </div>
+
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        className="mb-2"
+                      >
+                        หมวดหมู่: {docCategoryNames[doc.document_id] ?? "-"}
+                      </Typography>
+
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        className="mb-2"
+                      >
+                        คำค้นหา: {doc.keywords || "ไม่ระบุ"}
+                      </Typography>
+                    </CardContent>
+
+                    <CardActions className="px-4 pb-4">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() =>
+                          navigate(`/document-detail/${doc.document_id}`)
+                        }
+                      >
+                        ดูรายละเอียด
+                      </Button>
+                    </CardActions>
+                  </Card>
+                ))}
               </div>
             )}
           </div>
