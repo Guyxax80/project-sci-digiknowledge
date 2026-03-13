@@ -11,7 +11,14 @@ import {
   Divider,
   Stack,
   Chip,
+  Drawer,
+  IconButton,
+  Badge,
 } from "@mui/material";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import SearchIcon from "@mui/icons-material/Search";
+import TuneIcon from "@mui/icons-material/Tune";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import {
   BarChart,
   Bar,
@@ -43,7 +50,6 @@ const getRoleFromStorage = () => {
   return (raw || "").trim().toLowerCase();
 };
 
-// ===== UI helpers (ตกแต่งอย่างเดียว) =====
 const RoleBadge = ({ role }) => {
   const r = (role || "").toLowerCase();
   const map = {
@@ -52,6 +58,7 @@ const RoleBadge = ({ role }) => {
     admin: { label: "ผู้ดูแลระบบ", color: "error" },
   };
   const m = map[r] || { label: "ผู้เยี่ยมชม", color: "default" };
+
   return (
     <Chip
       size="small"
@@ -63,7 +70,6 @@ const RoleBadge = ({ role }) => {
 };
 
 const StatCard = ({ title, value, tone = "indigo", subtitle }) => {
-  // ใช้ tailwind gradient แบบเดิมของคุณ (ไม่เพิ่ม dependency)
   const toneClass =
     tone === "indigo"
       ? "from-indigo-50 to-indigo-100"
@@ -87,7 +93,9 @@ const StatCard = ({ title, value, tone = "indigo", subtitle }) => {
       : "text-slate-700";
 
   return (
-    <Card className={`bg-gradient-to-br ${toneClass} shadow-md rounded-2xl border border-black/5`}>
+    <Card
+      className={`bg-gradient-to-br ${toneClass} shadow-md rounded-2xl border border-black/5`}
+    >
       <CardContent>
         <Typography variant="body2" className="opacity-80">
           {title}
@@ -111,6 +119,11 @@ const Home = () => {
 
   const [popularDocs, setPopularDocs] = useState([]);
   const [docCategoryNames, setDocCategoryNames] = useState({});
+  const [searchText, setSearchText] = useState("");
+
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [selectedYears, setSelectedYears] = useState([]);
 
   const [stats, setStats] = useState({
     users: 0,
@@ -123,7 +136,6 @@ const Home = () => {
     topDocuments: [],
   });
 
-  // ✅ ใหม่: เก็บเฉพาะ topDocuments ที่ "มีไฟล์ย่อยที่ยอดดาวน์โหลด > 0"
   const [topDocsFiltered, setTopDocsFiltered] = useState([]);
   const [topDocsLoading, setTopDocsLoading] = useState(false);
 
@@ -145,9 +157,33 @@ const Home = () => {
   const isStudent = role === "student";
   const isTeacher = role === "teacher";
   const isAdmin = role === "admin";
-  const isLoggedIn = useMemo(() => isStudent || isTeacher || isAdmin, [isStudent, isTeacher, isAdmin]);
+  const isLoggedIn = useMemo(
+    () => isStudent || isTeacher || isAdmin,
+    [isStudent, isTeacher, isAdmin]
+  );
 
-  // 1) docs
+  const toggleCategory = (category) => {
+    setSelectedCategories((prev) =>
+      prev.includes(category)
+        ? prev.filter((c) => c !== category)
+        : [...prev, category]
+    );
+  };
+
+  const toggleYear = (year) => {
+    setSelectedYears((prev) =>
+      prev.includes(year)
+        ? prev.filter((y) => y !== year)
+        : [...prev, year]
+    );
+  };
+
+  const clearFilters = () => {
+    setSelectedCategories([]);
+    setSelectedYears([]);
+    setSearchText("");
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -158,7 +194,7 @@ const Home = () => {
         if (isStudent || isTeacher) {
           try {
             res = await api.get("/documents/recommended");
-          } catch (e) {
+          } catch {
             res = await api.get("/documents");
           }
         } else {
@@ -175,8 +211,16 @@ const Home = () => {
             docs.map((doc) =>
               api
                 .get(`/documents/${doc.document_id}`)
-                .then((dres) => ({ id: doc.document_id, detail: dres.data, fallback: doc }))
-                .catch(() => ({ id: doc.document_id, detail: null, fallback: doc }))
+                .then((dres) => ({
+                  id: doc.document_id,
+                  detail: dres.data,
+                  fallback: doc,
+                }))
+                .catch(() => ({
+                  id: doc.document_id,
+                  detail: null,
+                  fallback: doc,
+                }))
             )
           );
 
@@ -184,11 +228,13 @@ const Home = () => {
           detailResults.forEach(({ id, detail, fallback }) => {
             let names = "-";
             const cats = detail?.categories;
+
             if (Array.isArray(cats) && cats.length) {
               names = cats.map((c) => c.name).join(", ");
             } else if (fallback?.category_names) {
               names = fallback.category_names;
             }
+
             map[id] = names;
           });
 
@@ -208,7 +254,6 @@ const Home = () => {
     };
   }, [isStudent, isTeacher, isAdmin]);
 
-  // 2) stats admin
   useEffect(() => {
     let cancelled = false;
 
@@ -266,7 +311,6 @@ const Home = () => {
     };
   }, [isAdmin]);
 
-  // ✅ 3) กรอง "เอกสารยอดดาวน์โหลด" ให้เหลือเฉพาะเอกสารที่มีไฟล์ย่อย download_count > 0
   useEffect(() => {
     let cancelled = false;
 
@@ -285,30 +329,102 @@ const Home = () => {
         const results = await Promise.all(
           docs.map(async (d) => {
             try {
-              const res = await api.get(`/admin/documents/${d.document_id}/file-downloads`);
+              const res = await api.get(
+                `/admin/documents/${d.document_id}/file-downloads`
+              );
               const files = Array.isArray(res.data) ? res.data : [];
-              const hasDownloadedFile = files.some((f) => Number(f.download_count || 0) > 0);
+              const hasDownloadedFile = files.some(
+                (f) => Number(f.download_count || 0) > 0
+              );
               return hasDownloadedFile ? d : null;
             } catch {
-              // ถ้าโหลดไฟล์ย่อยไม่ได้ ให้ตัดออกเพื่อ "ชัวร์ว่าต้องมี >0"
               return null;
             }
           })
         );
 
-        const filtered = results.filter(Boolean);
-        if (!cancelled) setTopDocsFiltered(filtered);
+        if (!cancelled) setTopDocsFiltered(results.filter(Boolean));
       } finally {
         if (!cancelled) setTopDocsLoading(false);
       }
     };
 
     filterTopDocsByDownloadedFiles();
-
     return () => {
       cancelled = true;
     };
   }, [isAdmin, stats.topDocuments]);
+
+  const availableYears = useMemo(() => {
+    const years = popularDocs
+      .map((doc) => String(doc.academic_year || "").trim())
+      .filter(Boolean);
+
+    return [...new Set(years)].sort((a, b) => Number(b) - Number(a));
+  }, [popularDocs]);
+
+  const availableCategories = useMemo(() => {
+    const allCategories = Object.values(docCategoryNames)
+      .flatMap((value) =>
+        String(value || "")
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      )
+      .filter((item) => item !== "-");
+
+    return [...new Set(allCategories)].sort((a, b) =>
+      a.localeCompare(b, "th")
+    );
+  }, [docCategoryNames]);
+
+  useEffect(() => {
+    setSelectedCategories((prev) =>
+      prev.filter((item) => availableCategories.includes(item))
+    );
+  }, [availableCategories]);
+
+  useEffect(() => {
+    setSelectedYears((prev) =>
+      prev.filter((item) => availableYears.includes(item))
+    );
+  }, [availableYears]);
+
+  const filteredPopularDocs = useMemo(() => {
+    const keyword = searchText.trim().toLowerCase();
+
+    return popularDocs.filter((doc) => {
+      const title = String(doc.title || "").toLowerCase();
+      const keywords = String(doc.keywords || "").toLowerCase();
+      const academicYear = String(doc.academic_year || "").toLowerCase();
+      const categoryNames = String(
+        docCategoryNames[doc.document_id] || ""
+      ).toLowerCase();
+      const status = String(doc.status || "").toLowerCase();
+
+      const matchSearch =
+        !keyword ||
+        title.includes(keyword) ||
+        keywords.includes(keyword) ||
+        academicYear.includes(keyword) ||
+        categoryNames.includes(keyword) ||
+        status.includes(keyword);
+
+      const matchCategory =
+        selectedCategories.length === 0 ||
+        selectedCategories.some((cat) =>
+          categoryNames.includes(String(cat).toLowerCase())
+        );
+
+      const matchYear =
+        selectedYears.length === 0 ||
+        selectedYears.includes(String(doc.academic_year || ""));
+
+      return matchSearch && matchCategory && matchYear;
+    });
+  }, [popularDocs, docCategoryNames, searchText, selectedCategories, selectedYears]);
+
+  const activeFilterCount = selectedCategories.length + selectedYears.length;
 
   return (
     <Box
@@ -320,40 +436,146 @@ const Home = () => {
       }}
     >
       <div className="max-w-7xl mx-auto">
-        {/* ===== Header / Hero ===== */}
-        <Card className="rounded-3xl border border-black/5 shadow-lg overflow-hidden">
+        <Card className="rounded-3xl border border-black/5 shadow-xl overflow-hidden">
           <div className="p-6 md:p-8 bg-gradient-to-br from-slate-50 via-white to-indigo-50">
             <Stack
               direction={{ xs: "column", md: "row" }}
-              spacing={2}
+              spacing={3}
               alignItems={{ md: "center" }}
               justifyContent="space-between"
             >
-              <Box>
-                <Typography variant="h4" className="font-black text-brand-800">
-                  ยินดีต้อนรับ{" "}
-                  {isStudent ? "นักศึกษา" : isTeacher ? "อาจารย์" : isAdmin ? "ผู้ดูแลระบบ" : "ผู้เยี่ยมชม"}
+              <Box sx={{ flex: 1 }}>
+                <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                  <AutoAwesomeIcon
+                    fontSize="small"
+                    className="text-indigo-500"
+                  />
+                  <Typography variant="h4" className="font-black text-brand-800">
+                    ยินดีต้อนรับ{" "}
+                    {isStudent
+                      ? "นักศึกษา"
+                      : isTeacher
+                      ? "อาจารย์"
+                      : isAdmin
+                      ? "ผู้ดูแลระบบ"
+                      : "ผู้เยี่ยมชม"}
+                  </Typography>
+                </Stack>
+
+                <Typography variant="body1" sx={{ opacity: 0.8 }}>
+                  ค้นหาเอกสารได้เร็วขึ้นด้วยคำค้น หมวดหมู่ และปีการศึกษา
                 </Typography>
-                <Typography variant="body2" sx={{ opacity: 0.75, mt: 0.5 }}>
-                  ศูนย์รวมเอกสาร/ผลงาน พร้อมสรุปสถิติและเอกสารยอดนิยม
-                </Typography>
+
+                <div className="mt-5 w-full max-w-3xl">
+                  <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white shadow-lg px-3 py-2 focus-within:ring-2 focus-within:ring-indigo-300">
+                    <Badge
+                      badgeContent={activeFilterCount}
+                      color="primary"
+                      invisible={activeFilterCount === 0}
+                    >
+                      <IconButton
+                        onClick={() => setFilterOpen(true)}
+                        title="เปิดตัวกรอง"
+                        size="small"
+                        className="bg-slate-50"
+                      >
+                        <TuneIcon />
+                      </IconButton>
+                    </Badge>
+
+                    <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600">
+                      <SearchIcon fontSize="small" />
+                    </div>
+
+                    <input
+                      className="w-full bg-transparent outline-none text-gray-800 placeholder:text-gray-400 text-sm md:text-base"
+                      type="text"
+                      value={searchText}
+                      placeholder="ค้นหาเอกสารจากชื่อเรื่อง หมวดหมู่ คำค้น ปีการศึกษา หรือสถานะ"
+                      onChange={(event) => setSearchText(event.target.value)}
+                    />
+
+                    {(searchText || activeFilterCount > 0) && (
+                      <button
+                        type="button"
+                        onClick={clearFilters}
+                        className="text-sm px-3 py-1.5 rounded-xl border border-black/10 hover:bg-black/[0.03] transition whitespace-nowrap"
+                        title="ล้างคำค้นและตัวกรอง"
+                      >
+                        ล้างทั้งหมด
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Chip
+                      size="small"
+                      icon={<FilterListIcon />}
+                      label={`พบ ${filteredPopularDocs.length} รายการ`}
+                      variant="outlined"
+                    />
+
+                    {selectedCategories.map((cat) => (
+                      <Chip
+                        key={cat}
+                        label={cat}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                        onDelete={() => toggleCategory(cat)}
+                      />
+                    ))}
+
+                    {selectedYears.map((year) => (
+                      <Chip
+                        key={year}
+                        label={`ปี ${year}`}
+                        size="small"
+                        color="secondary"
+                        variant="outlined"
+                        onDelete={() => toggleYear(year)}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="mt-2 text-xs text-gray-500">
+                    * เอกสารสถานะ <span className="font-semibold">draft</span>{" "}
+                    จะไม่แสดงในหน้านี้
+                  </div>
+                </div>
               </Box>
 
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                flexWrap="wrap"
+              >
                 <RoleBadge role={role} />
+
                 {!isLoggedIn ? (
                   <>
-                    <Button variant="contained" onClick={() => navigate("/login")}>
+                    <Button
+                      variant="contained"
+                      onClick={() => navigate("/login")}
+                    >
                       เข้าสู่ระบบ
                     </Button>
-                    <Button variant="outlined" onClick={() => navigate("/signup")}>
+                    <Button
+                      variant="outlined"
+                      onClick={() => navigate("/signup")}
+                    >
                       สมัครสมาชิก
                     </Button>
                   </>
                 ) : null}
 
                 {isStudent ? (
-                  <Button variant="contained" color="primary" onClick={() => navigate("/upload")}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => navigate("/upload")}
+                  >
                     อัปโหลดผลงานใหม่
                   </Button>
                 ) : null}
@@ -362,10 +584,183 @@ const Home = () => {
           </div>
         </Card>
 
-        {/* ===== Admin Dashboard ===== */}
+        <Drawer
+          anchor="left"
+          open={filterOpen}
+          onClose={() => setFilterOpen(false)}
+          PaperProps={{
+            sx: {
+              width: "100%",
+              maxWidth: 380,
+              boxShadow: "0 20px 50px rgba(0,0,0,0.18)",
+              borderRight: "1px solid rgba(0,0,0,0.08)",
+              overflow: "hidden",
+              backgroundColor: "#fff",
+            },
+          }}
+        >
+          <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+            {/* Header */}
+            <Box
+              sx={{
+                px: 2.5,
+                py: 2,
+                borderBottom: "1px solid rgba(0,0,0,0.06)",
+                background: "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
+              }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <Typography variant="h6" className="font-black text-gray-800">
+                    ตัวกรองเอกสาร
+                  </Typography>
+                  <Typography variant="body2" className="text-gray-500 mt-1">
+                    เลือกหมวดหมู่และปีการศึกษา
+                  </Typography>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setFilterOpen(false)}
+                  className="h-10 w-10 rounded-xl border border-black/10 hover:bg-black/[0.03] transition flex items-center justify-center text-lg"
+                  title="ปิดตัวกรอง"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mt-4 flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2 hover:bg-black/[0.03] transition font-semibold"
+                >
+                  ♻️ ล้างตัวกรอง
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFilterOpen(false)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 text-white px-4 py-2 hover:opacity-90 transition font-semibold"
+                >
+                  ใช้งานตัวกรอง
+                </button>
+              </div>
+            </Box>
+
+            {/* Content */}
+            <Box
+              sx={{
+                flex: 1,
+                overflowY: "auto",
+                p: 2.5,
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+              }}
+            >
+              {/* หมวดหมู่ */}
+              <div className="rounded-2xl border border-black/5 bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-9 w-9 rounded-xl bg-blue-50 flex items-center justify-center">
+                    🗂️
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-gray-800">หมวดหมู่</h4>
+                    <p className="text-xs text-gray-500">
+                      เลือกได้มากกว่า 1 รายการ
+                    </p>
+                  </div>
+                </div>
+
+                {availableCategories.length === 0 ? (
+                  <p className="text-sm text-gray-500">ไม่มีข้อมูลหมวดหมู่</p>
+                ) : (
+                  <div className="space-y-2 max-h-72 overflow-auto pr-1">
+                    {availableCategories.map((category) => {
+                      const checked = selectedCategories.includes(category);
+                      return (
+                        <label
+                          key={category}
+                          className={`flex items-center gap-3 rounded-xl border px-3 py-2 cursor-pointer transition ${
+                            checked
+                              ? "border-blue-300 bg-blue-50"
+                              : "border-black/5 hover:bg-black/[0.02]"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleCategory(category)}
+                            className="h-4 w-4"
+                          />
+                          <span className="text-sm font-medium text-gray-700">
+                            {category}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* ปีการศึกษา */}
+              <div className="rounded-2xl border border-black/5 bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-9 w-9 rounded-xl bg-emerald-50 flex items-center justify-center">
+                    📅
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-gray-800">ปีการศึกษา</h4>
+                    <p className="text-xs text-gray-500">
+                      เลือกได้มากกว่า 1 รายการ
+                    </p>
+                  </div>
+                </div>
+
+                {availableYears.length === 0 ? (
+                  <p className="text-sm text-gray-500">ไม่มีข้อมูลปีการศึกษา</p>
+                ) : (
+                  <div className="space-y-2 max-h-72 overflow-auto pr-1">
+                    {availableYears.map((year) => {
+                      const checked = selectedYears.includes(year);
+                      return (
+                        <label
+                          key={year}
+                          className={`flex items-center gap-3 rounded-xl border px-3 py-2 cursor-pointer transition ${
+                            checked
+                              ? "border-emerald-300 bg-emerald-50"
+                              : "border-black/5 hover:bg-black/[0.02]"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleYear(year)}
+                            className="h-4 w-4"
+                          />
+                          <span className="text-sm font-medium text-gray-700">
+                            {year}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </Box>
+          </Box>
+        </Drawer>
+
         {isAdmin && (
           <div className="mt-6 space-y-8">
-            <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+              flexWrap="wrap"
+              gap={1}
+            >
               <Typography variant="h5" className="text-brand-800 font-black">
                 📊 แดชบอร์ดผู้ดูแลระบบ
               </Typography>
@@ -374,23 +769,46 @@ const Home = () => {
               </Typography>
             </Stack>
 
-            {/* KPI */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard title="👥 ผู้ใช้งานทั้งหมด" value={stats.users} tone="indigo" />
-              <StatCard title="📚 ผลงานทั้งหมด" value={stats.documents} tone="purple" />
-              <StatCard title="⬇️ ดาวน์โหลดรวม" value={stats.downloads} tone="pink" />
-              <StatCard title="📅 อัปโหลดใน 7 วันล่าสุด" value={stats.uploadCount7d ?? 0} tone="green" />
+              <StatCard
+                title="👥 ผู้ใช้งานทั้งหมด"
+                value={stats.users}
+                tone="indigo"
+              />
+              <StatCard
+                title="📚 ผลงานทั้งหมด"
+                value={stats.documents}
+                tone="purple"
+              />
+              <StatCard
+                title="⬇️ ดาวน์โหลดรวม"
+                value={stats.downloads}
+                tone="pink"
+              />
+              <StatCard
+                title="📅 อัปโหลดใน 7 วันล่าสุด"
+                value={stats.uploadCount7d ?? 0}
+                tone="green"
+              />
             </div>
 
-            {/* Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="rounded-2xl border border-black/5 shadow-md">
                 <CardContent>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    justifyContent="space-between"
+                    mb={1}
+                  >
                     <Typography variant="h6" className="font-black">
                       📈 การอัปโหลดใน 7 วันที่ผ่านมา
                     </Typography>
-                    <Chip size="small" label="Uploads / Day" variant="outlined" />
+                    <Chip
+                      size="small"
+                      label="Uploads / Day"
+                      variant="outlined"
+                    />
                   </Stack>
                   <Divider className="my-2" />
                   {stats.uploadsLast7Days?.length > 0 ? (
@@ -400,35 +818,62 @@ const Home = () => {
                         <XAxis
                           dataKey="day"
                           tickFormatter={(d) =>
-                            new Date(d).toLocaleDateString("th-TH", { month: "short", day: "numeric" })
+                            new Date(d).toLocaleDateString("th-TH", {
+                              month: "short",
+                              day: "numeric",
+                            })
                           }
                         />
                         <YAxis />
                         <Tooltip />
-                        <Bar dataKey="count" fill="#8884d8" radius={[10, 10, 0, 0]} />
+                        <Bar
+                          dataKey="count"
+                          fill="#8884d8"
+                          radius={[10, 10, 0, 0]}
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <Typography color="text.secondary">ไม่มีข้อมูลการอัปโหลด</Typography>
+                    <Typography color="text.secondary">
+                      ไม่มีข้อมูลการอัปโหลด
+                    </Typography>
                   )}
                 </CardContent>
               </Card>
 
               <Card className="rounded-2xl border border-black/5 shadow-md">
                 <CardContent>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    justifyContent="space-between"
+                    mb={1}
+                  >
                     <Typography variant="h6" className="font-black">
                       🥇 หมวดหมู่ยอดนิยม
                     </Typography>
-                    <Chip size="small" label="Top Categories" variant="outlined" />
+                    <Chip
+                      size="small"
+                      label="Top Categories"
+                      variant="outlined"
+                    />
                   </Stack>
                   <Divider className="my-2" />
                   {stats.topCategories?.length > 0 ? (
                     <ResponsiveContainer width="100%" height={320}>
                       <PieChart>
-                        <Pie data={stats.topCategories} dataKey="count" nameKey="category" outerRadius={105} label>
+                        <Pie
+                          data={stats.topCategories}
+                          dataKey="count"
+                          nameKey="category"
+                          outerRadius={105}
+                          label
+                        >
                           {stats.topCategories.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={COLORS[index % COLORS.length]}
+                            />
                           ))}
                         </Pie>
                         <Tooltip />
@@ -436,28 +881,44 @@ const Home = () => {
                       </PieChart>
                     </ResponsiveContainer>
                   ) : (
-                    <Typography color="text.secondary">ไม่มีข้อมูลหมวดหมู่</Typography>
+                    <Typography color="text.secondary">
+                      ไม่มีข้อมูลหมวดหมู่
+                    </Typography>
                   )}
                 </CardContent>
               </Card>
             </div>
 
-            {/* Top documents */}
             <Card className="rounded-2xl border border-black/5 shadow-md">
               <CardContent>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1} flexWrap="wrap" gap={1}>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  mb={1}
+                  flexWrap="wrap"
+                  gap={1}
+                >
                   <Typography variant="h6" className="font-black">
                     🏆 เอกสารยอดดาวน์โหลด
                   </Typography>
-                  <Chip size="small" label="Click เพื่อดูไฟล์ย่อย" variant="outlined" />
+                  <Chip
+                    size="small"
+                    label="Click เพื่อดูไฟล์ย่อย"
+                    variant="outlined"
+                  />
                 </Stack>
                 <Divider className="my-2" />
 
                 <div className="space-y-2">
                   {topDocsLoading ? (
-                    <Typography color="text.secondary">กำลังตรวจสอบไฟล์ย่อยของเอกสาร...</Typography>
+                    <Typography color="text.secondary">
+                      กำลังตรวจสอบไฟล์ย่อยของเอกสาร...
+                    </Typography>
                   ) : !topDocsFiltered || topDocsFiltered.length === 0 ? (
-                    <Typography color="text.secondary">ไม่มีเอกสารที่มีไฟล์ย่อยถูกดาวน์โหลด</Typography>
+                    <Typography color="text.secondary">
+                      ไม่มีเอกสารที่มีไฟล์ย่อยถูกดาวน์โหลด
+                    </Typography>
                   ) : (
                     topDocsFiltered.map((d) => (
                       <button
@@ -465,21 +926,29 @@ const Home = () => {
                         className="w-full flex items-center justify-between text-left text-sm hover:bg-black/[0.03] p-3 rounded-xl border border-black/5 transition"
                         onClick={async () => {
                           try {
-                            const res = await api.get(`/admin/documents/${d.document_id}/file-downloads`);
-                            const files = Array.isArray(res.data) ? res.data : [];
-
-                            // ✅ แสดงเฉพาะไฟล์ที่ download_count > 0
-                            const onlyDownloaded = files.filter((f) => Number(f.download_count || 0) > 0);
+                            const res = await api.get(
+                              `/admin/documents/${d.document_id}/file-downloads`
+                            );
+                            const files = Array.isArray(res.data)
+                              ? res.data
+                              : [];
+                            const onlyDownloaded = files.filter(
+                              (f) => Number(f.download_count || 0) > 0
+                            );
 
                             const list =
                               onlyDownloaded.length > 0
                                 ? onlyDownloaded
-                                    .sort((a, b) => Number(b.download_count || 0) - Number(a.download_count || 0))
+                                    .sort(
+                                      (a, b) =>
+                                        Number(b.download_count || 0) -
+                                        Number(a.download_count || 0)
+                                    )
                                     .map(
                                       (f) =>
-                                        `${f.section || "main"} - ${f.original_name || "file"} : ${Number(
-                                          f.download_count || 0
-                                        )}`
+                                        `${f.section || "main"} - ${
+                                          f.original_name || "file"
+                                        } : ${Number(f.download_count || 0)}`
                                     )
                                     .join("\n")
                                 : "ไม่มีไฟล์ที่มีการดาวน์โหลด";
@@ -490,7 +959,9 @@ const Home = () => {
                           }
                         }}
                       >
-                        <span className="truncate max-w-[70%] font-semibold">{d.title}</span>
+                        <span className="truncate max-w-[70%] font-semibold">
+                          {d.title}
+                        </span>
                         <span className="font-black">{d.download_count}</span>
                       </button>
                     ))
@@ -501,7 +972,6 @@ const Home = () => {
           </div>
         )}
 
-        {/* ===== Popular docs ===== */}
         <div className="mt-10">
           <Stack
             direction="row"
@@ -519,17 +989,17 @@ const Home = () => {
             </Typography>
           </Stack>
 
-          {popularDocs.length === 0 ? (
+          {filteredPopularDocs.length === 0 ? (
             <Card className="rounded-2xl border border-black/5 shadow-sm">
               <CardContent>
                 <Typography variant="body1" color="text.secondary">
-                  ยังไม่มีผลงานที่อัปโหลด
+                  ไม่พบเอกสารที่ตรงกับคำค้นหา
                 </Typography>
               </CardContent>
             </Card>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {popularDocs
+              {[...filteredPopularDocs]
                 .sort((a, b) => (b.download_count || 0) - (a.download_count || 0))
                 .slice(0, 6)
                 .map((doc) => (
@@ -539,26 +1009,53 @@ const Home = () => {
                   >
                     <div className="h-1.5 bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300" />
                     <CardContent>
-                      <Typography variant="h6" gutterBottom className="line-clamp-2 text-brand-800 font-black">
+                      <Typography
+                        variant="h6"
+                        gutterBottom
+                        className="line-clamp-2 text-brand-800 font-black"
+                      >
                         {doc.title}
                       </Typography>
 
                       <div className="flex flex-wrap gap-2 mb-3">
-                        <Chip size="small" label={`ดาวน์โหลด ${Number(doc.download_count || 0)} ครั้ง`} />
-                        <Chip size="small" variant="outlined" label={`ปี ${doc.academic_year || "-"}`} />
+                        <Chip
+                          size="small"
+                          label={`ดาวน์โหลด ${Number(
+                            doc.download_count || 0
+                          )} ครั้ง`}
+                        />
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={`ปี ${doc.academic_year || "-"}`}
+                        />
                       </div>
 
-                      <Typography variant="body2" color="text.secondary" className="mb-2">
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        className="mb-2"
+                      >
                         หมวดหมู่: {docCategoryNames[doc.document_id] ?? "-"}
                       </Typography>
 
-                      <Typography variant="body2" color="text.secondary" className="mb-2">
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        className="mb-2"
+                      >
                         คำค้นหา: {doc.keywords || "ไม่ระบุ"}
                       </Typography>
                     </CardContent>
 
                     <CardActions className="px-4 pb-4">
-                      <Button size="small" variant="outlined" onClick={() => navigate(`/document-detail/${doc.document_id}`)}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() =>
+                          navigate(`/document-detail/${doc.document_id}`)
+                        }
+                      >
                         ดูรายละเอียด
                       </Button>
                     </CardActions>
@@ -568,7 +1065,6 @@ const Home = () => {
           )}
         </div>
 
-        {/* Footer spacing */}
         <div className="h-10" />
       </div>
     </Box>
